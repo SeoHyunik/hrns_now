@@ -1,13 +1,14 @@
 package io.hrns_now.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
@@ -29,22 +30,27 @@ fun ScreenRoute(route: AppRoute) {
 
 @Composable
 private fun ScreenTitle(title: String, subtitle: String) {
+    val colors = LocalHrnsColors.current
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = title,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold,
+            color = colors.primaryText,
         )
         Text(
             text = subtitle,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.secondaryText,
         )
     }
 }
 
 @Composable
 fun SetupScreen() {
+    val colors = LocalHrnsColors.current
+
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         ScreenTitle(
             title = "작업공간 연결",
@@ -80,7 +86,7 @@ fun SetupScreen() {
                 Text(
                     text = "PS1 실행 연결은 다음 단계에서 추가합니다.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.secondaryText,
                 )
             }
         }
@@ -89,6 +95,8 @@ fun SetupScreen() {
 
 @Composable
 fun CockpitScreen() {
+    val colors = LocalHrnsColors.current
+
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         ScreenTitle(
             title = "오늘 현황",
@@ -109,7 +117,7 @@ fun CockpitScreen() {
             Text(
                 text = "현재 연결된 작업 카드가 없습니다.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.secondaryText,
             )
         }
 
@@ -137,6 +145,8 @@ fun CockpitScreen() {
 
 @Composable
 fun StrategyScreen() {
+    val colors = LocalHrnsColors.current
+
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         ScreenTitle(
             title = "오늘 할 일",
@@ -164,15 +174,15 @@ fun StrategyScreen() {
         }
 
         SectionCard(title = "이번 작업 범위") {
-            Text("현재 작업 범위가 아직 정리되지 않았습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("현재 작업 범위가 아직 정리되지 않았습니다.", color = colors.secondaryText)
         }
 
         SectionCard(title = "금지 범위") {
-            Text("기준 파일 외 수정은 아직 허용되지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("기준 파일 외 수정은 아직 허용되지 않습니다.", color = colors.secondaryText)
         }
 
         SectionCard(title = "확인 기준") {
-            Text("수동 실행은 이후 PS1 façade에 연결됩니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("수동 실행은 이후 PS1 façade에 연결됩니다.", color = colors.secondaryText)
         }
 
         SectionCard(title = "실행 작업") {
@@ -186,6 +196,8 @@ fun StrategyScreen() {
 
 @Composable
 fun RunScreen() {
+    val colors = LocalHrnsColors.current
+
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         ScreenTitle(
             title = "실행 현황",
@@ -205,11 +217,14 @@ fun RunScreen() {
         SectionCard(title = "실행 로그") {
             OutlinedCard(
                 modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.outlinedCardColors(containerColor = colors.cardBackground),
+                border = BorderStroke(1.dp, colors.border),
             ) {
                 Text(
                     text = "[idle] 활성 wrapper 실행이 없습니다.",
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyMedium,
+                    color = colors.primaryText,
                 )
             }
         }
@@ -217,7 +232,7 @@ fun RunScreen() {
         SectionCard(title = "단계 상세") {
             Text(
                 text = "역할별 실행 패킷과 응답 로그는 다음 단계에서 연결됩니다.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.secondaryText,
             )
         }
 
@@ -246,11 +261,18 @@ fun RunScreen() {
 
 @Composable
 private fun StageRow(text: String) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+    val colors = LocalHrnsColors.current
+
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(containerColor = colors.cardBackground),
+        border = BorderStroke(1.dp, colors.border),
+    ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             style = MaterialTheme.typography.bodyMedium,
+            color = colors.primaryText,
         )
     }
 }

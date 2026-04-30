@@ -1,11 +1,10 @@
 package io.hrns_now.app.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,15 +29,19 @@ import androidx.compose.ui.unit.dp
 fun StatusChip(
     text: String,
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
-    contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    containerColor: Color = Color.Unspecified,
+    contentColor: Color = Color.Unspecified,
 ) {
+    val colors = LocalHrnsColors.current
+    val resolvedContainer = if (containerColor == Color.Unspecified) colors.accentSoft else containerColor
+    val resolvedContent = if (contentColor == Color.Unspecified) colors.primaryText else contentColor
+
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
-        color = containerColor,
-        contentColor = contentColor,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = resolvedContainer,
+        contentColor = resolvedContent,
+        border = BorderStroke(1.dp, colors.border),
     ) {
         Text(
             text = text,
@@ -56,17 +59,18 @@ fun NavigationButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val container = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-    val content = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    val colors = LocalHrnsColors.current
+    val container = if (selected) colors.accentSoft else colors.panelBackground
+    val content = if (selected) colors.primaryText else colors.secondaryText
 
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = container),
         border = BorderStroke(
             1.dp,
-            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outlineVariant,
+            if (selected) colors.accent else colors.border,
         ),
     ) {
         Text(
@@ -83,13 +87,18 @@ fun NavigationButton(
 fun SectionCard(
     title: String,
     modifier: Modifier = Modifier,
+    warning: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val colors = LocalHrnsColors.current
+    val container = if (warning) colors.warningBackground else colors.cardBackground
+    val border = if (warning) colors.warningBorder else colors.border
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+        border = BorderStroke(1.dp, border),
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
@@ -99,8 +108,9 @@ fun SectionCard(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = colors.primaryText,
             )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            HorizontalDivider(color = border.copy(alpha = 0.65f))
             content()
         }
     }
@@ -112,16 +122,19 @@ fun PlaceholderRow(
     value: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = LocalHrnsColors.current
+
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.secondaryText,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
+            color = colors.primaryText,
             modifier = Modifier.padding(top = 4.dp),
         )
     }
@@ -133,14 +146,16 @@ fun PlaceholderActionButton(
     primary: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val colors = LocalHrnsColors.current
+
     if (primary) {
         androidx.compose.material3.Button(
             onClick = {},
             enabled = false,
             modifier = modifier,
             colors = ButtonDefaults.buttonColors(
-                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f),
+                disabledContainerColor = colors.accentSoft,
+                disabledContentColor = colors.primaryText,
             ),
         ) {
             Text(text)
@@ -150,6 +165,10 @@ fun PlaceholderActionButton(
             onClick = {},
             enabled = false,
             modifier = modifier,
+            border = BorderStroke(1.dp, colors.border),
+            colors = ButtonDefaults.outlinedButtonColors(
+                disabledContentColor = colors.secondaryText,
+            ),
         ) {
             Text(text)
         }
@@ -162,6 +181,8 @@ fun InlineChips(
     values: List<String>,
     modifier: Modifier = Modifier,
 ) {
+    val colors = LocalHrnsColors.current
+
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -173,8 +194,8 @@ fun InlineChips(
                 enabled = false,
                 label = { Text(value) },
                 colors = AssistChipDefaults.assistChipColors(
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    disabledContainerColor = colors.accentSoft,
+                    disabledLabelColor = colors.primaryText,
                 ),
             )
         }

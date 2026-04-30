@@ -1,5 +1,6 @@
 package io.hrns_now.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,56 +8,43 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.hrns_now.core.AppRoute
 import io.hrns_now.infra.InfraMarker
 
-val HrnsDarkColorScheme = androidx.compose.material3.darkColorScheme(
-    background = Color(0xFF0B1016),
-    surface = Color(0xFF121923),
-    surfaceVariant = Color(0xFF18222D),
-    primary = Color(0xFF8AC7FF),
-    primaryContainer = Color(0xFF12324A),
-    secondary = Color(0xFF82E6C7),
-    secondaryContainer = Color(0xFF123D34),
-    tertiary = Color(0xFFF5C26B),
-    tertiaryContainer = Color(0xFF4A3110),
-    error = Color(0xFFFF8A8A),
-    errorContainer = Color(0xFF4A1E20),
-    onBackground = Color(0xFFE6EEF6),
-    onSurface = Color(0xFFE6EEF6),
-    onSurfaceVariant = Color(0xFFB9C5D1),
-    outline = Color(0xFF405160),
-    outlineVariant = Color(0xFF2A3946),
-    scrim = Color(0xFF000000),
-)
-
 @Composable
 fun HrnsShell(
     selectedRoute: AppRoute,
     onRouteSelected: (AppRoute) -> Unit,
+    themeMode: HrnsThemeMode,
+    onThemeToggle: () -> Unit,
 ) {
+    val colors = LocalHrnsColors.current
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = HrnsDarkColorScheme.background,
+        color = colors.appBackground,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TopRibbon()
-            HorizontalDivider(color = HrnsDarkColorScheme.outlineVariant)
+            TopRibbon(
+                themeMode = themeMode,
+                onThemeToggle = onThemeToggle,
+            )
+            HorizontalDivider(color = colors.border)
             Row(modifier = Modifier.fillMaxSize()) {
                 LeftRail(
                     selectedRoute = selectedRoute,
@@ -69,7 +57,7 @@ fun HrnsShell(
                     modifier = Modifier
                         .width(1.dp)
                         .fillMaxSize()
-                        .background(HrnsDarkColorScheme.outlineVariant),
+                        .background(colors.border),
                 )
                 Box(
                     modifier = Modifier
@@ -84,7 +72,7 @@ fun HrnsShell(
                     modifier = Modifier
                         .width(1.dp)
                         .fillMaxSize()
-                        .background(HrnsDarkColorScheme.outlineVariant),
+                        .background(colors.border),
                 )
                 InspectorPanel(
                     modifier = Modifier
@@ -97,11 +85,20 @@ fun HrnsShell(
 }
 
 @Composable
-private fun TopRibbon() {
+private fun TopRibbon(
+    themeMode: HrnsThemeMode,
+    onThemeToggle: () -> Unit,
+) {
+    val colors = LocalHrnsColors.current
+    val themeLabel = when (themeMode) {
+        HrnsThemeMode.Dark -> "화면: 어두운 모드"
+        HrnsThemeMode.Light -> "화면: 밝은 모드"
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(HrnsDarkColorScheme.surface)
+            .background(colors.panelBackground)
             .padding(horizontal = 24.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -110,11 +107,12 @@ private fun TopRibbon() {
                 text = "HRNS-NOW · v0",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = colors.primaryText,
             )
             Text(
                 text = "파일 우선 · 읽기 전용 투영 셸",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.secondaryText,
             )
         }
 
@@ -130,6 +128,17 @@ private fun TopRibbon() {
                 ),
             )
         }
+
+        OutlinedButton(
+            onClick = onThemeToggle,
+            border = BorderStroke(1.dp, colors.accent),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = colors.accentSoft,
+                contentColor = colors.primaryText,
+            ),
+        ) {
+            Text(themeLabel)
+        }
     }
 }
 
@@ -140,10 +149,11 @@ private fun LeftRail(
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
+    val colors = LocalHrnsColors.current
 
     Column(
         modifier = modifier
-            .background(HrnsDarkColorScheme.surface.copy(alpha = 0.94f))
+            .background(colors.panelBackground)
             .padding(16.dp)
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -151,7 +161,7 @@ private fun LeftRail(
         Text(
             text = "작업 탐색",
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.secondaryText,
             modifier = Modifier.padding(bottom = 4.dp),
         )
 
@@ -181,10 +191,11 @@ private fun LeftRail(
 @Composable
 private fun InspectorPanel(modifier: Modifier = Modifier) {
     val scrollState = rememberScrollState()
+    val colors = LocalHrnsColors.current
 
     Column(
         modifier = modifier
-            .background(HrnsDarkColorScheme.surface.copy(alpha = 0.92f))
+            .background(colors.panelBackground)
             .padding(20.dp)
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -193,6 +204,7 @@ private fun InspectorPanel(modifier: Modifier = Modifier) {
             text = "기준 파일 / 최신성",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
+            color = colors.primaryText,
         )
 
         SectionCard(title = "오늘 상태 파일") {
@@ -207,7 +219,7 @@ private fun InspectorPanel(modifier: Modifier = Modifier) {
             PlaceholderRow("logs/YYYY-MM-DD/", "logs/YYYY-MM-DD/ · 없음")
         }
 
-        SectionCard(title = "앱이 소유하지 않음") {
+        SectionCard(title = "앱이 소유하지 않음", warning = true) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("UI는 WORKDAY_STATE.json을 직접 쓰지 않습니다.")
                 Text("UI는 마감 상태를 자체 확정하지 않습니다.")
@@ -218,7 +230,7 @@ private fun InspectorPanel(modifier: Modifier = Modifier) {
         SectionCard(title = "기타") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("읽기 전용 투영 셸")
-                Text("infra: ${InfraMarker.name}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("infra: ${InfraMarker.name}", color = colors.secondaryText)
             }
         }
     }
