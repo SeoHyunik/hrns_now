@@ -25,6 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.hrns_now.app.AppProjections
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.artifact.ArtifactProbeResult
+import io.hrns_now.core.artifact.ArtifactProbeState
+import io.hrns_now.core.artifact.WorkspaceArtifactSummary
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.core.projection.ShellProjection
 import io.hrns_now.core.projection.StatusChipModel
@@ -91,6 +94,7 @@ fun HrnsShell(
                 )
                 InspectorPanel(
                     projection = projections.shell,
+                    artifactSummary = projections.workspaceArtifactSummary,
                     modifier = Modifier
                         .width(340.dp)
                         .fillMaxSize(),
@@ -209,6 +213,7 @@ private fun LeftRail(
 @Composable
 private fun InspectorPanel(
     projection: ShellProjection,
+    artifactSummary: WorkspaceArtifactSummary,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
@@ -228,9 +233,9 @@ private fun InspectorPanel(
             color = colors.primaryText,
         )
 
-        projection.sourceItems.forEach { item ->
+        artifactSummary.items.forEach { item ->
             SectionCard(title = item.label) {
-                PlaceholderRow(item.fileName, "${item.fileName} · ${item.stateLabel}")
+                PlaceholderRow(item.path, item.displayValue())
             }
         }
 
@@ -250,3 +255,16 @@ private fun InspectorPanel(
         }
     }
 }
+
+private fun ArtifactProbeResult.displayValue(): String =
+    "$path · ${state.koreanLabel()}"
+
+private fun ArtifactProbeState.koreanLabel(): String =
+    when (this) {
+        ArtifactProbeState.WorkspaceNotConfigured -> "작업공간 미선택"
+        ArtifactProbeState.Exists -> "확인됨"
+        ArtifactProbeState.Missing -> "없음"
+        ArtifactProbeState.NotReadable -> "읽기 불가"
+        ArtifactProbeState.WrongType -> "유형 불일치"
+        ArtifactProbeState.Unknown -> "확인 필요"
+    }

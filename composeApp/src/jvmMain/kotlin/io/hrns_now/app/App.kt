@@ -13,6 +13,7 @@ import io.hrns_now.app.ui.LocalHrnsColors
 import io.hrns_now.app.ui.hrnsColors
 import io.hrns_now.app.ui.hrnsMaterialColorScheme
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.artifact.WorkspaceArtifactSummary
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
@@ -23,6 +24,7 @@ import io.hrns_now.core.projection.TodayStatusProjection
 import io.hrns_now.core.projection.TodayWorkProjection
 import io.hrns_now.infra.EnvironmentWorkspaceConfigProvider
 import io.hrns_now.infra.MockProjectionProvider
+import io.hrns_now.infra.WorkspaceArtifactProbe
 import io.hrns_now.infra.WorkspacePathProbe
 
 @Composable
@@ -35,6 +37,7 @@ fun App() {
         val workspaceConfig = workspaceProvider.config()
         val pathProbe = WorkspacePathProbe()
         val probeSummary = pathProbe.probe(workspaceConfig)
+        val artifactSummary = WorkspaceArtifactProbe().probe(workspaceConfig)
         AppProjections(
             shell = projectionProvider.shell(),
             setup = projectionProvider.setup(),
@@ -43,6 +46,7 @@ fun App() {
             runStatus = projectionProvider.runStatus(),
             workspaceConfig = workspaceConfig,
             workspaceProbeSummary = probeSummary,
+            workspaceArtifactSummary = artifactSummary,
             workspaceReadiness = pathProbe.readiness(workspaceConfig, probeSummary),
         )
     }
@@ -73,5 +77,6 @@ data class AppProjections(
     val runStatus: RunStatusProjection,
     val workspaceConfig: WorkspaceConfig,
     val workspaceProbeSummary: WorkspaceProbeSummary,
+    val workspaceArtifactSummary: WorkspaceArtifactSummary,
     val workspaceReadiness: WorkspaceReadiness,
 )
