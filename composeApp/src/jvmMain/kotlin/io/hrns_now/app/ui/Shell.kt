@@ -25,7 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.hrns_now.app.AppProjections
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.core.projection.ShellProjection
+import io.hrns_now.core.projection.StatusChipModel
 import io.hrns_now.infra.InfraMarker
 
 @Composable
@@ -45,6 +47,7 @@ fun HrnsShell(
         Column(modifier = Modifier.fillMaxSize()) {
             TopRibbon(
                 projection = projections.shell,
+                readiness = projections.workspaceReadiness,
                 themeMode = themeMode,
                 onThemeToggle = onThemeToggle,
             )
@@ -73,6 +76,7 @@ fun HrnsShell(
                     ScreenRoute(
                         route = selectedRoute,
                         setupProjection = projections.setup,
+                        workspaceConfig = projections.workspaceConfig,
                         todayStatusProjection = projections.todayStatus,
                         todayWorkProjection = projections.todayWork,
                         runStatusProjection = projections.runStatus,
@@ -98,6 +102,7 @@ fun HrnsShell(
 @Composable
 private fun TopRibbon(
     projection: ShellProjection,
+    readiness: WorkspaceReadiness,
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
 ) {
@@ -129,7 +134,16 @@ private fun TopRibbon(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            InlineChips(chips = projection.statusChips)
+            InlineChips(
+                chips = listOf(
+                    StatusChipModel("작업공간", readiness.workspaceLabel),
+                    StatusChipModel("하네스 엔진", readiness.engineLabel),
+                    StatusChipModel("저장소 연결", readiness.bridgeLabel),
+                    StatusChipModel("실행 프로필", readiness.profileLabel),
+                    StatusChipModel("상태 점검", readiness.doctorLabel),
+                    StatusChipModel("실행 중", "없음"),
+                ),
+            )
         }
 
         OutlinedButton(

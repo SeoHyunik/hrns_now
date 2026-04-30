@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.projection.RunStatusProjection
 import io.hrns_now.core.projection.SetupProjection
 import io.hrns_now.core.projection.TodayStatusProjection
@@ -23,12 +24,13 @@ import io.hrns_now.core.projection.TodayWorkProjection
 fun ScreenRoute(
     route: AppRoute,
     setupProjection: SetupProjection,
+    workspaceConfig: WorkspaceConfig,
     todayStatusProjection: TodayStatusProjection,
     todayWorkProjection: TodayWorkProjection,
     runStatusProjection: RunStatusProjection,
 ) {
     when (route) {
-        AppRoute.Setup -> SetupScreen(setupProjection)
+        AppRoute.Setup -> SetupScreen(setupProjection, workspaceConfig)
         AppRoute.Cockpit -> CockpitScreen(todayStatusProjection)
         AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
         AppRoute.Run -> RunScreen(runStatusProjection)
@@ -55,7 +57,10 @@ private fun ScreenTitle(title: String, subtitle: String) {
 }
 
 @Composable
-fun SetupScreen(projection: SetupProjection) {
+fun SetupScreen(
+    projection: SetupProjection,
+    workspaceConfig: WorkspaceConfig,
+) {
     val colors = LocalHrnsColors.current
 
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -66,6 +71,17 @@ fun SetupScreen(projection: SetupProjection) {
 
         projection.cards.forEach { card ->
             ProjectionInfoCard(card)
+        }
+
+        SectionCard(title = "경로 설정") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PlaceholderRow("KitRoot", workspaceConfig.roots.kitRoot ?: "미설정")
+                PlaceholderRow("WorkspaceRoot", workspaceConfig.roots.workspaceRoot ?: "미설정")
+                PlaceholderRow("ProjectRoot", workspaceConfig.roots.projectRoot ?: "미설정")
+                PlaceholderRow("PowerShell 경로", workspaceConfig.runtime.powerShellPath ?: "미확인")
+                PlaceholderRow("Claude 명령", workspaceConfig.runtime.claudeCommand ?: "미확인")
+                PlaceholderRow("화면 언어", workspaceConfig.runtime.uiLanguage)
+            }
         }
 
         SectionCard(title = "실행 작업") {
