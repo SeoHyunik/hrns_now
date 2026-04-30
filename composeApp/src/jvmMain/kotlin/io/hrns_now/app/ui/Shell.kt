@@ -77,6 +77,7 @@ fun HrnsShell(
                         route = selectedRoute,
                         setupProjection = projections.setup,
                         workspaceConfig = projections.workspaceConfig,
+                        workspaceProbeSummary = projections.workspaceProbeSummary,
                         todayStatusProjection = projections.todayStatus,
                         todayWorkProjection = projections.todayWork,
                         runStatusProjection = projections.runStatus,

@@ -14,7 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.config.PathProbeResult
+import io.hrns_now.core.config.PathProbeState
 import io.hrns_now.core.config.WorkspaceConfig
+import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.projection.RunStatusProjection
 import io.hrns_now.core.projection.SetupProjection
 import io.hrns_now.core.projection.TodayStatusProjection
@@ -25,12 +28,13 @@ fun ScreenRoute(
     route: AppRoute,
     setupProjection: SetupProjection,
     workspaceConfig: WorkspaceConfig,
+    workspaceProbeSummary: WorkspaceProbeSummary,
     todayStatusProjection: TodayStatusProjection,
     todayWorkProjection: TodayWorkProjection,
     runStatusProjection: RunStatusProjection,
 ) {
     when (route) {
-        AppRoute.Setup -> SetupScreen(setupProjection, workspaceConfig)
+        AppRoute.Setup -> SetupScreen(setupProjection, workspaceConfig, workspaceProbeSummary)
         AppRoute.Cockpit -> CockpitScreen(todayStatusProjection)
         AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
         AppRoute.Run -> RunScreen(runStatusProjection)
@@ -60,6 +64,7 @@ private fun ScreenTitle(title: String, subtitle: String) {
 fun SetupScreen(
     projection: SetupProjection,
     workspaceConfig: WorkspaceConfig,
+    workspaceProbeSummary: WorkspaceProbeSummary,
 ) {
     val colors = LocalHrnsColors.current
 
@@ -73,13 +78,13 @@ fun SetupScreen(
             ProjectionInfoCard(card)
         }
 
-        SectionCard(title = "경로 설정") {
+        SectionCard(title = "경로 점검") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                PlaceholderRow("KitRoot", workspaceConfig.roots.kitRoot ?: "미설정")
-                PlaceholderRow("WorkspaceRoot", workspaceConfig.roots.workspaceRoot ?: "미설정")
-                PlaceholderRow("ProjectRoot", workspaceConfig.roots.projectRoot ?: "미설정")
-                PlaceholderRow("PowerShell 경로", workspaceConfig.runtime.powerShellPath ?: "미확인")
-                PlaceholderRow("Claude 명령", workspaceConfig.runtime.claudeCommand ?: "미확인")
+                PathProbeRow(workspaceProbeSummary.kitRoot)
+                PathProbeRow(workspaceProbeSummary.workspaceRoot)
+                PathProbeRow(workspaceProbeSummary.projectRoot)
+                PathProbeRow(workspaceProbeSummary.powerShellPath)
+                PathProbeRow(workspaceProbeSummary.claudeCommand)
                 PlaceholderRow("화면 언어", workspaceConfig.runtime.uiLanguage)
             }
         }
@@ -231,6 +236,34 @@ private fun StageRow(text: String) {
         )
     }
 }
+
+@Composable
+private fun PathProbeRow(result: PathProbeResult) {
+    PlaceholderRow(
+        label = result.label,
+        value = result.displayValue(),
+    )
+}
+
+private fun PathProbeResult.displayValue(): String {
+    val stateLabel = state.koreanLabel()
+    val pathPart = rawPath?.takeIf { it.isNotBlank() }
+    return if (pathPart == null) {
+        "$stateLabel · ${message}"
+    } else {
+        "$stateLabel · $pathPart · ${message}"
+    }
+}
+
+private fun PathProbeState.koreanLabel(): String =
+    when (this) {
+        PathProbeState.NotConfigured -> "미설정"
+        PathProbeState.Exists -> "확인됨"
+        PathProbeState.Missing -> "없음"
+        PathProbeState.NotReadable -> "읽기 불가"
+        PathProbeState.WrongType -> "유형 불일치"
+        PathProbeState.Unknown -> "확인 필요"
+    }
 
 private fun io.hrns_now.core.projection.StatusChipModel.displayText(): String =
     if (value.isBlank()) label else "$label: $value"
