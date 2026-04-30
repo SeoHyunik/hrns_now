@@ -23,6 +23,8 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation(project(":core"))
+            implementation(project(":infra"))
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

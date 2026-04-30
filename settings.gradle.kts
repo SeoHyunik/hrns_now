@@ -33,3 +33,5 @@ plugins {
 }
 
 include(":composeApp")
+include(":core")
+include(":infra")
