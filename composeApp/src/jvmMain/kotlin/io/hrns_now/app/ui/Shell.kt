@@ -23,13 +23,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.hrns_now.app.AppProjections
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.projection.ShellProjection
 import io.hrns_now.infra.InfraMarker
 
 @Composable
 fun HrnsShell(
     selectedRoute: AppRoute,
     onRouteSelected: (AppRoute) -> Unit,
+    projections: AppProjections,
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
 ) {
@@ -41,6 +44,7 @@ fun HrnsShell(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             TopRibbon(
+                projection = projections.shell,
                 themeMode = themeMode,
                 onThemeToggle = onThemeToggle,
             )
@@ -66,7 +70,13 @@ fun HrnsShell(
                         .padding(24.dp)
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    ScreenRoute(selectedRoute)
+                    ScreenRoute(
+                        route = selectedRoute,
+                        setupProjection = projections.setup,
+                        todayStatusProjection = projections.todayStatus,
+                        todayWorkProjection = projections.todayWork,
+                        runStatusProjection = projections.runStatus,
+                    )
                 }
                 Box(
                     modifier = Modifier
@@ -75,6 +85,7 @@ fun HrnsShell(
                         .background(colors.border),
                 )
                 InspectorPanel(
+                    projection = projections.shell,
                     modifier = Modifier
                         .width(340.dp)
                         .fillMaxSize(),
@@ -86,6 +97,7 @@ fun HrnsShell(
 
 @Composable
 private fun TopRibbon(
+    projection: ShellProjection,
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
 ) {
@@ -104,29 +116,20 @@ private fun TopRibbon(
     ) {
         Column(modifier = Modifier.widthIn(min = 160.dp)) {
             Text(
-                text = "HRNS-NOW · v0",
+                text = projection.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.primaryText,
             )
             Text(
-                text = "파일 우선 · 읽기 전용 투영 셸",
+                text = projection.subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.secondaryText,
             )
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            InlineChips(
-                values = listOf(
-                    "작업공간: 미선택",
-                    "하네스 엔진: 오프라인",
-                    "저장소 연결: 미확인",
-                    "실행 프로필: 기본",
-                    "상태 점검: 대기",
-                    "실행 중: 없음",
-                ),
-            )
+            InlineChips(chips = projection.statusChips)
         }
 
         OutlinedButton(
@@ -189,7 +192,10 @@ private fun LeftRail(
 }
 
 @Composable
-private fun InspectorPanel(modifier: Modifier = Modifier) {
+private fun InspectorPanel(
+    projection: ShellProjection,
+    modifier: Modifier = Modifier,
+) {
     val scrollState = rememberScrollState()
     val colors = LocalHrnsColors.current
 
@@ -207,29 +213,23 @@ private fun InspectorPanel(modifier: Modifier = Modifier) {
             color = colors.primaryText,
         )
 
-        SectionCard(title = "오늘 상태 파일") {
-            PlaceholderRow("WORKDAY_STATE.json", "WORKDAY_STATE.json · 없음")
-        }
-
-        SectionCard(title = "오늘 할 일 파일") {
-            PlaceholderRow("TODAY_STRATEGY.md", "TODAY_STRATEGY.md · 없음")
-        }
-
-        SectionCard(title = "오늘 실행 로그") {
-            PlaceholderRow("logs/YYYY-MM-DD/", "logs/YYYY-MM-DD/ · 없음")
+        projection.sourceItems.forEach { item ->
+            SectionCard(title = item.label) {
+                PlaceholderRow(item.fileName, "${item.fileName} · ${item.stateLabel}")
+            }
         }
 
         SectionCard(title = "앱이 소유하지 않음", warning = true) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("UI는 WORKDAY_STATE.json을 직접 쓰지 않습니다.")
-                Text("UI는 마감 상태를 자체 확정하지 않습니다.")
-                Text("현재 화면은 파일 기반 읽기 투영 셸입니다.")
+                projection.notAppOwnedMessages.forEach { message ->
+                    Text(message, color = colors.primaryText)
+                }
             }
         }
 
         SectionCard(title = "기타") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("읽기 전용 투영 셸")
+                Text(projection.subtitle)
                 Text("infra: ${InfraMarker.name}", color = colors.secondaryText)
             }
         }

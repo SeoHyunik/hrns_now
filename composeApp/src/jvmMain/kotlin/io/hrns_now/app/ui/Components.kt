@@ -24,16 +24,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.hrns_now.core.projection.ActionButtonModel
+import io.hrns_now.core.projection.InfoCardModel
+import io.hrns_now.core.projection.StatusChipModel
 
 @Composable
 fun StatusChip(
     text: String,
     modifier: Modifier = Modifier,
+    tone: String = "neutral",
     containerColor: Color = Color.Unspecified,
     contentColor: Color = Color.Unspecified,
 ) {
     val colors = LocalHrnsColors.current
-    val resolvedContainer = if (containerColor == Color.Unspecified) colors.accentSoft else containerColor
+    val toneContainer = when (tone) {
+        "warning" -> colors.warningBackground
+        else -> colors.accentSoft
+    }
+    val toneBorder = when (tone) {
+        "warning" -> colors.warningBorder
+        else -> colors.border
+    }
+    val resolvedContainer = if (containerColor == Color.Unspecified) toneContainer else containerColor
     val resolvedContent = if (contentColor == Color.Unspecified) colors.primaryText else contentColor
 
     Surface(
@@ -41,7 +53,7 @@ fun StatusChip(
         shape = RoundedCornerShape(999.dp),
         color = resolvedContainer,
         contentColor = resolvedContent,
-        border = BorderStroke(1.dp, colors.border),
+        border = BorderStroke(1.dp, toneBorder),
     ) {
         Text(
             text = text,
@@ -50,6 +62,18 @@ fun StatusChip(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
+}
+
+@Composable
+fun StatusChip(
+    model: StatusChipModel,
+    modifier: Modifier = Modifier,
+) {
+    StatusChip(
+        text = model.displayText(),
+        modifier = modifier,
+        tone = model.tone,
+    )
 }
 
 @Composable
@@ -117,6 +141,25 @@ fun SectionCard(
 }
 
 @Composable
+fun ProjectionInfoCard(
+    card: InfoCardModel,
+    modifier: Modifier = Modifier,
+    warning: Boolean = false,
+) {
+    SectionCard(
+        title = card.title,
+        modifier = modifier,
+        warning = warning,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            card.rows.forEach { (label, value) ->
+                PlaceholderRow(label, value)
+            }
+        }
+    }
+}
+
+@Composable
 fun PlaceholderRow(
     label: String,
     value: String,
@@ -145,13 +188,14 @@ fun PlaceholderActionButton(
     text: String,
     primary: Boolean = false,
     modifier: Modifier = Modifier,
+    enabled: Boolean = false,
 ) {
     val colors = LocalHrnsColors.current
 
     if (primary) {
         androidx.compose.material3.Button(
             onClick = {},
-            enabled = false,
+            enabled = enabled,
             modifier = modifier,
             colors = ButtonDefaults.buttonColors(
                 disabledContainerColor = colors.accentSoft,
@@ -163,7 +207,7 @@ fun PlaceholderActionButton(
     } else {
         OutlinedButton(
             onClick = {},
-            enabled = false,
+            enabled = enabled,
             modifier = modifier,
             border = BorderStroke(1.dp, colors.border),
             colors = ButtonDefaults.outlinedButtonColors(
@@ -175,10 +219,53 @@ fun PlaceholderActionButton(
     }
 }
 
+@Composable
+fun PlaceholderActionButton(
+    action: ActionButtonModel,
+    primary: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        PlaceholderActionButton(
+            text = action.label,
+            primary = primary,
+            modifier = modifier,
+            enabled = action.enabled,
+        )
+        action.helperText?.let { helper ->
+            Text(
+                text = helper,
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalHrnsColors.current.secondaryText,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ActionButtonGroup(
+    actions: List<ActionButtonModel>,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        actions.forEachIndexed { index, action ->
+            PlaceholderActionButton(
+                action = action,
+                primary = index == 0,
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InlineChips(
-    values: List<String>,
+    chips: List<StatusChipModel>,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalHrnsColors.current
@@ -188,16 +275,23 @@ fun InlineChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        values.forEach { value ->
+        chips.forEach { chip ->
+            val container = when (chip.tone) {
+                "warning" -> colors.warningBackground
+                else -> colors.accentSoft
+            }
             AssistChip(
                 onClick = {},
                 enabled = false,
-                label = { Text(value) },
+                label = { Text(chip.displayText()) },
                 colors = AssistChipDefaults.assistChipColors(
-                    disabledContainerColor = colors.accentSoft,
+                    disabledContainerColor = container,
                     disabledLabelColor = colors.primaryText,
                 ),
             )
         }
     }
 }
+
+private fun StatusChipModel.displayText(): String =
+    if (value.isBlank()) label else "$label: $value"
