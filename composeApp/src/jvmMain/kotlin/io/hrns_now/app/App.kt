@@ -7,11 +7,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import io.hrns_now.app.ui.HrnsThemeMode
 import io.hrns_now.app.ui.HrnsShell
+import io.hrns_now.app.ui.HrnsThemeMode
 import io.hrns_now.app.ui.LocalHrnsColors
 import io.hrns_now.app.ui.hrnsColors
 import io.hrns_now.app.ui.hrnsMaterialColorScheme
+import io.hrns_now.app.ui.hrnsTypography
 import io.hrns_now.core.AppRoute
 import io.hrns_now.core.artifact.WorkspaceArtifactSummary
 import io.hrns_now.core.config.WorkspaceConfig
@@ -31,28 +32,14 @@ import io.hrns_now.infra.WorkspacePathProbe
 fun App() {
     var selectedRoute by remember { mutableStateOf(AppRoute.Setup) }
     var themeMode by remember { mutableStateOf(HrnsThemeMode.Dark) }
-    val projections = remember {
-        val projectionProvider = MockProjectionProvider()
-        val workspaceProvider = EnvironmentWorkspaceConfigProvider()
-        val workspaceConfig = workspaceProvider.config()
-        val pathProbe = WorkspacePathProbe()
-        val probeSummary = pathProbe.probe(workspaceConfig)
-        val artifactSummary = WorkspaceArtifactProbe().probe(workspaceConfig)
-        AppProjections(
-            shell = projectionProvider.shell(),
-            setup = projectionProvider.setup(),
-            todayStatus = projectionProvider.todayStatus(),
-            todayWork = projectionProvider.todayWork(),
-            runStatus = projectionProvider.runStatus(),
-            workspaceConfig = workspaceConfig,
-            workspaceProbeSummary = probeSummary,
-            workspaceArtifactSummary = artifactSummary,
-            workspaceReadiness = pathProbe.readiness(workspaceConfig, probeSummary),
-        )
-    }
+    val projections = remember { buildProjections() }
+    val typography = remember { hrnsTypography() }
 
     CompositionLocalProvider(LocalHrnsColors provides hrnsColors(themeMode)) {
-        MaterialTheme(colorScheme = hrnsMaterialColorScheme(themeMode)) {
+        MaterialTheme(
+            colorScheme = hrnsMaterialColorScheme(themeMode),
+            typography = typography,
+        ) {
             HrnsShell(
                 selectedRoute = selectedRoute,
                 onRouteSelected = { selectedRoute = it },
@@ -67,6 +54,26 @@ fun App() {
             )
         }
     }
+}
+
+private fun buildProjections(): AppProjections {
+    val projectionProvider = MockProjectionProvider()
+    val workspaceProvider = EnvironmentWorkspaceConfigProvider()
+    val workspaceConfig = workspaceProvider.config()
+    val pathProbe = WorkspacePathProbe()
+    val probeSummary = pathProbe.probe(workspaceConfig)
+    val artifactSummary = WorkspaceArtifactProbe().probe(workspaceConfig)
+    return AppProjections(
+        shell = projectionProvider.shell(),
+        setup = projectionProvider.setup(),
+        todayStatus = projectionProvider.todayStatus(),
+        todayWork = projectionProvider.todayWork(),
+        runStatus = projectionProvider.runStatus(),
+        workspaceConfig = workspaceConfig,
+        workspaceProbeSummary = probeSummary,
+        workspaceArtifactSummary = artifactSummary,
+        workspaceReadiness = pathProbe.readiness(workspaceConfig, probeSummary),
+    )
 }
 
 data class AppProjections(

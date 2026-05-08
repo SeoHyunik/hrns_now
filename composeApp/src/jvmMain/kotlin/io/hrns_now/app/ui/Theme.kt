@@ -6,22 +6,70 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
+/**
+ * 화면 모드.
+ */
 enum class HrnsThemeMode {
     Dark,
-    Light
+    Light,
 }
 
+/**
+ * 디자인 토큰.
+ *
+ * 원칙
+ * - 테두리(stroke) 보다 면(fill) 단계로 깊이를 만든다.
+ * - 강조색은 인디고 1색만 쓰고, 의미 색은 dot 표시에만 쓴다.
+ * - 텍스트는 3단계 (primary / secondary / tertiary).
+ *
+ * 기존 필드 이름은 호환을 위해 모두 살려둔다.
+ */
 data class HrnsColors(
+    // 배경 / 표면
     val appBackground: Color,
     val panelBackground: Color,
     val cardBackground: Color,
+    val surfaceElevated: Color,
+    val surfaceMuted: Color,
+    val surfaceHover: Color,
+
+    // 보더 (거의 안 씀, hairline 용)
     val border: Color,
+    val borderStrong: Color,
+    val borderSubtle: Color,
+
+    // 텍스트
     val primaryText: Color,
     val secondaryText: Color,
+    val tertiaryText: Color,
+
+    // 강조
     val accent: Color,
     val accentSoft: Color,
-    val warningBackground: Color,
+    val accentMuted: Color,
+    val onAccent: Color,
+
+    // Chelsea Blue (테두리 / 그림자 톤용)
+    val chelseaBlue: Color,
+    val chelseaBlueSoft: Color,
+    val chelseaGlow: Color,
+
+    // 브랜드 마크용 그라데이션 색
+    val brandGradientStart: Color,
+    val brandGradientMid: Color,
+    val brandGradientEnd: Color,
+
+    // 의미 토큰
+    val success: Color,
+    val successSoft: Color,
+    val warning: Color,
+    val warningSoft: Color,
+    val warningBackground: Color, // alias = warningSoft (호환)
     val warningBorder: Color,
+    val danger: Color,
+    val dangerSoft: Color,
+    val info: Color,
+    val infoSoft: Color,
 )
 
 val LocalHrnsColors = staticCompositionLocalOf { hrnsColors(HrnsThemeMode.Dark) }
@@ -29,77 +77,133 @@ val LocalHrnsColors = staticCompositionLocalOf { hrnsColors(HrnsThemeMode.Dark) 
 fun hrnsColors(mode: HrnsThemeMode): HrnsColors =
     when (mode) {
         HrnsThemeMode.Dark -> HrnsColors(
-            appBackground = Color(0xFF0B1016),
-            panelBackground = Color(0xFF121923),
-            cardBackground = Color(0xFF151E29),
-            border = Color(0xFF2A3946),
-            primaryText = Color(0xFFE6EEF6),
-            secondaryText = Color(0xFFB9C5D1),
-            accent = Color(0xFF8AC7FF),
-            accentSoft = Color(0xFF12324A),
-            warningBackground = Color(0xFF2D2114),
-            warningBorder = Color(0xFF8B6530),
+            appBackground = Color(0xFF0A0A0B),
+            panelBackground = Color(0xFF0A0A0B),
+            cardBackground = Color(0xFF131316),
+            surfaceElevated = Color(0xFF1B1B20),
+            surfaceMuted = Color(0xFF101013),
+            surfaceHover = Color(0xFF1F1F25),
+
+            border = Color(0xFF26262C),
+            borderStrong = Color(0xFF3A3A42),
+            borderSubtle = Color(0xFF1C1C21),
+
+            primaryText = Color(0xFFF5F5F7),
+            secondaryText = Color(0xFFA1A1AA),
+            tertiaryText = Color(0xFF6B6B74),
+
+            accent = Color(0xFF4A7FC9),
+            accentSoft = Color(0xFF0F1B2E),
+            accentMuted = Color(0xFF1A2D4D),
+            onAccent = Color(0xFFFFFFFF),
+
+            chelseaBlue = Color(0xFF1E5BB8),
+            chelseaBlueSoft = Color(0xFF13243F),
+            chelseaGlow = Color(0x33034694),
+
+            brandGradientStart = Color(0xFFFFA751),
+            brandGradientMid = Color(0xFFE6336B),
+            brandGradientEnd = Color(0xFF7A4DFF),
+
+            success = Color(0xFF4ADE80),
+            successSoft = Color(0xFF0E2818),
+            warning = Color(0xFFFBBF24),
+            warningSoft = Color(0xFF2A1F09),
+            warningBackground = Color(0xFF2A1F09),
+            warningBorder = Color(0xFF6B5418),
+            danger = Color(0xFFF87171),
+            dangerSoft = Color(0xFF2A1416),
+            info = Color(0xFF60A5FA),
+            infoSoft = Color(0xFF0E1F33),
         )
 
         HrnsThemeMode.Light -> HrnsColors(
-            appBackground = Color(0xFFF4F7FA),
-            panelBackground = Color(0xFFFFFFFF),
+            appBackground = Color(0xFFFAFAFA),
+            panelBackground = Color(0xFFFAFAFA),
             cardBackground = Color(0xFFFFFFFF),
-            border = Color(0xFFD7DEE7),
-            primaryText = Color(0xFF17202A),
-            secondaryText = Color(0xFF5F6F82),
-            accent = Color(0xFF0E6BA8),
-            accentSoft = Color(0xFFE6F3FF),
-            warningBackground = Color(0xFFFFF6E8),
-            warningBorder = Color(0xFFE2A84B),
+            surfaceElevated = Color(0xFFFFFFFF),
+            surfaceMuted = Color(0xFFF4F4F5),
+            surfaceHover = Color(0xFFEEEEF0),
+
+            border = Color(0xFFE4E4E7),
+            borderStrong = Color(0xFFD4D4D8),
+            borderSubtle = Color(0xFFEEEEF0),
+
+            primaryText = Color(0xFF09090B),
+            secondaryText = Color(0xFF52525B),
+            tertiaryText = Color(0xFF9CA3AF),
+
+            accent = Color(0xFF034694),
+            accentSoft = Color(0xFFE6EEF8),
+            accentMuted = Color(0xFFCCDBED),
+            onAccent = Color(0xFFFFFFFF),
+
+            chelseaBlue = Color(0xFF034694),
+            chelseaBlueSoft = Color(0xFFE6EEF8),
+            chelseaGlow = Color(0x29034694),
+
+            brandGradientStart = Color(0xFFF59E0B),
+            brandGradientMid = Color(0xFFEC4899),
+            brandGradientEnd = Color(0xFF6366F1),
+
+            success = Color(0xFF16A34A),
+            successSoft = Color(0xFFDCFCE7),
+            warning = Color(0xFFB45309),
+            warningSoft = Color(0xFFFEF3C7),
+            warningBackground = Color(0xFFFEF3C7),
+            warningBorder = Color(0xFFFCD34D),
+            danger = Color(0xFFDC2626),
+            dangerSoft = Color(0xFFFEE2E2),
+            info = Color(0xFF2563EB),
+            infoSoft = Color(0xFFDBEAFE),
         )
     }
 
 fun hrnsMaterialColorScheme(mode: HrnsThemeMode): ColorScheme {
-    val colors = hrnsColors(mode)
+    val c = hrnsColors(mode)
 
     return when (mode) {
         HrnsThemeMode.Dark -> darkColorScheme(
-            background = colors.appBackground,
-            surface = colors.cardBackground,
-            surfaceVariant = colors.panelBackground,
-            primary = colors.accent,
-            primaryContainer = colors.accentSoft,
-            secondary = Color(0xFF82E6C7),
-            secondaryContainer = Color(0xFF123D34),
-            tertiary = Color(0xFFF5C26B),
-            tertiaryContainer = colors.warningBackground,
-            error = Color(0xFFFF8A8A),
-            errorContainer = Color(0xFF4A1E20),
-            onBackground = colors.primaryText,
-            onSurface = colors.primaryText,
-            onSurfaceVariant = colors.secondaryText,
-            onPrimary = Color(0xFF062235),
-            onPrimaryContainer = colors.primaryText,
-            outline = Color(0xFF405160),
-            outlineVariant = colors.border,
+            background = c.appBackground,
+            surface = c.cardBackground,
+            surfaceVariant = c.surfaceElevated,
+            primary = c.accent,
+            primaryContainer = c.accentSoft,
+            secondary = c.success,
+            secondaryContainer = c.successSoft,
+            tertiary = c.warning,
+            tertiaryContainer = c.warningSoft,
+            error = c.danger,
+            errorContainer = c.dangerSoft,
+            onBackground = c.primaryText,
+            onSurface = c.primaryText,
+            onSurfaceVariant = c.secondaryText,
+            onPrimary = c.onAccent,
+            onPrimaryContainer = c.primaryText,
+            outline = c.borderStrong,
+            outlineVariant = c.border,
             scrim = Color(0xFF000000),
         )
 
         HrnsThemeMode.Light -> lightColorScheme(
-            background = colors.appBackground,
-            surface = colors.cardBackground,
-            surfaceVariant = colors.panelBackground,
-            primary = colors.accent,
-            primaryContainer = colors.accentSoft,
-            secondary = Color(0xFF0E7C66),
-            secondaryContainer = Color(0xFFE3F6F0),
-            tertiary = Color(0xFF9A6516),
-            tertiaryContainer = colors.warningBackground,
-            error = Color(0xFFBA1A1A),
-            errorContainer = Color(0xFFFFDAD6),
-            onBackground = colors.primaryText,
-            onSurface = colors.primaryText,
-            onSurfaceVariant = colors.secondaryText,
-            onPrimary = Color(0xFFFFFFFF),
-            onPrimaryContainer = Color(0xFF123247),
-            outline = Color(0xFF7A8794),
-            outlineVariant = colors.border,
+            background = c.appBackground,
+            surface = c.cardBackground,
+            surfaceVariant = c.surfaceMuted,
+            primary = c.accent,
+            primaryContainer = c.accentSoft,
+            secondary = c.success,
+            secondaryContainer = c.successSoft,
+            tertiary = c.warning,
+            tertiaryContainer = c.warningSoft,
+            error = c.danger,
+            errorContainer = c.dangerSoft,
+            onBackground = c.primaryText,
+            onSurface = c.primaryText,
+            onSurfaceVariant = c.secondaryText,
+            onPrimary = c.onAccent,
+            onPrimaryContainer = Color(0xFF1E1B4B),
+            outline = c.borderStrong,
+            outlineVariant = c.border,
             scrim = Color(0xFF000000),
         )
     }
