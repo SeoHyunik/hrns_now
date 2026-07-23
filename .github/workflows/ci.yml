@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [master, harness-dev]
+  pull_request:
+    branches: [master, harness-dev]
+
+jobs:
+  check:
+    # Phase 0B: core/infra tests are pure JVM and portable; a non-Windows runner
+    # is acceptable for now. PowerShell-integration tests (Phase 3+) will need a
+    # dedicated windows-latest job.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run checks
+        run: ./gradlew check --no-daemon

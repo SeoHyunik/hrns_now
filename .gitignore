@@ -18,3 +18,8 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# local ad-hoc build check logs
+run-check.out
+run-check.err
+run-check.*

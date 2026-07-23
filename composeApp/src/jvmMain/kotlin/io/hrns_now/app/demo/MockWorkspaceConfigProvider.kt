@@ -1,10 +1,11 @@
-package io.hrns_now.infra
+package io.hrns_now.app.demo
 
 import io.hrns_now.core.config.RuntimeConfig
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.core.config.WorkspaceRoots
 
+/** demo/시연 전용 mock provider. 실제 infrastructure adapter가 아니므로 infra 모듈에 두지 않는다. */
 class MockWorkspaceConfigProvider {
     fun config(): WorkspaceConfig =
         WorkspaceConfig(

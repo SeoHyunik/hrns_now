@@ -8,4 +8,10 @@ kotlin {
 
 dependencies {
     implementation(project(":core"))
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.testJunit)
+}
+
+tasks.test {
+    useJUnit()
 }

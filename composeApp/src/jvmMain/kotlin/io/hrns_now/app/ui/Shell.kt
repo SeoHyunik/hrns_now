@@ -39,10 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.hrns_now.app.AppProjections
 import io.hrns_now.core.AppRoute
-import io.hrns_now.core.artifact.ArtifactProbeResult
-import io.hrns_now.core.artifact.ArtifactProbeState
-import io.hrns_now.core.artifact.WorkspaceArtifactSummary
 import io.hrns_now.core.config.WorkspaceReadiness
+import io.hrns_now.core.domain.model.ArtifactProbeResult
+import io.hrns_now.core.domain.model.ArtifactProbeState
+import io.hrns_now.core.domain.model.ArtifactRequirement
+import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.projection.ShellProjection
 import io.hrns_now.infra.InfraMarker
 
@@ -429,8 +430,10 @@ private fun InspectorPanel(
         }
 
         SectionCard(title = "아티팩트", eyebrow = "Artifacts") {
+            // legacy fallback 파일(WORKDAY_STATE.json 등)은 기본 화면에서 숨긴다 (계약 2.2).
+            val visibleItems = artifactSummary.items.filter { it.requirement != ArtifactRequirement.Legacy }
             Column {
-                artifactSummary.items.forEachIndexed { index, item ->
+                visibleItems.forEachIndexed { index, item ->
                     if (index > 0) {
                         Box(
                             modifier = Modifier
@@ -441,7 +444,7 @@ private fun InspectorPanel(
                         Spacer(Modifier.height(14.dp))
                     }
                     ArtifactRow(item)
-                    if (index < artifactSummary.items.lastIndex) {
+                    if (index < visibleItems.lastIndex) {
                         Spacer(Modifier.height(14.dp))
                     }
                 }

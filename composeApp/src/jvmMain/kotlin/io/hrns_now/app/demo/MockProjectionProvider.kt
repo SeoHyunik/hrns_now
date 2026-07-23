@@ -1,4 +1,4 @@
-package io.hrns_now.infra
+package io.hrns_now.app.demo
 
 import io.hrns_now.core.projection.ActionButtonModel
 import io.hrns_now.core.projection.InfoCardModel
@@ -10,6 +10,10 @@ import io.hrns_now.core.projection.StatusChipModel
 import io.hrns_now.core.projection.TodayStatusProjection
 import io.hrns_now.core.projection.TodayWorkProjection
 
+/**
+ * demo/시연 전용 mock 데이터 provider. 실제 infrastructure adapter가 아니므로 infra 모듈에 두지 않는다.
+ * 실사용 모드에서 실데이터 읽기가 실패했을 때 이 provider로 fallback하지 않는다.
+ */
 class MockProjectionProvider {
     fun shell(): ShellProjection =
         ShellProjection(
@@ -24,12 +28,13 @@ class MockProjectionProvider {
                 StatusChipModel("실행 중", "없음"),
             ),
             sourceItems = listOf(
-                SourceFreshnessItem("오늘 상태 파일", "WORKDAY_STATE.json", "없음"),
+                SourceFreshnessItem("오늘 상태 파일", "WORKFLOW_STATE.json", "없음"),
                 SourceFreshnessItem("오늘 할 일 파일", "TODAY_STRATEGY.md", "없음"),
-                SourceFreshnessItem("오늘 실행 로그", "logs/YYYY-MM-DD/", "없음"),
+                SourceFreshnessItem("날짜 산출물 로그", "YYYY-MM-DD/logs/", "없음"),
+                SourceFreshnessItem("래퍼 실행 로그", "logs/YYYY-MM-DD/", "없음"),
             ),
             notAppOwnedMessages = listOf(
-                "UI는 WORKDAY_STATE.json을 직접 쓰지 않습니다.",
+                "UI는 WORKFLOW_STATE.json을 직접 쓰지 않습니다.",
                 "UI는 마감 상태를 자체 확정하지 않습니다.",
                 "현재 화면은 파일 기반 읽기 투영 셸입니다.",
             ),
@@ -122,9 +127,9 @@ class MockProjectionProvider {
                 StatusChipModel("Claude 사용량 대기 usage_limit_blocked", "", "warning"),
                 StatusChipModel("턴 예산 초과 budget_max_turns", "", "warning"),
                 StatusChipModel("래퍼 오류 wrapper_exception", "", "warning"),
-                StatusChipModel("패킷 형식 오류 packet_contract_failed", "", "warning"),
-                StatusChipModel("상태 확정 실패 state_finalization_failed", "", "warning"),
-                StatusChipModel("신규 파일 경로 처리 실패 new_target_path_failed", "", "warning"),
+                StatusChipModel("세션 문맥 한계 claude_context_limit", "", "warning"),
+                StatusChipModel("계획 대상 충돌 dispatch_metadata_conflict", "", "warning"),
+                StatusChipModel("수동 선행조건 필요 manual_prerequisite_required", "", "warning"),
             ),
             actions = listOf(
                 ActionButtonModel("실행 패킷 열기"),

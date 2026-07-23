@@ -14,7 +14,7 @@ import io.hrns_now.app.ui.hrnsColors
 import io.hrns_now.app.ui.hrnsMaterialColorScheme
 import io.hrns_now.app.ui.hrnsTypography
 import io.hrns_now.core.AppRoute
-import io.hrns_now.core.artifact.WorkspaceArtifactSummary
+import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
@@ -23,8 +23,8 @@ import io.hrns_now.core.projection.SetupProjection
 import io.hrns_now.core.projection.ShellProjection
 import io.hrns_now.core.projection.TodayStatusProjection
 import io.hrns_now.core.projection.TodayWorkProjection
+import io.hrns_now.app.demo.MockProjectionProvider
 import io.hrns_now.infra.EnvironmentWorkspaceConfigProvider
-import io.hrns_now.infra.MockProjectionProvider
 import io.hrns_now.infra.WorkspaceArtifactProbe
 import io.hrns_now.infra.WorkspacePathProbe
 

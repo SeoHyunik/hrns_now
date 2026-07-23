@@ -1,4 +1,4 @@
-rootProject.name = "MyApplication"
+rootProject.name = "hrns-now"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
