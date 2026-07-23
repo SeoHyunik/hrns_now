@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "artifact_name": "WORKFLOW_STATE.json",
+  "workflow_state_model": "workflow-state-v1",
+  "date": "2026-06-26",
+  "project_name": "sample-project",
+  "workspace_root": "C:\\sample-workspace",
+  "repo_root": "C:\\sample-repo",
+  "profile": "corp-default",
+  "default_runtime_mode": "workflow-state-primary-default-with-dual-file-compatibility-outputs",
+  "state": {
+    "schema_version": "1.0",
+    "date": "2026-06-26",
+    "project_name": "sample-project",
+    "workspace_root": "C:\\sample-workspace",
+    "repo_root": "C:\\sample-repo",
+    "profile": "corp-default",
+    "status": "blocked",
+    "current_phase": "execution",
+    "current_status": "execution_blocked",
+    "next_action": "Resolve the blocking condition, then rerun only the same authorized execution step.",
+    "execution_wrapper": "code",
+    "stop_reason": "dispatch_contract_mismatch",
+    "human_action_required": true,
+    "execution_completed": false,
+    "closure_validated": false,
+    "clean_handoff": false,
+    "resume_from_step_id": "execution-doc-step-sample-slice",
+    "blocked_reason": "WORKFLOW_STATE.queue dispatch contract mismatch: work_queue_wrapper_mismatch: code",
+    "failed_reason": "",
+    "required_artifacts": {
+      "request_inbox": "REQUEST_INBOX.md",
+      "today_strategy": "TODAY_STRATEGY.md",
+      "daily_handoff": "DAILY_HANDOFF.md",
+      "workflow_state": "WORKFLOW_STATE.json"
+    },
+    "artifacts_state": {
+      "request_inbox": "ready",
+      "today_strategy": "ready",
+      "daily_handoff": "ready",
+      "workflow_state": "ready"
+    },
+    "ops_validation": {
+      "passed": true,
+      "validated_at": "2026-06-26T12:57:09",
+      "notes": "validate_ops.py passed during run-cycle for profile 'corp-default'"
+    },
+    "closure": {
+      "is_clean_handoff": false,
+      "validated": false,
+      "validated_at": null,
+      "validator_notes": "REQUEST_INBOX revision noted while closure was already open."
+    },
+    "authorized_target_file": "C:\\sample-workspace\\2026-06-26\\SAMPLE_CHECKLIST.md",
+    "selected_current_work": "append-execute-doc-step",
+    "current_slice": null,
+    "slice_queue": {},
+    "role_sliced": {
+      "run_id": "rs-sample-run-id",
+      "packet_root": "",
+      "current_stage": "completed",
+      "stages": [
+        {
+          "stage": "navi",
+          "exit_code": 0,
+          "stop_reason": "completed",
+          "session_id_present": true,
+          "num_turns": 5,
+          "total_cost_usd": 0.0
+        }
+      ],
+      "packet_root_deleted": true,
+      "execution_summary_path": "C:\\sample-workspace\\logs\\2026-06-26\\role-sliced-summaries\\rs-sample-run-id.summary.json"
+    },
+    "usage_guard": {
+      "mode": "proxy",
+      "safe_usage_target_percent": 15,
+      "guard_stop": false,
+      "current_stage": "",
+      "last_checkpoint": null,
+      "last_context_pressure": null,
+      "notes": ""
+    },
+    "last_rerun_trigger": "dispatch_contract_mismatch",
+    "current_card_id": "card-sample0000001",
+    "current_slice_id": "slice-sample0000001",
+    "workflow_state_path": "C:\\sample-workspace\\2026-06-26\\WORKFLOW_STATE.json"
+  },
+  "queue": {
+    "schema_version": "1.0",
+    "date": "2026-06-26",
+    "project_name": "sample-project",
+    "workspace_root": "C:\\sample-workspace",
+    "repo_root": "C:\\sample-repo",
+    "profile": "corp-default",
+    "status": "active",
+    "active": {
+      "card_id": "card-sample0000001",
+      "slice_id": "slice-sample0000001"
+    },
+    "last_updated_at": "2026-06-26T12:57:06",
+    "notes": "",
+    "blocked_reason": ""
+  },
+  "cutover": {
+    "materialized": true,
+    "activation_gate": "passed",
+    "runtime_cutover": "workflow-state-primary-default"
+  },
+  "notes": "workflow-state-primary default runtime source; legacy dual-file artifacts are optional explicit fallback compatibility outputs",
+  "required_next_action": "validate workflow-state-primary default runtime window and retire transitional proof scripts"
+}

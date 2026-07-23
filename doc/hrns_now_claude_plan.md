@@ -317,7 +317,7 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 1. **오늘 준비**: bootstrap(no-wrapper `run-cycle.ps1 -UsePythonSidecars`)을 typed command로 — mutating이므로 lock 적용. 실행 후 날짜 폴더/4-file 확인 → State 재읽기 → CTA 재계산.
 2. **요청 작성**: 폼(제목/유형/출처/우선순위/요약/상세/제약) → 안전 규칙 9종: 기존 내용 보존 / 저장 전 diff / UTF-8 no BOM / temp 작성 후 atomic move / 로드 시 hash·mtime 저장 / 저장 직전 재검증 / 외부 변경 감지 시 덮어쓰기 금지 / 재로드·수동 병합 제공 / `REQUEST_STRUCTURED.md` 편집 금지.
-3. **Planning**: `-RunPlanningWrapper` (재계획은 `-RunReplanWrapper`) → 실행 중 경과·로그·retry·cancel·lock 표시 → 종료 후 exit code → State·Strategy·queue 재읽기 → CTA 재계산. Strategy 화면 좌(사람용 md)/우(기계 queue), 충돌 시 "`WORKFLOW_STATE.json`이 최종 진실" 명시, `dispatch_metadata_conflict`면 실행 버튼 숨김+재계획만.
+3. **Planning**: `-RunPlanningWrapper` (재계획은 `-RunReplanWrapper`) → 실행 중 경과·로그·retry·cancel·lock 표시 → 종료 후 exit code → State·Strategy·queue 재읽기 → CTA 재계산. Strategy 화면 좌(사람용 md)/우(기계 queue), 충돌 시 "`WORKFLOW_STATE.json`이 최종 진실" 명시, `queue.blocked_reason=dispatch_metadata_conflict`면 실행 버튼 숨김+재계획만.
 4. **Execution dispatch**: CTA 허용 시에만 `-RunExecutionWrapper code|doc`. validation-only slice 매핑은 실계약 확인 후 확정(0.3-3). 실행 전 확인 패널: wrapper/현재 slice/authorized target/허용·금지 범위/예상 검증/lock/compatibility. **UI에서 target 경로 변경 불가.**
 5. **실시간 로그·역할 단계**: 권위 규칙 — 실행 판단=State, 프로세스 생존=adapter, 역할 단계=구조화 event 있으면 event, 로그 문자열 추론은 "참고 정보" 라벨. 로그 테일 대상: process stdout/stderr + `<workspaceRoot>\logs\<날짜>\` wrapper 로그.
 6. **실행 종료 시퀀스(고정)**: 프로세스 종료 → exit code 기록 → lock 해제 확인 → State 재읽기 → stop reason 해석 → queue 갱신 → CTA 재계산. stdout 성공 문구로 완료 처리 금지.
@@ -330,7 +330,7 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 1. Closure 체크리스트: 4-file 존재·가독(`artifacts_state`) / JSON 파싱 / state·queue 존재 / `ops_validation.passed` / active slice 부재 또는 명확한 재개 지점(`resume_from_step_id` 정합성) / handoff placeholder 부재 / `closure.is_clean_handoff`·`closure.validated` / lock 없음 / 예상 밖 Repository 변경 검토. closure 검증 실행은 `-ValidateForClosure` 활용 검토.
 2. Closure policy 순수 함수: `evaluateClosure(...): Allowed | Blocked(reasons) | RequiresExplicitIncompleteHandoff(items)` + 테스트. 실행 성공이어도 조건 미충족이면 "오늘 종료" 비활성.
-3. 복구 센터 (stop reason별 발생한 일/기록 보존/허용 행동 — 부록 B·C 용어 기준): `usage_limit_blocked`(수동 재시도·명시적 resume 검토), `claude_context_limit`(fresh 준비), `transient_claude_overloaded`(동일 slice 재시도), `claude_call_timeout`(State 재확인 후 재시도), `manual_prerequisite_required`(체크리스트), `dispatch_metadata_conflict`(재계획), `wrapper_exception`(로그·State 확인), invalid JSON(재읽기·진단), validation failure(실패 항목 이동).
+3. 복구 센터 (stop reason·queue 차단 marker별 발생한 일/기록 보존/허용 행동 — 부록 B·C 용어 기준): `usage_limit_blocked`(수동 재시도·명시적 resume 검토), `claude_context_limit`(fresh 준비), `transient_claude_overloaded`(동일 slice 재시도), `claude_call_timeout`(State 재확인 후 재시도), `manual_prerequisite_required`(체크리스트), `dispatch_contract_mismatch` 또는 queue의 `dispatch_metadata_conflict` marker(재계획), `role_sliced_wrapper_exception`(로그·State 확인), invalid JSON(재읽기·진단), validation failure(실패 항목 이동).
 4. 진단 뷰어(읽기 전용): continuity doctor 결과(raw session ID 비표시 계약 유지), usage ledger 요약, 실패 이력, 마지막 정상 State, compatibility, lock 상태.
 5. Repository 오염 확인: closure 전 `git status --short` 읽기 전용 실행 — 경고만, 수정·commit·reset 자동 수행 금지.
 
@@ -461,7 +461,7 @@ queue     : status, active {card_id, slice_id}, queue_log[{timestamp, event, det
 | `manual_prerequisite_required` | 선행조건 확인 | 자동 실행 |
 | `usage_limit_blocked` | 복구 옵션 | 자동 무한 retry |
 | `claude_context_limit` | Fresh 실행 안내 | 자동 resume |
-| `dispatch_metadata_conflict` | 재계획 | 실행 버튼 |
+| `queue.blocked_reason=dispatch_metadata_conflict` | 재계획 | 실행 버튼 |
 | `execution_completed` | 검증·인계 | 같은 slice 중복 실행 |
 | `closure_validated` | 다음 날짜 준비 | 오늘 queue 수정 |
 | State invalid/미파싱 | 복구 센터 | 모든 Write·Execution |
@@ -473,7 +473,8 @@ queue     : status, active {card_id, slice_id}, queue_log[{timestamp, event, det
 | 분류 | 용어 (harness-kit 실존 grep 확인) |
 |---|---|
 | Claude call-safety | `claude_call_timeout`, `claude_response_empty`, `claude_response_too_short`, `usage_limit_blocked`, `claude_context_limit`, `budget_max_turns`, `budget_or_manual_stop` |
-| dispatch/실행 | `dispatch_metadata_conflict`, `transient_claude_overloaded`, `wrapper_exception`, `manual_prerequisite_required` |
+| dispatch/실행 stop reason | `dispatch_contract_mismatch`, `transient_claude_overloaded`, `role_sliced_wrapper_exception`, `manual_prerequisite_required` |
+| planning queue 차단 marker | `dispatch_metadata_conflict` (`queue.blocked_reason`/`purpose_marker`, stop reason 아님) |
 | 상태 값 | `request_intake_pending`, `no_request`, `planning_required`, `planning_completed`, `execution_ready`, `execution_blocked`(live 실측), `execution_completed`, `closure_validated` |
 | 역할 단계 | navi, worker, reviewer, dockeeper (+ parent) |
 | **제거할 창작 용어** | `packet_contract_failed`, `state_finalization_failed`, `new_target_path_failed` |

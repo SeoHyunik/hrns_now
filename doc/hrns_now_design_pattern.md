@@ -20,7 +20,7 @@
 | 7 | 실행 후 lock 해제 vs State 재읽기 순서 | 계획서 문구("lock 해제 확인 → State 재읽기")와 초안 코드(State 재읽기 후 finally 해제)가 상충. **State 재읽기는 lock 보유 중 수행으로 확정** — 계획서의 "해제 확인"은 실행 종료 후 잔존 lock 파일 정리 검증으로 해석한다 (§16) |
 | 8 | 날짜 선택 정책 | live에 이미 `WorkspaceDaySelectionPolicy`(`core.domain.policy`, 순수 정책)가 구현되어 있음을 반영. 본 문서의 Policy Pattern 규범이 이미 실현된 첫 사례로 §11에 등재 |
 
-초안에서 검증 후 **정확했던 핵심 사항**: stop reason·상태 값 전부 harness-kit 실존(`usage_limit_blocked`, `claude_context_limit`, `dispatch_metadata_conflict`, `manual_prerequisite_required`, `execution_blocked` 등), `-RunPlanningWrapper`/`-RunReplanWrapper`/`-RunExecutionWrapper code|doc`/`-ValidateForClosure` 명령 형태, `WORKFLOW_STATE.json` 위치(`dayRoot` 하위), validation wrapper 모드 부재.
+초안에서 검증 후 **정확했던 핵심 사항**: stop reason·상태·차단 marker 값이 harness-kit에 실존(`usage_limit_blocked`, `claude_context_limit`, `dispatch_contract_mismatch`, `dispatch_metadata_conflict`, `manual_prerequisite_required`, `execution_blocked` 등), `-RunPlanningWrapper`/`-RunReplanWrapper`/`-RunExecutionWrapper code|doc`/`-ValidateForClosure` 명령 형태, `WORKFLOW_STATE.json` 위치(`dayRoot` 하위), validation wrapper 모드 부재. 단 `dispatch_metadata_conflict`는 `state.stop_reason`이 아니라 planning queue의 `blocked_reason`/`purpose_marker`이며, 실행 단계의 대응 stop reason은 `dispatch_contract_mismatch`다.
 
 ---
 
@@ -221,7 +221,7 @@ data class WorkflowState(
 sealed interface StopReason {
     data object UsageLimitBlocked : StopReason
     data object ClaudeContextLimit : StopReason
-    data object DispatchMetadataConflict : StopReason
+    data object DispatchContractMismatch : StopReason
     data class Unknown(val raw: String) : StopReason
 }
 
@@ -230,7 +230,7 @@ fun String?.toStopReason(): StopReason? =
         null, "" -> null
         "usage_limit_blocked" -> StopReason.UsageLimitBlocked
         "claude_context_limit" -> StopReason.ClaudeContextLimit
-        "dispatch_metadata_conflict" -> StopReason.DispatchMetadataConflict
+        "dispatch_contract_mismatch" -> StopReason.DispatchContractMismatch
         else -> StopReason.Unknown(this)
     }
 ```
@@ -385,8 +385,10 @@ execution_blocked
 manual_prerequisite_required
 usage_limit_blocked
 claude_context_limit
-dispatch_metadata_conflict
 ```
+
+`dispatch_metadata_conflict`는 상태가 아니라 planning queue의 `blocked_reason`/
+`purpose_marker`다. 이 marker에서는 재계획만 허용하며 실행 CTA를 잠근다.
 
 이 흐름을 화면의 `if` 문으로 흩어놓지 않는다.
 
