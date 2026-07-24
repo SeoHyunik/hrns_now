@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.core.AppRoute
 import io.hrns_now.core.config.WorkspaceReadiness
@@ -64,6 +65,7 @@ fun HrnsShell(
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
     onCockpitAction: (UiAction) -> Unit,
+    onUiEvent: (HrnsUiEvent) -> Unit,
 ) {
     val colors = LocalHrnsColors.current
 
@@ -80,6 +82,7 @@ fun HrnsShell(
                 themeMode = themeMode,
                 onThemeToggle = onThemeToggle,
                 onCockpitAction = onCockpitAction,
+                onUiEvent = onUiEvent,
             )
         }
     }
@@ -108,6 +111,7 @@ private fun ReadyShell(
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
     onCockpitAction: (UiAction) -> Unit,
+    onUiEvent: (HrnsUiEvent) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopRibbon(
@@ -141,6 +145,11 @@ private fun ReadyShell(
                     runStatusProjection = state.runStatus,
                     readiness = state.workspaceReadiness,
                     onCockpitAction = onCockpitAction,
+                    registryProjects = state.registryProjects,
+                    workspaceDays = state.workspaceDays,
+                    activeProjectSourceLabel = state.activeProjectSourceLabel,
+                    registryMessage = state.registryMessage,
+                    onUiEvent = onUiEvent,
                 )
             }
             InspectorPanel(

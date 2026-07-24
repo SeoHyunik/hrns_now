@@ -17,6 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -31,10 +35,14 @@ import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
+import io.hrns_now.app.presentation.model.HrnsUiEvent
+import io.hrns_now.app.presentation.model.RegistryProjectItem
+import io.hrns_now.app.presentation.model.WorkspaceDayItem
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.TodayWorkProjection
 import io.hrns_now.core.domain.model.UiAction
+import io.hrns_now.core.usecase.RegisterProjectCandidate
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 라우터
@@ -51,9 +59,25 @@ fun ScreenRoute(
     runStatusProjection: RunStatusProjection,
     readiness: WorkspaceReadiness,
     onCockpitAction: (UiAction) -> Unit,
+    registryProjects: List<RegistryProjectItem>,
+    workspaceDays: List<WorkspaceDayItem>,
+    activeProjectSourceLabel: String,
+    registryMessage: String?,
+    onUiEvent: (HrnsUiEvent) -> Unit,
 ) {
     when (route) {
-        AppRoute.Setup -> SetupScreen(setupProjection, workspaceConfig, workspaceProbeSummary, readiness)
+        AppRoute.Setup -> SetupScreen(
+            projection = setupProjection,
+            workspaceConfig = workspaceConfig,
+            workspaceProbeSummary = workspaceProbeSummary,
+            readiness = readiness,
+            registryProjects = registryProjects,
+            workspaceDays = workspaceDays,
+            selectedDayReadOnly = cockpitProjection.isReadOnlyDay,
+            activeProjectSourceLabel = activeProjectSourceLabel,
+            registryMessage = registryMessage,
+            onUiEvent = onUiEvent,
+        )
         AppRoute.Cockpit -> CockpitScreen(cockpitProjection, onCockpitAction)
         AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
         AppRoute.Run -> RunScreen(runStatusProjection)
@@ -136,6 +160,12 @@ fun SetupScreen(
     workspaceConfig: WorkspaceConfig,
     workspaceProbeSummary: WorkspaceProbeSummary,
     readiness: WorkspaceReadiness? = null,
+    registryProjects: List<RegistryProjectItem> = emptyList(),
+    workspaceDays: List<WorkspaceDayItem> = emptyList(),
+    selectedDayReadOnly: Boolean = false,
+    activeProjectSourceLabel: String = "",
+    registryMessage: String? = null,
+    onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
 
@@ -192,6 +222,19 @@ fun SetupScreen(
             }
         }
 
+        ProjectRegistrySection(
+            registryProjects = registryProjects,
+            activeProjectSourceLabel = activeProjectSourceLabel,
+            registryMessage = registryMessage,
+            onUiEvent = onUiEvent,
+        )
+
+        WorkspaceDaySection(
+            workspaceDays = workspaceDays,
+            selectedDayReadOnly = selectedDayReadOnly,
+            onUiEvent = onUiEvent,
+        )
+
         SectionCard(title = "실행 작업", eyebrow = "Actions") {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 ActionButtonGroup(projection.actions)
@@ -205,6 +248,191 @@ fun SetupScreen(
                 )
             }
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 프로젝트 Registry — 등록·전환·삭제 (Phase 1D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ProjectRegistrySection(
+    registryProjects: List<RegistryProjectItem>,
+    activeProjectSourceLabel: String,
+    registryMessage: String?,
+    onUiEvent: (HrnsUiEvent) -> Unit,
+) {
+    val colors = LocalHrnsColors.current
+
+    SectionCard(
+        title = "프로젝트 Registry",
+        eyebrow = "Projects",
+        trailing = {
+            if (activeProjectSourceLabel.isNotBlank()) {
+                StatusChip(text = "선택 근거: $activeProjectSourceLabel", tone = "accent", showDot = false)
+            }
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            registryMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                    color = colors.secondaryText,
+                )
+            }
+
+            if (registryProjects.isEmpty()) {
+                Text(
+                    text = "등록된 프로젝트가 없습니다. 아래에서 새 프로젝트를 등록하세요.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    color = colors.tertiaryText,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    registryProjects.forEach { project ->
+                        ProjectRow(project = project, onUiEvent = onUiEvent)
+                    }
+                }
+            }
+
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
+
+            ProjectRegistrationForm(onUiEvent = onUiEvent)
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceDaySection(
+    workspaceDays: List<WorkspaceDayItem>,
+    selectedDayReadOnly: Boolean,
+    onUiEvent: (HrnsUiEvent) -> Unit,
+) {
+    val colors = LocalHrnsColors.current
+    SectionCard(title = "작업 날짜", eyebrow = "Workspace days") {
+        if (workspaceDays.isEmpty()) {
+            Text(
+                text = "유효한 yyyy-MM-dd 날짜 폴더가 없습니다.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                color = colors.tertiaryText,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                workspaceDays.forEach { day ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = day.date.toString(),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 13.5.sp,
+                            ),
+                            color = colors.primaryText,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (day.isSelected && selectedDayReadOnly) {
+                            StatusChip(text = "읽기 전용", tone = "muted")
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        PlaceholderActionButton(
+                            text = if (day.isSelected) "선택됨" else "열기",
+                            enabled = !day.isSelected,
+                            onClick = { onUiEvent(HrnsUiEvent.WorkspaceDaySelected(day.date)) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable
+private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Text(
+                text = project.label,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.sp,
+                    letterSpacing = (-0.1).sp,
+                ),
+                fontWeight = FontWeight.SemiBold,
+                color = LocalHrnsColors.current.primaryText,
+            )
+            if (project.isActive) {
+                Spacer(Modifier.width(8.dp))
+                StatusChip(text = "활성", tone = "success")
+            }
+        }
+        PlaceholderActionButton(
+            text = "선택",
+            enabled = !project.isActive,
+            onClick = { onUiEvent(HrnsUiEvent.ProjectSelected(project.id)) },
+        )
+        Spacer(Modifier.width(8.dp))
+        PlaceholderActionButton(
+            text = "삭제",
+            enabled = true,
+            onClick = { onUiEvent(HrnsUiEvent.ProjectDeletionRequested(project.id)) },
+        )
+    }
+}
+
+@Composable
+private fun ProjectRegistrationForm(onUiEvent: (HrnsUiEvent) -> Unit) {
+    var displayName by remember { mutableStateOf("") }
+    var kitRoot by remember { mutableStateOf("") }
+    var workspaceRoot by remember { mutableStateOf("") }
+    var repositoryRoot by remember { mutableStateOf("") }
+    var profileId by remember { mutableStateOf("기본") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "새 프로젝트 등록",
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+            fontWeight = FontWeight.SemiBold,
+            color = LocalHrnsColors.current.primaryText,
+        )
+        LabeledTextField(label = "표시명", value = displayName, onValueChange = { displayName = it })
+        LabeledTextField(label = "Kit root", value = kitRoot, onValueChange = { kitRoot = it }, monospace = true)
+        LabeledTextField(
+            label = "Workspace root",
+            value = workspaceRoot,
+            onValueChange = { workspaceRoot = it },
+            monospace = true,
+        )
+        LabeledTextField(
+            label = "Repository root",
+            value = repositoryRoot,
+            onValueChange = { repositoryRoot = it },
+            monospace = true,
+        )
+        LabeledTextField(label = "Profile", value = profileId, onValueChange = { profileId = it })
+
+        PlaceholderActionButton(
+            text = "등록",
+            primary = true,
+            enabled = displayName.isNotBlank() && kitRoot.isNotBlank() && workspaceRoot.isNotBlank() &&
+                repositoryRoot.isNotBlank() && profileId.isNotBlank(),
+            onClick = {
+                onUiEvent(
+                    HrnsUiEvent.ProjectRegistrationRequested(
+                        RegisterProjectCandidate(
+                            displayName = displayName,
+                            kitRootRaw = kitRoot,
+                            projectWorkspaceRootRaw = workspaceRoot,
+                            repositoryRootRaw = repositoryRoot,
+                            profileId = profileId,
+                        ),
+                    ),
+                )
+            },
+        )
     }
 }
 

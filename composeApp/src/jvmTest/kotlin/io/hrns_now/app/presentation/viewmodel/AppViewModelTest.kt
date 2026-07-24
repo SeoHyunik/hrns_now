@@ -15,9 +15,13 @@ import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.ClosureState
 import io.hrns_now.core.domain.model.ExecutionWrapperState
 import io.hrns_now.core.domain.model.FileVersion
+import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.OpsValidationState
+import io.hrns_now.core.domain.model.PathIssue
+import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.QueuePointer
 import io.hrns_now.core.domain.model.QueueStatus
+import io.hrns_now.core.domain.model.RootPathCheck
 import io.hrns_now.core.domain.model.SchemaVersion
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkflowPhase
@@ -27,9 +31,19 @@ import io.hrns_now.core.domain.model.WorkflowStatus
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
+import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.port.WorkflowStatePort
+import io.hrns_now.core.result.RegistryLoadResult
+import io.hrns_now.core.result.RegistrySaveResult
 import io.hrns_now.core.result.StateReadResult
+import io.hrns_now.core.usecase.DeleteProjectUseCase
 import io.hrns_now.core.usecase.LoadCockpitUseCase
+import io.hrns_now.core.usecase.LoadProjectsUseCase
+import io.hrns_now.core.usecase.RegisterProjectCandidate
+import io.hrns_now.core.usecase.RegisterProjectUseCase
+import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
+import io.hrns_now.core.usecase.SelectProjectUseCase
+import io.hrns_now.core.usecase.SelectWorkspaceDayUseCase
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 import java.time.Instant
@@ -89,6 +103,18 @@ class AppViewModelTest {
         runtime = RuntimeConfig(powerShellPath = null, claudeCommand = null, uiLanguage = "ko"),
     )
 
+    private fun harnessProject(id: String, workspaceRoot: String): HarnessProject = HarnessProject(
+        id = ProjectId(id),
+        displayName = "project-$id",
+        kitRoot = Path.of("S:\\kit-$id"),
+        projectWorkspaceRoot = Path.of(workspaceRoot),
+        repositoryRoot = Path.of("S:\\repo-$id"),
+        profileId = "테스트",
+        lastSelectedDate = null,
+        lastDiagnosticsSummary = null,
+        lastRunAt = null,
+    )
+
     private fun workflowState(projectName: String): WorkflowState = WorkflowState(
         schemaVersion = SchemaVersion(1, 0, "1.0"),
         date = LocalDate.of(2026, 6, 26),
@@ -132,11 +158,58 @@ class AppViewModelTest {
         override fun read(day: WorkspaceDay): StateReadResult = result(callCount.incrementAndGet())
     }
 
+    /** 인메모리 [ProjectRegistryPort] 테스트 대역이다. */
+    private class FakeProjectRegistryPort(
+        initialProjects: List<HarnessProject> = emptyList(),
+        initialActiveId: ProjectId? = null,
+        private val recordThread: (() -> Unit)? = null,
+        var saveResult: RegistrySaveResult = RegistrySaveResult.Success,
+        var markActiveResult: RegistrySaveResult = RegistrySaveResult.Success,
+        var deleteResult: RegistrySaveResult = RegistrySaveResult.Success,
+    ) : ProjectRegistryPort {
+        private val projects = linkedMapOf<ProjectId, HarnessProject>().apply {
+            initialProjects.forEach { put(it.id, it) }
+        }
+        private var activeId: ProjectId? = initialActiveId
+
+        override suspend fun findAll(): RegistryLoadResult {
+            recordThread?.invoke()
+            return RegistryLoadResult.Success(projects.values.toList(), activeId)
+        }
+
+        override suspend fun findById(id: ProjectId): HarnessProject? {
+            recordThread?.invoke()
+            return projects[id]
+        }
+
+        override suspend fun save(project: HarnessProject): RegistrySaveResult {
+            recordThread?.invoke()
+            if (saveResult == RegistrySaveResult.Success) projects[project.id] = project
+            return saveResult
+        }
+
+        override suspend fun delete(id: ProjectId): RegistrySaveResult {
+            recordThread?.invoke()
+            if (deleteResult == RegistrySaveResult.Success) {
+                projects.remove(id)
+                if (activeId == id) activeId = null
+            }
+            return deleteResult
+        }
+
+        override suspend fun markActive(id: ProjectId): RegistrySaveResult {
+            recordThread?.invoke()
+            if (markActiveResult is RegistrySaveResult.Failed) return markActiveResult
+            if (id !in projects) return RegistrySaveResult.Failed("not found: ${id.value}")
+            activeId = id
+            return RegistrySaveResult.Success
+        }
+    }
     private fun loadUseCase(
         statePort: WorkflowStatePort,
         recordThread: (() -> Unit)? = null,
+        availableDates: List<LocalDate> = emptyList(),
     ): LoadCockpitUseCase = LoadCockpitUseCase(
-        workspaceConfig = workspaceConfig(),
         pathProbe = {
             recordThread?.invoke()
             probeSummary()
@@ -151,7 +224,7 @@ class AppViewModelTest {
         },
         dayDiscovery = {
             recordThread?.invoke()
-            emptyList()
+            availableDates
         },
         daySelectionPolicy = WorkspaceDaySelectionPolicy(LocalDate.of(2026, 6, 26)),
         statePort = statePort,
@@ -162,9 +235,22 @@ class AppViewModelTest {
         dispatcher: CoroutineDispatcher,
         changeProbe: (WorkspaceDay) -> FileTime? = { null },
         pollIntervalMillis: Long = 3000L,
+        registry: ProjectRegistryPort = FakeProjectRegistryPort(),
+        availableDates: List<LocalDate> = emptyList(),
+        boundaryResolver: (String?) -> RootPathCheck = { RootPathCheck.Invalid(PathIssue.NotProvided) },
     ): AppViewModel = AppViewModel(
-        loadCockpit = loadUseCase(statePort),
+        loadCockpit = loadUseCase(statePort, availableDates = availableDates),
         changeProbe = changeProbe,
+        resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
+        loadProjects = LoadProjectsUseCase(registry),
+        registerProject = RegisterProjectUseCase(
+            pathResolver = boundaryResolver,
+            registry = registry,
+        ),
+        selectProject = SelectProjectUseCase(registry),
+        selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+        deleteProject = DeleteProjectUseCase(registry),
+        boundaryPathResolver = boundaryResolver,
         ioDispatcher = dispatcher,
         pollIntervalMillis = pollIntervalMillis,
         clock = { fixedInstant },
@@ -275,11 +361,32 @@ class AppViewModelTest {
                 return StateReadResult.Missing(day.dayRoot.resolve("WORKFLOW_STATE.json"))
             }
         }
+        val ioProject = harnessProject("io", "S:\\project-io")
+        val registry = FakeProjectRegistryPort(
+            initialProjects = listOf(ioProject),
+            recordThread = ::recordThread,
+        )
         val viewModel = AppViewModel(
             loadCockpit = loadUseCase(statePort, ::recordThread),
             changeProbe = {
                 recordThread()
                 null
+            },
+            resolveActiveProject = ResolveActiveProjectUseCase(registry) {
+                recordThread()
+                workspaceConfig()
+            },
+            loadProjects = LoadProjectsUseCase(registry),
+            registerProject = RegisterProjectUseCase(
+                pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                registry = registry,
+            ),
+            selectProject = SelectProjectUseCase(registry),
+            selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+            deleteProject = DeleteProjectUseCase(registry),
+            boundaryPathResolver = {
+                recordThread()
+                RootPathCheck.Invalid(PathIssue.NotProvided)
             },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
@@ -289,6 +396,11 @@ class AppViewModelTest {
 
         try {
             withTimeout(5_000) { viewModel.state.filterIsInstance<HrnsUiState.Ready>().first() }
+            viewModel.onEvent(HrnsUiEvent.ProjectSelected(ioProject.id))
+            withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { ready -> ready.registryProjects.singleOrNull()?.isActive == true }
+            }
             assertTrue(observedThreads.isNotEmpty())
             assertTrue(observedThreads.all { it.startsWith("cockpit-io") }, observedThreads.joinToString())
         } finally {
@@ -328,9 +440,20 @@ class AppViewModelTest {
                 )
             }
         }
+        val registry = FakeProjectRegistryPort()
         val viewModel = AppViewModel(
             loadCockpit = loadUseCase(statePort),
             changeProbe = { FileTime.fromMillis(1) },
+            resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
+            loadProjects = LoadProjectsUseCase(registry),
+            registerProject = RegisterProjectUseCase(
+                pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                registry = registry,
+            ),
+            selectProject = SelectProjectUseCase(registry),
+            selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+            deleteProject = DeleteProjectUseCase(registry),
+            boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -352,6 +475,300 @@ class AppViewModelTest {
             assertEquals("latest-result", stillLatest.cockpit.projectName)
         } finally {
             releaseFirstRead.countDown()
+            viewModel.dispose()
+            ioDispatcher.close()
+            mainDispatcher.close()
+            ioExecutor.shutdownNow()
+            mainExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `프로젝트를 전환하면 새 프로젝트의 workspaceConfig로 State와 artifact를 같은 day에 다시 읽는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val seenStateRoots = mutableListOf<String>()
+        val statePort = object : WorkflowStatePort {
+            override fun read(day: WorkspaceDay): StateReadResult {
+                seenStateRoots.add(day.projectWorkspaceRoot.toString())
+                return StateReadResult.Missing(day.dayRoot.resolve("WORKFLOW_STATE.json"))
+            }
+        }
+        val projectA = harnessProject("a", "S:\\project-a")
+        val projectB = harnessProject("b", "S:\\project-b")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(projectA, projectB))
+        val viewModel = newViewModel(statePort, dispatcher, registry = registry)
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectA.id))
+        runCurrent()
+        assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(seenStateRoots.last().contains("project-a"))
+
+        viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectB.id))
+        runCurrent()
+        assertTrue(seenStateRoots.last().contains("project-b"))
+
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `프로젝트 전환 중 늦게 끝난 이전 프로젝트의 읽기가 새 프로젝트 상태를 덮지 않는다`() = runBlocking {
+        val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "switch-io") }
+        val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "switch-main") }
+        val ioDispatcher = ioExecutor.asCoroutineDispatcher()
+        val mainDispatcher = mainExecutor.asCoroutineDispatcher()
+
+        val projectA = harnessProject("a", "S:\\project-a")
+        val projectB = harnessProject("b", "S:\\project-b")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(projectA, projectB))
+
+        val firstReadEntered = CountDownLatch(1)
+        val releaseFirstRead = CountDownLatch(1)
+        val statePort = object : WorkflowStatePort {
+            override fun read(day: WorkspaceDay): StateReadResult {
+                val projectName = day.projectWorkspaceRoot.toString()
+                if (projectName.contains("project-a")) {
+                    firstReadEntered.countDown()
+                    assertTrue(releaseFirstRead.await(5, TimeUnit.SECONDS))
+                    return StateReadResult.Success(
+                        workflowState("project-a-stale"),
+                        FileVersion(Instant.EPOCH, 1, "a"),
+                    )
+                }
+                return StateReadResult.Success(
+                    workflowState("project-b-latest"),
+                    FileVersion(Instant.EPOCH, 2, "b"),
+                )
+            }
+        }
+
+        val loadCockpit = LoadCockpitUseCase(
+            pathProbe = { probeSummary() },
+            readinessProvider = { _, _ -> readiness() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+            dayDiscovery = { emptyList() },
+            daySelectionPolicy = WorkspaceDaySelectionPolicy(LocalDate.of(2026, 6, 26)),
+            statePort = statePort,
+        )
+        val viewModel = AppViewModel(
+            loadCockpit = loadCockpit,
+            changeProbe = { null },
+            resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
+            loadProjects = LoadProjectsUseCase(registry),
+            registerProject = RegisterProjectUseCase(
+                pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                registry = registry,
+            ),
+            selectProject = SelectProjectUseCase(registry),
+            selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+            deleteProject = DeleteProjectUseCase(registry),
+            boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            ioDispatcher = ioDispatcher,
+            pollIntervalMillis = 60_000L,
+            clock = { fixedInstant },
+            mainDispatcher = mainDispatcher,
+        )
+
+        try {
+            // 최초 진입(Registry에 마지막 선택 없음)은 project-a/b 어느 쪽도 아니므로 즉시 끝난다.
+            withTimeout(5_000) { viewModel.state.filterIsInstance<HrnsUiState.Ready>().first() }
+
+            viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectA.id))
+            assertTrue(firstReadEntered.await(5, TimeUnit.SECONDS))
+
+            viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectB.id))
+            val readyB = withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { it.cockpit.projectName == "project-b-latest" }
+            }
+            assertEquals("project-b-latest", readyB.cockpit.projectName)
+
+            releaseFirstRead.countDown()
+            mainExecutor.submit {}.get(5, TimeUnit.SECONDS)
+            val stillB = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+            assertEquals("project-b-latest", stillB.cockpit.projectName)
+        } finally {
+            releaseFirstRead.countDown()
+            viewModel.dispose()
+            ioDispatcher.close()
+            mainDispatcher.close()
+            ioExecutor.shutdownNow()
+            mainExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `프로젝트 등록 후 목록과 활성 선택이 즉시 갱신된다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) {
+                RootPathCheck.Invalid(PathIssue.NotProvided)
+            } else {
+                val path = Path.of(raw)
+                RootPathCheck.Valid(path, path)
+            }
+        }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "신규 프로젝트",
+                    kitRootRaw = "S:\\kit-new",
+                    projectWorkspaceRootRaw = "S:\\workspace-new",
+                    repositoryRootRaw = "S:\\repo-new",
+                    profileId = "기본",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals(1, ready.registryProjects.size)
+        assertTrue(ready.registryProjects.single().isActive)
+        assertEquals("S:\\workspace-new", ready.workspaceConfig.roots.workspaceRoot)
+        assertTrue(ready.registryMessage?.contains("등록하고 선택") == true)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `프로젝트 삭제 저장 실패를 성공으로 표시하거나 목록에서 제거하지 않는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(
+            initialProjects = listOf(project),
+            initialActiveId = project.id,
+            deleteResult = RegistrySaveResult.Failed("write denied"),
+        )
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val viewModel = newViewModel(statePort, dispatcher, registry = registry)
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ProjectDeletionRequested(project.id))
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals(1, ready.registryProjects.size)
+        assertTrue(ready.registryProjects.single().isActive)
+        assertTrue(ready.registryMessage?.contains("삭제하지 못했습니다") == true)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `유효한 과거 날짜 선택은 같은 WorkspaceDay를 읽고 Registry metadata에 저장한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val today = LocalDate.of(2026, 6, 26)
+        val past = LocalDate.of(2026, 6, 25)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(
+            initialProjects = listOf(project),
+            initialActiveId = project.id,
+        )
+        val readDates = mutableListOf<LocalDate>()
+        val statePort = object : WorkflowStatePort {
+            override fun read(day: WorkspaceDay): StateReadResult {
+                readDates += day.date
+                return StateReadResult.Missing(day.dayRoot.resolve("WORKFLOW_STATE.json"))
+            }
+        }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            availableDates = listOf(past, today),
+        )
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.WorkspaceDaySelected(past))
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals(past, readDates.last())
+        assertTrue(ready.cockpit.isReadOnlyDay)
+        assertEquals(past, ready.workspaceDays.single { it.isSelected }.date)
+        val saved = assertIs<RegistryLoadResult.Success>(registry.findAll()).projects.single()
+        assertEquals(past, saved.lastSelectedDate)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `변경 없는 polling tick은 진행 중인 수동 refresh 결과를 무효화하지 않는다`() = runBlocking {
+        val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "noop-poll-io") }
+        val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "noop-poll-main") }
+        val ioDispatcher = ioExecutor.asCoroutineDispatcher()
+        val mainDispatcher = mainExecutor.asCoroutineDispatcher()
+        val manualReadEntered = CountDownLatch(1)
+        val releaseManualRead = CountDownLatch(1)
+        val noChangePollObserved = CountDownLatch(1)
+        val readCount = AtomicInteger(0)
+        val statePort = object : WorkflowStatePort {
+            override fun read(day: WorkspaceDay): StateReadResult {
+                return when (readCount.incrementAndGet()) {
+                    1 -> StateReadResult.Success(
+                        workflowState("initial"),
+                        FileVersion(Instant.EPOCH, 1, "initial"),
+                    )
+                    2 -> {
+                        manualReadEntered.countDown()
+                        assertTrue(releaseManualRead.await(5, TimeUnit.SECONDS))
+                        StateReadResult.Success(
+                            workflowState("manual-refresh"),
+                            FileVersion(Instant.EPOCH, 2, "manual"),
+                        )
+                    }
+                    else -> error("변경 없는 poll은 Reader를 다시 호출하면 안 됩니다.")
+                }
+            }
+        }
+        val registry = FakeProjectRegistryPort()
+        val viewModel = AppViewModel(
+            loadCockpit = loadUseCase(statePort),
+            changeProbe = {
+                if (manualReadEntered.count == 0L) noChangePollObserved.countDown()
+                FileTime.fromMillis(1)
+            },
+            resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
+            loadProjects = LoadProjectsUseCase(registry),
+            registerProject = RegisterProjectUseCase(
+                pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                registry = registry,
+            ),
+            selectProject = SelectProjectUseCase(registry),
+            selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+            deleteProject = DeleteProjectUseCase(registry),
+            boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            ioDispatcher = ioDispatcher,
+            pollIntervalMillis = 50L,
+            clock = { fixedInstant },
+            mainDispatcher = mainDispatcher,
+        )
+
+        try {
+            withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { it.cockpit.projectName == "initial" }
+            }
+            viewModel.refresh()
+            assertTrue(manualReadEntered.await(5, TimeUnit.SECONDS))
+            assertTrue(noChangePollObserved.await(5, TimeUnit.SECONDS))
+            releaseManualRead.countDown()
+
+            val refreshed = withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { it.cockpit.projectName == "manual-refresh" }
+            }
+            assertEquals("manual-refresh", refreshed.cockpit.projectName)
+            assertEquals(2, readCount.get())
+        } finally {
+            releaseManualRead.countDown()
             viewModel.dispose()
             ioDispatcher.close()
             mainDispatcher.close()

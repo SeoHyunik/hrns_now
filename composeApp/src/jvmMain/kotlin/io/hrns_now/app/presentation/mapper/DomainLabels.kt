@@ -4,6 +4,7 @@ import io.hrns_now.core.domain.model.QueueStatus
 import io.hrns_now.core.domain.model.StopReason
 import io.hrns_now.core.domain.model.WorkflowPhase
 import io.hrns_now.core.domain.model.WorkflowStatus
+import io.hrns_now.core.usecase.ActiveProjectSource
 
 /**
  * domain sealed 값의 화면 표시 문구다. 외부 JSON의 `Unknown(raw)` 원문은 domain에
@@ -84,4 +85,11 @@ fun StopReason.displayLabel(): String =
         StopReason.ManualPrerequisiteRequired -> "수동 선행조건 필요"
         StopReason.RoleSlicedWrapperException -> "역할별 실행 래퍼 예외"
         is StopReason.Unknown -> "알 수 없음"
+    }
+
+fun ActiveProjectSource.displayLabel(): String =
+    when (this) {
+        ActiveProjectSource.Registry -> "Registry"
+        ActiveProjectSource.EnvironmentFallback -> "환경변수 fallback"
+        ActiveProjectSource.NoneSelected -> "선택 필요"
     }

@@ -32,13 +32,23 @@ import io.hrns_now.core.domain.model.ArtifactRequirement
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
+import io.hrns_now.core.usecase.DeleteProjectUseCase
 import io.hrns_now.core.usecase.LoadCockpitUseCase
+import io.hrns_now.core.usecase.LoadProjectsUseCase
+import io.hrns_now.core.usecase.RegisterProjectUseCase
+import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
+import io.hrns_now.core.usecase.SelectProjectUseCase
+import io.hrns_now.core.usecase.SelectWorkspaceDayUseCase
 import io.hrns_now.infra.EnvironmentWorkspaceConfigProvider
 import io.hrns_now.infra.WorkflowStateChangeProbe
 import io.hrns_now.infra.WorkspaceArtifactProbe
 import io.hrns_now.infra.WorkspaceDayDiscovery
 import io.hrns_now.infra.WorkspacePathProbe
+import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
+import io.hrns_now.infra.registry.RealPathGateway
 import io.hrns_now.infra.serialization.JsonWorkflowStateAdapter
+import java.nio.file.Path
+import java.nio.file.Paths
 
 /**
  * Production 경로는 실제 Reader/probe 결과로 단일 UI 상태를 만든다. 명시적인
@@ -62,8 +72,11 @@ fun App() {
         val state by productionViewModel.state.collectAsState()
         state
     }
-    val onCockpitAction: (UiAction) -> Unit = remember(productionViewModel) {
-        { action -> productionViewModel?.onEvent(HrnsUiEvent.ActionRequested(action)) }
+    val onUiEvent: (HrnsUiEvent) -> Unit = remember(productionViewModel) {
+        { event -> productionViewModel?.onEvent(event) }
+    }
+    val onCockpitAction: (UiAction) -> Unit = remember(onUiEvent) {
+        { action -> onUiEvent(HrnsUiEvent.ActionRequested(action)) }
     }
 
     CompositionLocalProvider(LocalHrnsColors provides hrnsColors(themeMode)) {
@@ -83,6 +96,7 @@ fun App() {
                     }
                 },
                 onCockpitAction = onCockpitAction,
+                onUiEvent = onUiEvent,
             )
         }
     }
@@ -133,15 +147,24 @@ private fun demoUiState(): HrnsUiState {
         cockpit = mock.cockpit(),
         todayWork = mock.todayWork(),
         runStatus = mock.runStatus(),
+        registryProjects = emptyList(),
+        workspaceDays = emptyList(),
+        activeProjectSourceLabel = "demo",
+        registryMessage = null,
     )
 }
 
+/** `%APPDATA%\hrns-now\projects.json` — Harness workspace 밖의 앱 소유 Registry 경로다. */
+private fun resolveRegistryPath(): Path {
+    val appData = System.getenv("APPDATA")?.trim()?.takeIf(String::isNotEmpty)
+        ?: (System.getProperty("user.home") + "\\AppData\\Roaming")
+    return Paths.get(appData, "hrns-now", "projects.json")
+}
+
 private fun createProductionViewModel(): AppViewModel {
-    val workspaceConfig = EnvironmentWorkspaceConfigProvider().config()
     val pathProbe = WorkspacePathProbe()
     val artifactProbe = WorkspaceArtifactProbe()
     val loadCockpit = LoadCockpitUseCase(
-        workspaceConfig = workspaceConfig,
         pathProbe = pathProbe::probe,
         readinessProvider = pathProbe::readiness,
         artifactProbe = { config, day -> artifactProbe.probe(config.roots.workspaceRoot, day.date) },
@@ -149,8 +172,23 @@ private fun createProductionViewModel(): AppViewModel {
         daySelectionPolicy = WorkspaceDaySelectionPolicy(),
         statePort = JsonWorkflowStateAdapter(),
     )
+    val registry = JsonProjectRegistryAdapter(registryPath = resolveRegistryPath())
+    val realPathGateway = RealPathGateway()
     return AppViewModel(
         loadCockpit = loadCockpit,
         changeProbe = WorkflowStateChangeProbe()::lastModifiedOrNull,
+        resolveActiveProject = ResolveActiveProjectUseCase(
+            registry = registry,
+            environmentConfigProvider = { EnvironmentWorkspaceConfigProvider().config() },
+        ),
+        loadProjects = LoadProjectsUseCase(registry),
+        registerProject = RegisterProjectUseCase(
+            pathResolver = realPathGateway::resolve,
+            registry = registry,
+        ),
+        selectProject = SelectProjectUseCase(registry),
+        selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+        deleteProject = DeleteProjectUseCase(registry),
+        boundaryPathResolver = realPathGateway::resolve,
     )
 }

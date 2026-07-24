@@ -3,7 +3,22 @@ package io.hrns_now.app.presentation.model
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
+import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
+import java.time.LocalDate
+
+/** Setup 화면의 Registry 목록 한 행이다. `label`은 표시 전용이며 [id]가 유일한 식별자다. */
+data class RegistryProjectItem(
+    val id: ProjectId,
+    val label: String,
+    val isActive: Boolean,
+)
+
+/** Workspace 탐색에서 확인된 유효한 yyyy-MM-dd 디렉터리 한 행이다. */
+data class WorkspaceDayItem(
+    val date: LocalDate,
+    val isSelected: Boolean,
+)
 
 /**
  * [io.hrns_now.app.presentation.viewmodel.AppViewModel]이 소유하는 단일 불변 UI 상태다
@@ -26,5 +41,9 @@ sealed interface HrnsUiState {
         val cockpit: CockpitProjection,
         val todayWork: TodayWorkProjection,
         val runStatus: RunStatusProjection,
+        val registryProjects: List<RegistryProjectItem>,
+        val workspaceDays: List<WorkspaceDayItem>,
+        val activeProjectSourceLabel: String,
+        val registryMessage: String?,
     ) : HrnsUiState
 }

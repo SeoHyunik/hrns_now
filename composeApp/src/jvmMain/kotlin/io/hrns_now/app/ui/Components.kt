@@ -27,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -467,3 +469,33 @@ fun InlineChips(chips: List<StatusChipModel>, modifier: Modifier = Modifier, sho
 
 private fun StatusChipModel.displayText(): String =
     if (value.isBlank()) label else "$label · $value"
+
+// ─── 입력 필드 (Registry 등록 폼) ────────────────────────────────────────────
+
+@Composable
+fun LabeledTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    monospace: Boolean = false,
+) {
+    val colors = LocalHrnsColors.current
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        label = { Text(text = label, style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp)) },
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            fontFamily = if (monospace) FontFamily.Monospace else MaterialTheme.typography.bodyMedium.fontFamily,
+            fontSize = 13.5.sp,
+        ),
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = colors.primaryText,
+            unfocusedTextColor = colors.primaryText,
+            focusedBorderColor = colors.accent,
+            unfocusedBorderColor = colors.borderStrong,
+        ),
+    )
+}
