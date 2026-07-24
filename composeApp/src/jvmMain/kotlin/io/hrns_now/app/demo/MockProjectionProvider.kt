@@ -1,14 +1,16 @@
 package io.hrns_now.app.demo
 
-import io.hrns_now.core.projection.ActionButtonModel
-import io.hrns_now.core.projection.InfoCardModel
-import io.hrns_now.core.projection.RunStatusProjection
-import io.hrns_now.core.projection.SetupProjection
-import io.hrns_now.core.projection.ShellProjection
-import io.hrns_now.core.projection.SourceFreshnessItem
-import io.hrns_now.core.projection.StatusChipModel
-import io.hrns_now.core.projection.TodayStatusProjection
-import io.hrns_now.core.projection.TodayWorkProjection
+import io.hrns_now.app.presentation.model.ActionButtonModel
+import io.hrns_now.app.presentation.model.CockpitActionItem
+import io.hrns_now.app.presentation.model.CockpitProjection
+import io.hrns_now.app.presentation.model.InfoCardModel
+import io.hrns_now.app.presentation.model.RunStatusProjection
+import io.hrns_now.app.presentation.model.SetupProjection
+import io.hrns_now.app.presentation.model.ShellProjection
+import io.hrns_now.app.presentation.model.SourceFreshnessItem
+import io.hrns_now.app.presentation.model.StatusChipModel
+import io.hrns_now.app.presentation.model.TodayWorkProjection
+import io.hrns_now.core.domain.model.UiAction
 
 /**
  * demo/시연 전용 mock 데이터 provider. 실제 infrastructure adapter가 아니므로 infra 모듈에 두지 않는다.
@@ -59,32 +61,36 @@ class MockProjectionProvider {
             note = "PS1 실행 연결은 다음 단계에서 추가합니다.",
         )
 
-    fun todayStatus(): TodayStatusProjection =
-        TodayStatusProjection(
-            title = "오늘 현황",
-            subtitle = "오늘의 작업 상태를 기준 파일과 작업 산출물 기준으로 읽어 보여줍니다.",
-            stateRows = listOf(
-                "current_phase" to "알 수 없음",
-                "current_status" to "not_loaded",
-                "active_card" to "없음",
-                "작업 완료 execution_completed" to "false",
-                "마감 완료 closure_validated" to "false",
+    /** demo mode 전용 Cockpit 샘플이다 — 실제 [io.hrns_now.core.domain.policy.ActionPolicy] 결과가 아니라 시연용 고정 값이다. */
+    fun cockpit(): CockpitProjection =
+        CockpitProjection(
+            projectName = "demo-project",
+            profileLabel = "기본",
+            dateLabel = "YYYY-MM-DD",
+            isReadOnlyDay = false,
+            isStale = false,
+            phaseLabel = "실행 중",
+            statusLabel = "실행 준비 완료",
+            queueStatusLabel = "활성",
+            activeCardId = "card-demo0000001",
+            activeSliceId = "slice-demo0000001",
+            authorizedTargetLabel = "demo/DEMO_TARGET.md",
+            stopReasonLabel = null,
+            blockedReasonLabel = null,
+            artifactItems = listOf(
+                StatusChipModel("요청 입력함", "준비됨", "success"),
+                StatusChipModel("오늘 할 일 파일", "준비됨", "success"),
+                StatusChipModel("인수인계 파일", "준비됨", "success"),
+                StatusChipModel("작업 상태 파일", "준비됨", "success"),
             ),
-            activeCardRows = listOf(
-                "현재 작업 카드" to "현재 연결된 작업 카드가 없습니다.",
-            ),
-            roleStages = listOf(
-                StatusChipModel("경로 확인 navi", ""),
-                StatusChipModel("작업 수행 worker", ""),
-                StatusChipModel("검토 reviewer", ""),
-                StatusChipModel("기록 정리 dockeeper", ""),
-                StatusChipModel("상태 확정 parent", ""),
-            ),
-            actions = listOf(
-                ActionButtonModel("다음 할 일 정리"),
-                ActionButtonModel("선택된 코드 작업 실행"),
-                ActionButtonModel("마감 검증 실행"),
-            ),
+            opsValidationLabel = "통과",
+            closureLabel = "미완료",
+            executionCompletedLabel = "진행 중",
+            lastSuccessfulReadAtLabel = "12:00:00",
+            lastAttemptAtLabel = "12:00:00",
+            primaryAction = CockpitActionItem(UiAction.RunDocSlice, "선택된 문서 작업 실행 (demo)", enabled = false),
+            allowedActions = listOf(CockpitActionItem(UiAction.RunDocSlice, "선택된 문서 작업 실행 (demo)", enabled = false)),
+            diagnostics = null,
         )
 
     fun todayWork(): TodayWorkProjection =

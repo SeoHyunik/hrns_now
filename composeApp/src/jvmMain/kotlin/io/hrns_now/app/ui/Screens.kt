@@ -29,10 +29,12 @@ import io.hrns_now.core.config.PathProbeState
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
-import io.hrns_now.core.projection.RunStatusProjection
-import io.hrns_now.core.projection.SetupProjection
-import io.hrns_now.core.projection.TodayStatusProjection
-import io.hrns_now.core.projection.TodayWorkProjection
+import io.hrns_now.app.presentation.model.CockpitActionItem
+import io.hrns_now.app.presentation.model.CockpitProjection
+import io.hrns_now.app.presentation.model.RunStatusProjection
+import io.hrns_now.app.presentation.model.SetupProjection
+import io.hrns_now.app.presentation.model.TodayWorkProjection
+import io.hrns_now.core.domain.model.UiAction
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 라우터
@@ -44,33 +46,15 @@ fun ScreenRoute(
     setupProjection: SetupProjection,
     workspaceConfig: WorkspaceConfig,
     workspaceProbeSummary: WorkspaceProbeSummary,
-    todayStatusProjection: TodayStatusProjection,
+    cockpitProjection: CockpitProjection,
     todayWorkProjection: TodayWorkProjection,
     runStatusProjection: RunStatusProjection,
     readiness: WorkspaceReadiness,
+    onCockpitAction: (UiAction) -> Unit,
 ) {
     when (route) {
         AppRoute.Setup -> SetupScreen(setupProjection, workspaceConfig, workspaceProbeSummary, readiness)
-        AppRoute.Cockpit -> CockpitScreen(todayStatusProjection)
-        AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
-        AppRoute.Run -> RunScreen(runStatusProjection)
-    }
-}
-
-// 호환을 위해 readiness 없는 오버로드도 유지 (혹시 외부 호출이 있을 경우)
-@Composable
-fun ScreenRoute(
-    route: AppRoute,
-    setupProjection: SetupProjection,
-    workspaceConfig: WorkspaceConfig,
-    workspaceProbeSummary: WorkspaceProbeSummary,
-    todayStatusProjection: TodayStatusProjection,
-    todayWorkProjection: TodayWorkProjection,
-    runStatusProjection: RunStatusProjection,
-) {
-    when (route) {
-        AppRoute.Setup -> SetupScreen(setupProjection, workspaceConfig, workspaceProbeSummary, null)
-        AppRoute.Cockpit -> CockpitScreen(todayStatusProjection)
+        AppRoute.Cockpit -> CockpitScreen(cockpitProjection, onCockpitAction)
         AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
         AppRoute.Run -> RunScreen(runStatusProjection)
     }
@@ -229,30 +213,78 @@ fun SetupScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun CockpitScreen(projection: TodayStatusProjection) {
+fun CockpitScreen(
+    projection: CockpitProjection,
+    onAction: (UiAction) -> Unit,
+) {
     ScreenContainer {
         ScreenHero(
             eyebrow = "02 · Today",
-            title = projection.title,
-            subtitle = projection.subtitle,
+            title = "오늘 현황" + (projection.projectName?.let { " · $it" } ?: ""),
+            subtitle = projection.dateLabel,
+            statusContent = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (projection.isStale) {
+                        StatusChip(text = "오래된 정보", tone = "warning")
+                    }
+                    if (projection.isReadOnlyDay) {
+                        StatusChip(text = "읽기 전용", tone = "muted")
+                    }
+                }
+            },
         )
 
+        projection.diagnostics?.let { diagnostics ->
+            SectionCard(title = "확인이 필요합니다", eyebrow = "Diagnostics", warning = true) {
+                KeyValueGrid(
+                    rows = listOf(
+                        "발생한 일" to diagnostics.whatHappened,
+                        "이전 정상 기록" to if (diagnostics.lastKnownGoodPreserved) {
+                            "보존됨 (아래는 마지막 정상 값입니다)"
+                        } else {
+                            "없음"
+                        },
+                        "다음 행동" to diagnostics.nextStep,
+                    ),
+                )
+            }
+        }
+
         SectionCard(title = "현재 상태", eyebrow = "State") {
-            KeyValueGrid(rows = projection.stateRows)
+            KeyValueGrid(rows = cockpitStateRows(projection))
         }
 
-        SectionCard(title = "현재 작업 카드", eyebrow = "Active card") {
-            KeyValueGrid(rows = projection.activeCardRows)
+        SectionCard(title = "기준 파일", eyebrow = "Artifacts") {
+            InlineChips(chips = projection.artifactItems)
         }
 
-        SectionCard(title = "역할별 실행 상태", eyebrow = "By role") {
-            InlineChips(chips = projection.roleStages)
-        }
-
-        SectionCard(title = "바로 실행", eyebrow = "Quick run") {
-            ActionButtonGroup(projection.actions)
+        SectionCard(title = "다음 행동", eyebrow = "Next action") {
+            CockpitActionButtonGroup(cockpitActions(projection), onAction)
         }
     }
+}
+
+private fun cockpitStateRows(projection: CockpitProjection): List<Pair<String, String>> = buildList {
+    add("Profile" to projection.profileLabel)
+    add("단계 phase" to projection.phaseLabel)
+    add("상태 status" to projection.statusLabel)
+    add("큐 상태 queue" to projection.queueStatusLabel)
+    add("현재 작업 카드" to (projection.activeCardId ?: "없음"))
+    add("현재 작업 slice" to (projection.activeSliceId ?: "없음"))
+    add("허용된 대상 파일" to (projection.authorizedTargetLabel ?: "없음"))
+    projection.stopReasonLabel?.let { add("멈춘 이유 stop reason" to it) }
+    projection.blockedReasonLabel?.takeIf { it.isNotBlank() }?.let { add("차단 사유" to it) }
+    add("운영 검증 ops validation" to projection.opsValidationLabel)
+    add("마감 closure" to projection.closureLabel)
+    add("실행 완료 execution_completed" to projection.executionCompletedLabel)
+    add("마지막 정상 읽기" to (projection.lastSuccessfulReadAtLabel ?: "없음"))
+    add("마지막 읽기 시도" to (projection.lastAttemptAtLabel ?: "없음"))
+}
+
+/** typed action identity와 정책이 정한 enabled 상태를 보존하고 primary 하나만 앞에 둔다. */
+private fun cockpitActions(projection: CockpitProjection): List<CockpitActionItem> = buildList {
+    projection.primaryAction?.let { add(it) }
+    addAll(projection.allowedActions.filter { it.action != projection.primaryAction?.action })
 }
 
 @Composable
@@ -520,5 +552,5 @@ private fun PathProbeState.tone(): String =
         PathProbeState.Unknown -> "muted"
     }
 
-private fun io.hrns_now.core.projection.StatusChipModel.displayText(): String =
+private fun io.hrns_now.app.presentation.model.StatusChipModel.displayText(): String =
     if (value.isBlank()) label else "$label · $value"

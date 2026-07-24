@@ -1,5 +1,9 @@
-package io.hrns_now.core.projection
+package io.hrns_now.app.presentation.model
 
+/**
+ * Compose 화면 전용 read model이다. domain이 아니므로 `core`에 두지 않는다
+ * (`doc/hrns_now_design_pattern.md` §3.1/§9, `doc/hrns_now_claude_plan.md` Phase 1C).
+ */
 data class StatusChipModel(
     val label: String,
     val value: String,
@@ -37,15 +41,6 @@ data class SetupProjection(
     val cards: List<InfoCardModel>,
     val actions: List<ActionButtonModel>,
     val note: String
-)
-
-data class TodayStatusProjection(
-    val title: String,
-    val subtitle: String,
-    val stateRows: List<Pair<String, String>>,
-    val activeCardRows: List<Pair<String, String>>,
-    val roleStages: List<StatusChipModel>,
-    val actions: List<ActionButtonModel>
 )
 
 data class TodayWorkProjection(

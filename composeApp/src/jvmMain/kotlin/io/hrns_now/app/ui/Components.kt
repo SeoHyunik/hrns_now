@@ -41,9 +41,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.hrns_now.core.projection.ActionButtonModel
-import io.hrns_now.core.projection.InfoCardModel
-import io.hrns_now.core.projection.StatusChipModel
+import io.hrns_now.app.presentation.model.ActionButtonModel
+import io.hrns_now.app.presentation.model.CockpitActionItem
+import io.hrns_now.app.presentation.model.InfoCardModel
+import io.hrns_now.app.presentation.model.StatusChipModel
+import io.hrns_now.core.domain.model.UiAction
 
 // 토큰
 private val RadiusSm = 8.dp
@@ -357,11 +359,12 @@ fun PlaceholderActionButton(
     primary: Boolean = false,
     modifier: Modifier = Modifier,
     enabled: Boolean = false,
+    onClick: () -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
     if (primary) {
         Button(
-            onClick = {},
+            onClick = onClick,
             enabled = enabled,
             modifier = modifier,
             shape = RoundedCornerShape(RadiusMd),
@@ -378,7 +381,7 @@ fun PlaceholderActionButton(
         }
     } else {
         TextButton(
-            onClick = {},
+            onClick = onClick,
             enabled = enabled,
             modifier = modifier,
             shape = RoundedCornerShape(RadiusMd),
@@ -426,6 +429,29 @@ fun ActionButtonGroup(actions: List<ActionButtonModel>, modifier: Modifier = Mod
 }
 
 // ─── 인라인 칩 그룹 ──────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CockpitActionButtonGroup(
+    actions: List<CockpitActionItem>,
+    onAction: (UiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        actions.forEachIndexed { index, item ->
+            PlaceholderActionButton(
+                text = item.label,
+                primary = index == 0,
+                enabled = item.enabled,
+                onClick = { onAction(item.action) },
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

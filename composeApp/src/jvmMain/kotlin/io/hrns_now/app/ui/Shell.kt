@@ -37,27 +37,33 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.hrns_now.app.AppProjections
+import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.core.AppRoute
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.core.domain.model.ArtifactProbeResult
 import io.hrns_now.core.domain.model.ArtifactProbeState
 import io.hrns_now.core.domain.model.ArtifactRequirement
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
-import io.hrns_now.core.projection.ShellProjection
+import io.hrns_now.core.domain.model.UiAction
+import io.hrns_now.app.presentation.model.ShellProjection
 import io.hrns_now.infra.InfraMarker
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 최상위 Shell
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Compose는 [uiState]를 그리기만 한다 — 파일 탐색·Reader 호출은
+ * [io.hrns_now.app.presentation.viewmodel.AppViewModel]이 이미 끝낸 뒤 이 값으로 전달한다.
+ */
 @Composable
 fun HrnsShell(
     selectedRoute: AppRoute,
     onRouteSelected: (AppRoute) -> Unit,
-    projections: AppProjections,
+    uiState: HrnsUiState,
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
+    onCockpitAction: (UiAction) -> Unit,
 ) {
     val colors = LocalHrnsColors.current
 
@@ -65,47 +71,85 @@ fun HrnsShell(
         modifier = Modifier.fillMaxSize(),
         color = colors.appBackground,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            TopRibbon(
-                projection = projections.shell,
-                readiness = projections.workspaceReadiness,
+        when (uiState) {
+            HrnsUiState.Loading -> LoadingShell()
+            is HrnsUiState.Ready -> ReadyShell(
+                selectedRoute = selectedRoute,
+                onRouteSelected = onRouteSelected,
+                state = uiState,
                 themeMode = themeMode,
                 onThemeToggle = onThemeToggle,
+                onCockpitAction = onCockpitAction,
             )
-            Row(modifier = Modifier.fillMaxSize()) {
-                LeftRail(
-                    selectedRoute = selectedRoute,
-                    onRouteSelected = onRouteSelected,
-                    modifier = Modifier
-                        .width(248.dp)
-                        .fillMaxSize(),
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 40.dp, end = 40.dp, top = 32.dp, bottom = 56.dp),
-                ) {
-                    ScreenRoute(
-                        route = selectedRoute,
-                        setupProjection = projections.setup,
-                        workspaceConfig = projections.workspaceConfig,
-                        workspaceProbeSummary = projections.workspaceProbeSummary,
-                        todayStatusProjection = projections.todayStatus,
-                        todayWorkProjection = projections.todayWork,
-                        runStatusProjection = projections.runStatus,
-                        readiness = projections.workspaceReadiness,
-                    )
-                }
-                InspectorPanel(
-                    projection = projections.shell,
-                    artifactSummary = projections.workspaceArtifactSummary,
-                    modifier = Modifier
-                        .width(360.dp)
-                        .fillMaxSize(),
+        }
+    }
+}
+
+@Composable
+private fun LoadingShell() {
+    val colors = LocalHrnsColors.current
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "실데이터를 불러오는 중입니다…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.secondaryText,
+        )
+    }
+}
+
+@Composable
+private fun ReadyShell(
+    selectedRoute: AppRoute,
+    onRouteSelected: (AppRoute) -> Unit,
+    state: HrnsUiState.Ready,
+    themeMode: HrnsThemeMode,
+    onThemeToggle: () -> Unit,
+    onCockpitAction: (UiAction) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopRibbon(
+            projection = state.shell,
+            readiness = state.workspaceReadiness,
+            themeMode = themeMode,
+            onThemeToggle = onThemeToggle,
+        )
+        Row(modifier = Modifier.fillMaxSize()) {
+            LeftRail(
+                selectedRoute = selectedRoute,
+                onRouteSelected = onRouteSelected,
+                modifier = Modifier
+                    .width(248.dp)
+                    .fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 40.dp, end = 40.dp, top = 32.dp, bottom = 56.dp),
+            ) {
+                ScreenRoute(
+                    route = selectedRoute,
+                    setupProjection = state.setup,
+                    workspaceConfig = state.workspaceConfig,
+                    workspaceProbeSummary = state.workspaceProbeSummary,
+                    cockpitProjection = state.cockpit,
+                    todayWorkProjection = state.todayWork,
+                    runStatusProjection = state.runStatus,
+                    readiness = state.workspaceReadiness,
+                    onCockpitAction = onCockpitAction,
                 )
             }
+            InspectorPanel(
+                projection = state.shell,
+                artifactSummary = state.workspaceArtifactSummary,
+                modifier = Modifier
+                    .width(360.dp)
+                    .fillMaxSize(),
+            )
         }
     }
 }
