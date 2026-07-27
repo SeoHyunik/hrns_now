@@ -7,13 +7,17 @@ import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.domain.model.BoundaryStatus
+import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
 import io.hrns_now.core.domain.model.HarnessProject
+import io.hrns_now.core.domain.model.KitVersionReadResult
 import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.RootPathCheck
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.policy.BoundaryPolicy
+import io.hrns_now.core.domain.policy.CompatibilityPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelection
+import io.hrns_now.core.port.KitVersionManifestPort
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
 import io.hrns_now.core.result.StateReadResult
@@ -29,6 +33,8 @@ import io.hrns_now.core.usecase.SelectProjectResult
 import io.hrns_now.core.usecase.SelectProjectUseCase
 import io.hrns_now.core.usecase.SelectWorkspaceDayUseCase
 import io.hrns_now.core.usecase.toWorkspaceConfig
+import java.nio.file.InvalidPathException
+import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 import java.time.Instant
 import java.time.LocalDate
@@ -64,7 +70,9 @@ class AppViewModel(
     private val selectWorkspaceDay: SelectWorkspaceDayUseCase,
     private val deleteProject: DeleteProjectUseCase,
     private val boundaryPathResolver: (String?) -> RootPathCheck,
+    private val compatibilityPort: KitVersionManifestPort,
     private val boundaryPolicy: BoundaryPolicy = BoundaryPolicy(),
+    private val compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy(),
     private val uiStateAssembler: CockpitUiStateAssembler = CockpitUiStateAssembler(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val pollIntervalMillis: Long = 3000L,
@@ -88,6 +96,7 @@ class AppViewModel(
     private var lastSuccessfulReadAt: Instant? = null
     private var lastAttemptAt: Instant? = null
     private var lastPolledMtime: FileTime? = null
+    private var lastCompatibilityDetail: HarnessCompatibilityDetail? = null
     private var loadContextGeneration: Long = 0L
     private var loadSequence: Long = 0L
     private var pollingJob: Job? = null
@@ -165,6 +174,7 @@ class AppViewModel(
                     availableDates = emptyList()
                     preferredDate = null
                     lastPolledMtime = null
+                    lastCompatibilityDetail = null
                     loadContextGeneration += 1
                 }
                 refreshRegistryProjects("프로젝트를 삭제했습니다.")
@@ -217,6 +227,7 @@ class AppViewModel(
         availableDates = emptyList()
         preferredDate = project.lastSelectedDate
         lastPolledMtime = null
+        lastCompatibilityDetail = null
         loadContextGeneration += 1
     }
 
@@ -269,8 +280,10 @@ class AppViewModel(
         } else {
             null
         }
+        val compatibilityDetail = withContext(ioDispatcher) { evaluateCompatibility(workspaceConfig) }
         val mtimeChanged = currentMtime != lastPolledMtime
-        val shouldRead = forceRead || mtimeChanged || _state.value == HrnsUiState.Loading
+        val compatibilityChanged = compatibilityDetail != lastCompatibilityDetail
+        val shouldRead = forceRead || mtimeChanged || compatibilityChanged || _state.value == HrnsUiState.Loading
         if (!shouldRead) return
 
         val sequence = ++loadSequence
@@ -284,6 +297,7 @@ class AppViewModel(
             preferredDate = null
         }
         lastPolledMtime = currentMtime
+        lastCompatibilityDetail = compatibilityDetail
         val now = clock()
         lastAttemptAt = now
         if (loaded.stateRead is StateReadResult.Success) {
@@ -300,6 +314,7 @@ class AppViewModel(
             activeProjectSource = activeSource,
             registryMessage = registryMessage,
             boundaryStatus = boundaryStatus,
+            compatibilityDetail = compatibilityDetail,
         )
     }
 
@@ -322,6 +337,28 @@ class AppViewModel(
         val workspace = boundaryPathResolver(workspaceConfig.roots.workspaceRoot)
         val repository = boundaryPathResolver(workspaceConfig.roots.projectRoot)
         return boundaryPolicy.evaluate(kit = kit, workspace = workspace, repository = repository).status
+    }
+
+    /**
+     * 선택된 프로젝트의 Kit root에서 `kit-version.json`을 읽고 판정한다(Phase 2). Kit root가
+     * 아직 설정되지 않았거나 경로를 해석할 수 없으면 manifest가 없는 것과 동일하게 처리한다 —
+     * `evaluateBoundary`와 마찬가지로 이 함수 전체가 [ioDispatcher] 안에서 호출된다.
+     */
+    private fun evaluateCompatibility(workspaceConfig: WorkspaceConfig): HarnessCompatibilityDetail {
+        val kitRoot = parseKitRoot(workspaceConfig.roots.kitRoot)
+            ?: return compatibilityPolicy.evaluate(KitVersionReadResult.Missing)
+        return compatibilityPolicy.evaluate(compatibilityPort.readManifest(kitRoot))
+    }
+
+    private fun parseKitRoot(raw: String?): Path? {
+        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        return try {
+            Path.of(value).toAbsolutePath().normalize()
+        } catch (_: InvalidPathException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        }
     }
 
     /** 테스트나 lifecycle owner가 없는 host에서 polling과 내부 scope를 명시적으로 취소한다. */

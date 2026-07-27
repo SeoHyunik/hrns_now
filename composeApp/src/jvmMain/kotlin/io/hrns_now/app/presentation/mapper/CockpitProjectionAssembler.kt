@@ -8,11 +8,12 @@ import io.hrns_now.core.domain.model.ActionContext
 import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.BoundaryStatus
-import io.hrns_now.core.domain.model.CompatibilityStatus
+import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkflowState
+import io.hrns_now.core.domain.model.toCompatibilityStatus
 import io.hrns_now.core.domain.policy.ActionPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelection
 import io.hrns_now.core.result.StateReadResult
@@ -33,7 +34,7 @@ class CockpitProjectionAssembler(
         profileLabel: String,
         daySelection: WorkspaceDaySelection,
         stateRead: StateReadResult,
-        compatibility: CompatibilityStatus,
+        compatibilityDetail: HarnessCompatibilityDetail,
         boundary: BoundaryStatus,
         process: ProcessRunStatus,
         lastSuccessfulReadAtLabel: String?,
@@ -49,7 +50,7 @@ class CockpitProjectionAssembler(
             projectConnected = projectConnected,
             selectedDayKind = if (projectConnected) selectedDayKind else null,
             stateRead = stateRead,
-            compatibility = compatibility,
+            compatibility = compatibilityDetail.toCompatibilityStatus(),
             boundary = boundary,
             process = process,
             activeSliceKind = activeSliceKind,
@@ -79,6 +80,7 @@ class CockpitProjectionAssembler(
             primaryAction = recommended.primary?.let(::actionItem),
             allowedActions = recommended.allowed.map(::actionItem),
             diagnostics = diagnosticsFor(stateRead, recommended.blockedReason),
+            compatibilityDiagnostics = diagnosticsForCompatibility(compatibilityDetail, recommended.blockedReason),
         )
     }
 
@@ -151,6 +153,41 @@ class CockpitProjectionAssembler(
                 whatHappened = "상태 파일에 접근할 수 없습니다.",
                 lastKnownGoodPreserved = false,
                 nextStep = ctaGuidance ?: "파일 권한을 확인하세요.",
+            )
+        }
+
+    /**
+     * `Supported`/`SupportedWithUnknownFields`는 실행을 막지 않으므로 `null`이다(기존
+     * `diagnostics` 필드처럼 이 필드도 "문제가 있을 때만 채운다" 관례를 따른다). 버전 값은
+     * 그대로 표시해도 안전하다 — raw 파일 원문이나 예외 메시지가 아니다.
+     */
+    private fun diagnosticsForCompatibility(
+        detail: HarnessCompatibilityDetail,
+        ctaGuidance: String?,
+    ): CockpitDiagnostics? =
+        when (detail) {
+            is HarnessCompatibilityDetail.Supported,
+            is HarnessCompatibilityDetail.SupportedWithUnknownFields,
+            -> null
+
+            is HarnessCompatibilityDetail.UnsupportedMajorVersion -> CockpitDiagnostics(
+                whatHappened = "지원하지 않는 Harness 계약 버전입니다 " +
+                    "(state_schema_version=${detail.manifest.stateSchemaVersion.raw}, " +
+                    "ui_contract_version=${detail.manifest.uiContractVersion.raw}).",
+                lastKnownGoodPreserved = false,
+                nextStep = ctaGuidance ?: "앱을 최신 버전으로 갱신하거나 Harness Kit 버전을 확인하세요.",
+            )
+
+            HarnessCompatibilityDetail.MissingManifest -> CockpitDiagnostics(
+                whatHappened = "kit-version.json 파일이 없어 레거시/알 수 없는 Harness 버전으로 처리합니다.",
+                lastKnownGoodPreserved = false,
+                nextStep = ctaGuidance ?: "Harness Kit 경로를 확인하세요.",
+            )
+
+            is HarnessCompatibilityDetail.MalformedManifest -> CockpitDiagnostics(
+                whatHappened = "kit-version.json 형식을 해석할 수 없습니다 (${detail.reason}).",
+                lastKnownGoodPreserved = false,
+                nextStep = ctaGuidance ?: "Harness Kit의 kit-version.json 파일을 확인하세요.",
             )
         }
 

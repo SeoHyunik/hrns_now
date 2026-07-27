@@ -51,4 +51,10 @@ data class CockpitProjection(
     val primaryAction: CockpitActionItem?,
     val allowedActions: List<CockpitActionItem>,
     val diagnostics: CockpitDiagnostics?,
+    /**
+     * Harness `kit-version.json` 호환성 판정이 [io.hrns_now.core.domain.model.CompatibilityStatus.Supported]가
+     * 아닐 때만 채워지는 안전한 설명이다(Phase 2). `whatHappened`/`nextStep`은 버전 값처럼 이미
+     * 정형화된 문구만 담으며, raw 파일 원문이나 예외 메시지를 담지 않는다.
+     */
+    val compatibilityDiagnostics: CockpitDiagnostics?,
 )

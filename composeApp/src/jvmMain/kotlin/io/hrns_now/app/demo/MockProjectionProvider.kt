@@ -91,6 +91,7 @@ class MockProjectionProvider {
             primaryAction = CockpitActionItem(UiAction.RunDocSlice, "선택된 문서 작업 실행 (demo)", enabled = false),
             allowedActions = listOf(CockpitActionItem(UiAction.RunDocSlice, "선택된 문서 작업 실행 (demo)", enabled = false)),
             diagnostics = null,
+            compatibilityDiagnostics = null,
         )
 
     fun todayWork(): TodayWorkProjection =

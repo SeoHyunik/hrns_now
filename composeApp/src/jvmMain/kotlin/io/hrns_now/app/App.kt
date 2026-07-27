@@ -44,6 +44,7 @@ import io.hrns_now.infra.WorkflowStateChangeProbe
 import io.hrns_now.infra.WorkspaceArtifactProbe
 import io.hrns_now.infra.WorkspaceDayDiscovery
 import io.hrns_now.infra.WorkspacePathProbe
+import io.hrns_now.infra.kitversion.JsonKitVersionManifestAdapter
 import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
 import io.hrns_now.infra.serialization.JsonWorkflowStateAdapter
@@ -190,5 +191,6 @@ private fun createProductionViewModel(): AppViewModel {
         selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = realPathGateway::resolve,
+        compatibilityPort = JsonKitVersionManifestAdapter(),
     )
 }

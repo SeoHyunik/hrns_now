@@ -13,9 +13,13 @@ import io.hrns_now.core.config.WorkspaceRoots
 import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.ClosureState
+import io.hrns_now.core.domain.model.ContractVersion
 import io.hrns_now.core.domain.model.ExecutionWrapperState
 import io.hrns_now.core.domain.model.FileVersion
 import io.hrns_now.core.domain.model.HarnessProject
+import io.hrns_now.core.domain.model.KitVersion
+import io.hrns_now.core.domain.model.KitVersionManifest
+import io.hrns_now.core.domain.model.KitVersionReadResult
 import io.hrns_now.core.domain.model.OpsValidationState
 import io.hrns_now.core.domain.model.PathIssue
 import io.hrns_now.core.domain.model.ProjectId
@@ -31,6 +35,7 @@ import io.hrns_now.core.domain.model.WorkflowStatus
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
+import io.hrns_now.core.port.KitVersionManifestPort
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.port.WorkflowStatePort
 import io.hrns_now.core.result.RegistryLoadResult
@@ -66,6 +71,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -238,6 +244,7 @@ class AppViewModelTest {
         registry: ProjectRegistryPort = FakeProjectRegistryPort(),
         availableDates: List<LocalDate> = emptyList(),
         boundaryResolver: (String?) -> RootPathCheck = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+        compatibilityPort: KitVersionManifestPort = KitVersionManifestPort { KitVersionReadResult.Missing },
     ): AppViewModel = AppViewModel(
         loadCockpit = loadUseCase(statePort, availableDates = availableDates),
         changeProbe = changeProbe,
@@ -251,6 +258,7 @@ class AppViewModelTest {
         selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = boundaryResolver,
+        compatibilityPort = compatibilityPort,
         ioDispatcher = dispatcher,
         pollIntervalMillis = pollIntervalMillis,
         clock = { fixedInstant },
@@ -388,6 +396,10 @@ class AppViewModelTest {
                 recordThread()
                 RootPathCheck.Invalid(PathIssue.NotProvided)
             },
+            compatibilityPort = {
+                recordThread()
+                KitVersionReadResult.Missing
+            },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -454,6 +466,7 @@ class AppViewModelTest {
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            compatibilityPort = { KitVersionReadResult.Missing },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -512,6 +525,121 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `프로젝트를 전환하면 새 프로젝트의 Kit root로 compatibility manifest를 다시 읽는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val seenKitRoots = mutableListOf<String>()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val projectA = harnessProject("a", "S:\\project-a")
+        val projectB = harnessProject("b", "S:\\project-b")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(projectA, projectB))
+        val compatibilityPort = KitVersionManifestPort { kitRoot ->
+            seenKitRoots.add(kitRoot.toString())
+            KitVersionReadResult.Missing
+        }
+        val viewModel = newViewModel(
+            statePort,
+            dispatcher,
+            registry = registry,
+            compatibilityPort = compatibilityPort,
+        )
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectA.id))
+        runCurrent()
+        assertTrue(seenKitRoots.last().contains("kit-a"))
+
+        viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectB.id))
+        runCurrent()
+        assertTrue(seenKitRoots.last().contains("kit-b"))
+
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `프로젝트 전환 중 늦게 끝난 이전 프로젝트의 compatibility 읽기가 새 프로젝트 상태를 덮지 않는다`() = runBlocking {
+        val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "compat-switch-io") }
+        val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "compat-switch-main") }
+        val ioDispatcher = ioExecutor.asCoroutineDispatcher()
+        val mainDispatcher = mainExecutor.asCoroutineDispatcher()
+
+        val projectA = harnessProject("a", "S:\\project-a")
+        val projectB = harnessProject("b", "S:\\project-b")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(projectA, projectB))
+
+        val firstReadEntered = CountDownLatch(1)
+        val releaseFirstRead = CountDownLatch(1)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val compatibilityPort = KitVersionManifestPort { kitRoot ->
+            if (kitRoot.toString().contains("kit-a")) {
+                firstReadEntered.countDown()
+                assertTrue(releaseFirstRead.await(5, TimeUnit.SECONDS))
+                KitVersionReadResult.Malformed("project-a-stale")
+            } else {
+                KitVersionReadResult.Missing
+            }
+        }
+
+        val loadCockpit = LoadCockpitUseCase(
+            pathProbe = { probeSummary() },
+            readinessProvider = { _, _ -> readiness() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+            dayDiscovery = { emptyList() },
+            daySelectionPolicy = WorkspaceDaySelectionPolicy(LocalDate.of(2026, 6, 26)),
+            statePort = statePort,
+        )
+        val viewModel = AppViewModel(
+            loadCockpit = loadCockpit,
+            changeProbe = { null },
+            resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
+            loadProjects = LoadProjectsUseCase(registry),
+            registerProject = RegisterProjectUseCase(
+                pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                registry = registry,
+            ),
+            selectProject = SelectProjectUseCase(registry),
+            selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+            deleteProject = DeleteProjectUseCase(registry),
+            boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            compatibilityPort = compatibilityPort,
+            ioDispatcher = ioDispatcher,
+            pollIntervalMillis = 60_000L,
+            clock = { fixedInstant },
+            mainDispatcher = mainDispatcher,
+        )
+
+        try {
+            withTimeout(5_000) { viewModel.state.filterIsInstance<HrnsUiState.Ready>().first() }
+
+            viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectA.id))
+            assertTrue(firstReadEntered.await(5, TimeUnit.SECONDS))
+
+            viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectB.id))
+            val readyB = withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { ready -> ready.registryProjects.firstOrNull { it.isActive }?.id == projectB.id }
+            }
+            // project-b의 compatibility 결과(Missing)만 반영되어야 하고, 아직 도착하지 않은
+            // project-a의 malformed 사유는 나타나면 안 된다.
+            assertTrue(requireNotNull(readyB.cockpit.compatibilityDiagnostics).whatHappened.contains("파일이 없어"))
+            assertFalse(readyB.cockpit.compatibilityDiagnostics.whatHappened.contains("project-a-stale"))
+
+            releaseFirstRead.countDown()
+            mainExecutor.submit {}.get(5, TimeUnit.SECONDS)
+            val stillB = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+            assertTrue(requireNotNull(stillB.cockpit.compatibilityDiagnostics).whatHappened.contains("파일이 없어"))
+            assertFalse(stillB.cockpit.compatibilityDiagnostics.whatHappened.contains("project-a-stale"))
+            assertTrue(stillB.registryProjects.firstOrNull { it.isActive }?.id == projectB.id)
+        } finally {
+            releaseFirstRead.countDown()
+            viewModel.dispose()
+            ioDispatcher.close()
+            mainDispatcher.close()
+            ioExecutor.shutdownNow()
+            mainExecutor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `프로젝트 전환 중 늦게 끝난 이전 프로젝트의 읽기가 새 프로젝트 상태를 덮지 않는다`() = runBlocking {
         val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "switch-io") }
         val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "switch-main") }
@@ -563,6 +691,7 @@ class AppViewModelTest {
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            compatibilityPort = { KitVersionReadResult.Missing },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -700,6 +829,55 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `State mtime이 같아도 polling은 변경된 compatibility manifest를 반영한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(
+            initialProjects = listOf(project),
+            initialActiveId = project.id,
+        )
+        val statePort = FakeStatePort {
+            StateReadResult.Success(
+                workflowState("compatibility-poll"),
+                FileVersion(Instant.EPOCH, 1, "same-state"),
+            )
+        }
+        val supportedManifest = KitVersionManifest(
+            kitVersion = KitVersion("2026.07.23"),
+            stateSchemaVersion = ContractVersion(1, 0, "1.0"),
+            uiContractVersion = ContractVersion(1, 0, "1.0"),
+        )
+        var compatibilityRead: KitVersionReadResult = KitVersionReadResult.Success(supportedManifest)
+        val compatibilityReads = AtomicInteger(0)
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            changeProbe = { FileTime.fromMillis(1) },
+            pollIntervalMillis = 100L,
+            registry = registry,
+            compatibilityPort = {
+                compatibilityReads.incrementAndGet()
+                compatibilityRead
+            },
+        )
+        runCurrent()
+
+        val supported = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals(null, supported.cockpit.compatibilityDiagnostics)
+        assertEquals(1, statePort.callCount.get())
+
+        compatibilityRead = KitVersionReadResult.Malformed("invalid_json")
+        advanceTimeBy(101L)
+        runCurrent()
+
+        val malformed = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(requireNotNull(malformed.cockpit.compatibilityDiagnostics).whatHappened.contains("invalid_json"))
+        assertEquals(2, statePort.callCount.get())
+        assertTrue(compatibilityReads.get() >= 2)
+        viewModel.dispose()
+    }
+
+    @Test
     fun `변경 없는 polling tick은 진행 중인 수동 refresh 결과를 무효화하지 않는다`() = runBlocking {
         val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "noop-poll-io") }
         val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "noop-poll-main") }
@@ -745,6 +923,7 @@ class AppViewModelTest {
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            compatibilityPort = { KitVersionReadResult.Missing },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 50L,
             clock = { fixedInstant },

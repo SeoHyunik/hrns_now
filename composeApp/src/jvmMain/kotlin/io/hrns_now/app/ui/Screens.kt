@@ -34,6 +34,7 @@ import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.app.presentation.model.CockpitActionItem
+import io.hrns_now.app.presentation.model.CockpitDiagnostics
 import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.RegistryProjectItem
@@ -462,20 +463,20 @@ fun CockpitScreen(
             },
         )
 
+        projection.compatibilityDiagnostics?.let { diagnostics ->
+            CockpitDiagnosticsCard(
+                title = "Harness 호환성 확인",
+                eyebrow = "Compatibility",
+                diagnostics = diagnostics,
+            )
+        }
+
         projection.diagnostics?.let { diagnostics ->
-            SectionCard(title = "확인이 필요합니다", eyebrow = "Diagnostics", warning = true) {
-                KeyValueGrid(
-                    rows = listOf(
-                        "발생한 일" to diagnostics.whatHappened,
-                        "이전 정상 기록" to if (diagnostics.lastKnownGoodPreserved) {
-                            "보존됨 (아래는 마지막 정상 값입니다)"
-                        } else {
-                            "없음"
-                        },
-                        "다음 행동" to diagnostics.nextStep,
-                    ),
-                )
-            }
+            CockpitDiagnosticsCard(
+                title = "확인이 필요합니다",
+                eyebrow = "Diagnostics",
+                diagnostics = diagnostics,
+            )
         }
 
         SectionCard(title = "현재 상태", eyebrow = "State") {
@@ -489,6 +490,27 @@ fun CockpitScreen(
         SectionCard(title = "다음 행동", eyebrow = "Next action") {
             CockpitActionButtonGroup(cockpitActions(projection), onAction)
         }
+    }
+}
+
+@Composable
+private fun CockpitDiagnosticsCard(
+    title: String,
+    eyebrow: String,
+    diagnostics: CockpitDiagnostics,
+) {
+    SectionCard(title = title, eyebrow = eyebrow, warning = true) {
+        KeyValueGrid(
+            rows = listOf(
+                "발생한 일" to diagnostics.whatHappened,
+                "이전 정상 기록" to if (diagnostics.lastKnownGoodPreserved) {
+                    "보존됨 (아래는 마지막 정상 값입니다)"
+                } else {
+                    "없음"
+                },
+                "다음 행동" to diagnostics.nextStep,
+            ),
+        )
     }
 }
 

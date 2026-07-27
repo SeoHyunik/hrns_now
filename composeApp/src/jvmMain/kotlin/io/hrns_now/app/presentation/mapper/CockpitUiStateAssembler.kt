@@ -8,7 +8,7 @@ import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.app.presentation.model.RegistryProjectItem
 import io.hrns_now.app.presentation.model.WorkspaceDayItem
 import io.hrns_now.core.domain.model.BoundaryStatus
-import io.hrns_now.core.domain.model.CompatibilityStatus
+import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.ProjectId
@@ -30,6 +30,7 @@ class CockpitUiStateAssembler(
         activeProjectSource: ActiveProjectSource,
         registryMessage: String?,
         boundaryStatus: BoundaryStatus,
+        compatibilityDetail: HarnessCompatibilityDetail,
     ): HrnsUiState.Ready =
         HrnsUiState.Ready(
             shell = buildShellProjection(),
@@ -43,7 +44,7 @@ class CockpitUiStateAssembler(
                 profileLabel = loaded.workspaceConfig.profileName,
                 daySelection = loaded.daySelection,
                 stateRead = loaded.stateRead,
-                compatibility = CompatibilityStatus.Unknown,
+                compatibilityDetail = compatibilityDetail,
                 boundary = boundaryStatus,
                 process = ProcessRunStatus.Idle,
                 lastSuccessfulReadAtLabel = lastSuccessfulReadAtLabel,

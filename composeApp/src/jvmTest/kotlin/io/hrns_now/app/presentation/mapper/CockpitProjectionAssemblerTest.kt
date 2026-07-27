@@ -4,9 +4,12 @@ import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.BoundaryStatus
 import io.hrns_now.core.domain.model.ClosureState
-import io.hrns_now.core.domain.model.CompatibilityStatus
+import io.hrns_now.core.domain.model.ContractVersion
 import io.hrns_now.core.domain.model.ExecutionWrapperState
 import io.hrns_now.core.domain.model.FileVersion
+import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
+import io.hrns_now.core.domain.model.KitVersion
+import io.hrns_now.core.domain.model.KitVersionManifest
 import io.hrns_now.core.domain.model.OpsValidationState
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.QueuePointer
@@ -96,10 +99,16 @@ class CockpitProjectionAssemblerTest {
             isReadOnly = true,
         )
 
+    private val supportedManifest = KitVersionManifest(
+        kitVersion = KitVersion("2026.07.23"),
+        stateSchemaVersion = ContractVersion(1, 0, "1.0"),
+        uiContractVersion = ContractVersion(1, 0, "1.0"),
+    )
+
     private fun assemble(
         stateRead: StateReadResult,
         daySelection: WorkspaceDaySelection = todaySelection(),
-        compatibility: CompatibilityStatus = CompatibilityStatus.Supported,
+        compatibilityDetail: HarnessCompatibilityDetail = HarnessCompatibilityDetail.Supported(supportedManifest),
         boundary: BoundaryStatus = BoundaryStatus.Valid,
         projectConnected: Boolean = true,
     ) = assembler.assemble(
@@ -107,7 +116,7 @@ class CockpitProjectionAssemblerTest {
         profileLabel = "corp-default",
         daySelection = daySelection,
         stateRead = stateRead,
-        compatibility = compatibility,
+        compatibilityDetail = compatibilityDetail,
         boundary = boundary,
         process = ProcessRunStatus.Idle,
         lastSuccessfulReadAtLabel = "12:00:00",
@@ -230,12 +239,41 @@ class CockpitProjectionAssemblerTest {
     }
 
     @Test
-    fun `compatibility Unknown은 호환성 확인을 요구하고 boundary Unknown은 복구로 잠근다`() {
-        val compatibilityUnknown = assemble(success(), compatibility = CompatibilityStatus.Unknown)
+    fun `compatibility manifest 없음은 호환성 확인을 요구하고 boundary Unknown은 복구로 잠근다`() {
+        val compatibilityMissing = assemble(success(), compatibilityDetail = HarnessCompatibilityDetail.MissingManifest)
         val boundaryUnknown = assemble(success(), boundary = BoundaryStatus.Unknown)
 
-        assertEquals(UiAction.ShowCompatibilityIssue, compatibilityUnknown.primaryAction?.action)
+        assertEquals(UiAction.ShowCompatibilityIssue, compatibilityMissing.primaryAction?.action)
+        assertTrue(requireNotNull(compatibilityMissing.compatibilityDiagnostics).whatHappened.isNotBlank())
         assertEquals(UiAction.OpenRecoveryCenter, boundaryUnknown.primaryAction?.action)
+    }
+
+    @Test
+    fun `compatibility 지원 major에서 상위 minor는 실행을 막지 않고 진단도 표시하지 않는다`() {
+        val projection = assemble(
+            success(),
+            compatibilityDetail = HarnessCompatibilityDetail.SupportedWithUnknownFields(
+                supportedManifest.copy(uiContractVersion = ContractVersion(1, 3, "1.3")),
+            ),
+        )
+
+        assertNull(projection.compatibilityDiagnostics)
+        assertFalse(projection.allowedActions.any { it.action == UiAction.ShowCompatibilityIssue })
+    }
+
+    @Test
+    fun `compatibility 미지원 major는 원인을 표시하고 실행 CTA를 잠근다`() {
+        val projection = assemble(
+            success(),
+            compatibilityDetail = HarnessCompatibilityDetail.UnsupportedMajorVersion(
+                supportedManifest.copy(uiContractVersion = ContractVersion(2, 0, "2.0")),
+            ),
+        )
+
+        assertEquals(UiAction.ShowCompatibilityIssue, projection.primaryAction?.action)
+        val diagnostics = requireNotNull(projection.compatibilityDiagnostics)
+        assertTrue(diagnostics.whatHappened.contains("2.0"))
+        assertFalse(diagnostics.lastKnownGoodPreserved)
     }
 
     @Test
