@@ -100,6 +100,7 @@ class PowerShellHarnessAdapter(
             is HarnessCommand.RunPlanning -> command.kitRoot
             is HarnessCommand.RunReplan -> command.kitRoot
             is HarnessCommand.RunExecution -> command.kitRoot
+            is HarnessCommand.ValidateClosure -> command.kitRoot
         }
 
     private fun mapExited(outcome: RawProcessOutcome.Exited): ProcessRunResult.Completed {

@@ -143,6 +143,7 @@ private fun ReadyShell(
                     cockpitProjection = state.cockpit,
                     todayWorkProjection = state.todayWork,
                     runStatusProjection = state.runStatus,
+                    recoveryProjection = state.recovery,
                     readiness = state.workspaceReadiness,
                     onCockpitAction = onCockpitAction,
                     registryProjects = state.registryProjects,
@@ -399,6 +400,12 @@ private fun LeftRail(
             selected = selectedRoute == AppRoute.Run,
             onClick = { onRouteSelected(AppRoute.Run) },
             leadingGlyph = "04",
+        )
+        NavigationButton(
+            text = "복구 센터 · 마감 확인",
+            selected = selectedRoute == AppRoute.Recovery,
+            onClick = { onRouteSelected(AppRoute.Recovery) },
+            leadingGlyph = "05",
         )
 
         Spacer(modifier = Modifier.height(28.dp))

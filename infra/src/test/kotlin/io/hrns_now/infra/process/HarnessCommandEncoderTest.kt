@@ -236,4 +236,34 @@ class HarnessCommandEncoderTest {
         assertEquals("D:\\작업 공간 폴더\\샘플 1", invocation.arguments[invocation.arguments.indexOf("-WorkspaceRoot") + 1])
         assertTrue("-Profile" !in invocation.arguments)
     }
+
+    @Test
+    fun `ValidateClosure는 run-cycle 스크립트에 ValidateForClosure만 붙이고 wrapper 인자를 만들지 않는다`() {
+        val command = HarnessCommand.ValidateClosure(
+            workspaceRoot = Path.of("D:/harness-workspaces/sample"),
+            projectRoot = Path.of("S:/repo/sample"),
+            kitRoot = Path.of("D:/harness-kit"),
+            profile = "corp-default",
+            date = LocalDate.of(2026, 7, 27),
+        )
+
+        val invocation = encoder.encode(command)
+
+        assertEquals(Path.of("D:/harness-kit/scripts/run-cycle.ps1").toString(), invocation.arguments[4])
+        assertEquals(
+            listOf(
+                "-WorkspaceRoot", "D:\\harness-workspaces\\sample",
+                "-ProjectRoot", "S:\\repo\\sample",
+                "-KitRoot", "D:\\harness-kit",
+                "-Profile", "corp-default",
+                "-Date", "2026-07-27",
+                "-ValidateForClosure",
+            ),
+            invocation.arguments.drop(5),
+        )
+        assertTrue("-RunPlanningWrapper" !in invocation.arguments)
+        assertTrue("-RunReplanWrapper" !in invocation.arguments)
+        assertTrue("-RunExecutionWrapper" !in invocation.arguments)
+        assertTrue("-UsePythonSidecars" !in invocation.arguments)
+    }
 }

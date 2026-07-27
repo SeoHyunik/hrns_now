@@ -9,6 +9,12 @@ import java.time.LocalDate
 /** Screen에서 ViewModel로 전달하는 typed UI event다. 표시 label은 식별자로 사용하지 않는다. */
 sealed interface HrnsUiEvent {
     data class ActionRequested(val action: UiAction) : HrnsUiEvent
+    /**
+     * Closure는 ActionPolicy와 별도의 ClosurePolicy 재확인이 필요하다. repository 변경을
+     * 인지한 경우에만 [incompleteHandoffAcknowledged]가 true가 될 수 있으며, 일반 action
+     * event가 이 확인을 우회할 수 없다.
+     */
+    data class ClosureValidationRequested(val incompleteHandoffAcknowledged: Boolean) : HrnsUiEvent
     data class ProjectSelected(val id: ProjectId) : HrnsUiEvent
     data class ProjectRegistrationRequested(val candidate: RegisterProjectCandidate) : HrnsUiEvent
     data class ProjectDeletionRequested(val id: ProjectId) : HrnsUiEvent

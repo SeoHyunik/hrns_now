@@ -15,6 +15,7 @@ enum class HarnessCommandKind {
     Replan,
     ExecutionCode,
     ExecutionDoc,
+    ClosureValidation,
 }
 
 /**
@@ -58,8 +59,8 @@ enum class ReplanReason(val cliValue: String) {
  * argument 목록으로 변환한다.
  *
  * Phase 3은 read-only `Doctor`/`ValidateOps`를 연결했다. Phase 4는 `run-cycle.ps1` 기반
- * mutating command(`BootstrapDay`/`RunPlanning`/`RunReplan`/`RunExecution`)를 추가한다. Closure
- * validation(Phase 5)은 여기서 선구현하지 않는다.
+ * mutating command(`BootstrapDay`/`RunPlanning`/`RunReplan`/`RunExecution`)를 추가했다. Phase 5는
+ * `ValidateClosure`를 추가한다.
  */
 sealed interface HarnessCommand {
     val kind: HarnessCommandKind
@@ -138,5 +139,22 @@ sealed interface HarnessCommand {
                 ExecutionWrapper.Auto ->
                     error("RunExecution(wrapper = Auto)는 생성되지 않는다 — UI는 code/doc slice만 dispatch한다.")
             }
+    }
+
+    /**
+     * `scripts/run-cycle.ps1 -ValidateForClosure`에 대응한다(실측: `run-cycle.ps1`은 이 switch를
+     * `-RunPlanningWrapper`/`-RunReplanWrapper`/`-RunExecutionWrapper`와 같은 pass에서 결합하면
+     * 즉시 `throw`한다). 내부적으로 결정적 `pre_handoff_validate.py`/`.ps1`만 호출하며 Claude를
+     * 호출하지 않는다 — `state.closure.{validated,is_clean_handoff,validated_at,validator_notes}`와
+     * `state.status`를 갱신할 뿐 다른 wrapper와 달리 실패해도 워크스페이스를 열린 상태로 되돌린다.
+     */
+    data class ValidateClosure(
+        val workspaceRoot: Path,
+        val projectRoot: Path,
+        val kitRoot: Path,
+        val profile: String?,
+        val date: LocalDate,
+    ) : HarnessCommand {
+        override val kind: HarnessCommandKind = HarnessCommandKind.ClosureValidation
     }
 }

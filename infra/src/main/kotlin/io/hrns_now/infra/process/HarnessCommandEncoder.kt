@@ -38,6 +38,7 @@ class HarnessCommandEncoder(
             is HarnessCommand.RunPlanning,
             is HarnessCommand.RunReplan,
             is HarnessCommand.RunExecution,
+            is HarnessCommand.ValidateClosure,
             -> command.kitRoot().resolve("scripts/run-cycle.ps1").toString()
         }
 
@@ -104,6 +105,14 @@ class HarnessCommandEncoder(
                 command.profile,
                 command.date,
             ) + listOf("-RunExecutionWrapper", command.wrapper.cliValue)
+
+            is HarnessCommand.ValidateClosure -> runCycleBaseArguments(
+                command.workspaceRoot,
+                command.projectRoot,
+                command.kitRoot,
+                command.profile,
+                command.date,
+            ) + listOf("-ValidateForClosure")
         }
 
     /** `run-cycle.ps1`의 실계약 필수/기본 인자(`-WorkspaceRoot`/`-ProjectRoot`/`-KitRoot`/`-Profile`/`-Date`)다. */
@@ -136,5 +145,6 @@ class HarnessCommandEncoder(
             is HarnessCommand.RunPlanning -> kitRoot
             is HarnessCommand.RunReplan -> kitRoot
             is HarnessCommand.RunExecution -> kitRoot
+            is HarnessCommand.ValidateClosure -> kitRoot
         }
 }

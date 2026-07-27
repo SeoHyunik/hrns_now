@@ -141,6 +141,13 @@ class HarnessCommandMapper {
                 date = day.date,
                 wrapper = ExecutionWrapper.Doc,
             )
+            UiAction.RunClosureValidation -> HarnessCommand.ValidateClosure(
+                workspaceRoot = project.projectWorkspaceRoot,
+                projectRoot = project.repositoryRoot,
+                kitRoot = project.kitRoot,
+                profile = project.profileId,
+                date = day.date,
+            )
             else -> null
         }
 }

@@ -53,6 +53,8 @@ import io.hrns_now.infra.lock.LocalProcessLockAdapter
 import io.hrns_now.infra.process.PowerShellHarnessAdapter
 import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
+import io.hrns_now.infra.git.CommandLineGitStatusAdapter
+import io.hrns_now.infra.recovery.WorkspaceRecoveryDiagnosticsAdapter
 import io.hrns_now.infra.request.RequestInboxWriterAdapter
 import io.hrns_now.infra.request.TodayStrategyFileReaderAdapter
 import io.hrns_now.infra.security.SecretMaskingProcessRunner
@@ -86,7 +88,13 @@ fun App() {
         { event -> productionViewModel?.onEvent(event) }
     }
     val onCockpitAction: (UiAction) -> Unit = remember(onUiEvent) {
-        { action -> onUiEvent(HrnsUiEvent.ActionRequested(action)) }
+        { action ->
+            when (action) {
+                // 순수 navigation이다 — Harness/State에 영향을 주지 않으므로 ViewModel 이벤트로 보내지 않는다.
+                UiAction.OpenRecoveryCenter, UiAction.ReviewClosure -> selectedRoute = AppRoute.Recovery
+                else -> onUiEvent(HrnsUiEvent.ActionRequested(action))
+            }
+        }
     }
 
     CompositionLocalProvider(LocalHrnsColors provides hrnsColors(themeMode)) {
@@ -157,6 +165,7 @@ private fun demoUiState(): HrnsUiState {
         cockpit = mock.cockpit(),
         todayWork = mock.todayWork(),
         runStatus = mock.runStatus(),
+        recovery = mock.recovery(),
         registryProjects = emptyList(),
         workspaceDays = emptyList(),
         activeProjectSourceLabel = "demo",
@@ -223,5 +232,7 @@ private fun createProductionViewModel(): AppViewModel {
         ),
         saveRequest = SaveRequestUseCase(requestWriter),
         todayStrategyReader = TodayStrategyFileReaderAdapter(),
+        gitStatusPort = CommandLineGitStatusAdapter(),
+        recoveryDiagnosticsPort = WorkspaceRecoveryDiagnosticsAdapter(),
     )
 }

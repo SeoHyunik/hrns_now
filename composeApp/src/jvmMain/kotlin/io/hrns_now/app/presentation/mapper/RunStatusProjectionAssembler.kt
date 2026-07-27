@@ -170,4 +170,5 @@ internal fun HarnessCommandKind.displayLabel(): String =
         HarnessCommandKind.Replan -> "재계획 실행"
         HarnessCommandKind.ExecutionCode -> "코드 작업 실행"
         HarnessCommandKind.ExecutionDoc -> "문서 작업 실행"
+        HarnessCommandKind.ClosureValidation -> "마감 검증 실행"
     }

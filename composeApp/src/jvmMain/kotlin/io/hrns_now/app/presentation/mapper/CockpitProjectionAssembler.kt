@@ -42,7 +42,7 @@ class CockpitProjectionAssembler(
         lastAttemptAtLabel: String?,
         harnessRunInProgress: Boolean = false,
     ): CockpitProjection {
-        val (displayState, isStale) = resolveDisplayState(stateRead)
+        val (displayState, isStale) = resolveDisplayWorkflowState(stateRead)
         val activeSliceKind = displayState?.executionWrapper?.toActiveSliceKind()
         val selectedDayKind = if (daySelection.isReadOnly) SelectedDayKind.Past else SelectedDayKind.Today
 
@@ -83,17 +83,6 @@ class CockpitProjectionAssembler(
             compatibilityDiagnostics = diagnosticsForCompatibility(compatibilityDetail, recommended.blockedReason),
         )
     }
-
-    private fun resolveDisplayState(stateRead: StateReadResult): Pair<WorkflowState?, Boolean> =
-        when (stateRead) {
-            is StateReadResult.Success -> stateRead.state to false
-            is StateReadResult.Malformed -> stateRead.lastKnownGood to (stateRead.lastKnownGood != null)
-            is StateReadResult.EncodingError -> stateRead.lastKnownGood to (stateRead.lastKnownGood != null)
-            is StateReadResult.Missing,
-            is StateReadResult.UnsupportedSchema,
-            is StateReadResult.AccessDenied,
-            -> null to false
-        }
 
     private fun artifactChips(state: WorkflowState): List<StatusChipModel> =
         listOf(
@@ -204,6 +193,7 @@ class CockpitProjectionAssembler(
                 UiAction.RunReplan,
                 UiAction.RunCodeSlice,
                 UiAction.RunDocSlice,
+                UiAction.RunClosureValidation,
                 -> !harnessRunInProgress
                 else -> false
             },
@@ -212,3 +202,18 @@ class CockpitProjectionAssembler(
         const val NOT_AVAILABLE = "확인 불가"
     }
 }
+
+/**
+ * `Success`가 아닌 [StateReadResult]에서 last-known-good을 골라 표시할 [WorkflowState]와
+ * stale 여부를 만든다. [CockpitProjectionAssembler]와 Recovery projection이 공유한다.
+ */
+internal fun resolveDisplayWorkflowState(stateRead: StateReadResult): Pair<WorkflowState?, Boolean> =
+    when (stateRead) {
+        is StateReadResult.Success -> stateRead.state to false
+        is StateReadResult.Malformed -> stateRead.lastKnownGood to (stateRead.lastKnownGood != null)
+        is StateReadResult.EncodingError -> stateRead.lastKnownGood to (stateRead.lastKnownGood != null)
+        is StateReadResult.Missing,
+        is StateReadResult.UnsupportedSchema,
+        is StateReadResult.AccessDenied,
+        -> null to false
+    }

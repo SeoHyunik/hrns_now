@@ -4,5 +4,6 @@ enum class AppRoute {
     Setup,
     Cockpit,
     Strategy,
-    Run
+    Run,
+    Recovery,
 }

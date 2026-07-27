@@ -2,6 +2,7 @@ package io.hrns_now.app.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.hrns_now.app.presentation.buildRecoveryProjection
 import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.mapper.CockpitUiStateAssembler
 import io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler
@@ -24,6 +25,8 @@ import io.hrns_now.core.domain.model.ProcessCancellationToken
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.RequestEntryDraft
+import io.hrns_now.core.domain.model.RepositoryStatus
+import io.hrns_now.core.domain.model.RecoveryDiagnostics
 import io.hrns_now.core.domain.model.RootPathCheck
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceDay
@@ -31,9 +34,14 @@ import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.toActiveSliceKind
 import io.hrns_now.core.domain.model.toCompatibilityStatus
 import io.hrns_now.core.domain.policy.BoundaryPolicy
+import io.hrns_now.core.domain.policy.ClosureContext
+import io.hrns_now.core.domain.policy.ClosureDecision
+import io.hrns_now.core.domain.policy.ClosurePolicy
 import io.hrns_now.core.domain.policy.CompatibilityPolicy
 import io.hrns_now.core.domain.policy.ExternalExecutionDetectionPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelection
+import io.hrns_now.core.port.GitStatusPort
+import io.hrns_now.core.port.RecoveryDiagnosticsPort
 import io.hrns_now.core.port.HarnessRunnerPort
 import io.hrns_now.core.port.KitVersionManifestPort
 import io.hrns_now.core.port.LockInspection
@@ -108,8 +116,11 @@ class AppViewModel(
     private val executeHarnessAction: ExecuteHarnessActionUseCase,
     private val saveRequest: SaveRequestUseCase,
     private val todayStrategyReader: TodayStrategyReaderPort,
+    private val gitStatusPort: GitStatusPort,
+    private val recoveryDiagnosticsPort: RecoveryDiagnosticsPort = RecoveryDiagnosticsPort { RecoveryDiagnostics.Empty },
     private val boundaryPolicy: BoundaryPolicy = BoundaryPolicy(),
     private val compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy(),
+    private val closurePolicy: ClosurePolicy = ClosurePolicy(),
     private val externalExecutionDetectionPolicy: ExternalExecutionDetectionPolicy = ExternalExecutionDetectionPolicy(),
     private val uiStateAssembler: CockpitUiStateAssembler = CockpitUiStateAssembler(),
     private val runStatusAssembler: RunStatusProjectionAssembler = RunStatusProjectionAssembler(),
@@ -156,6 +167,9 @@ class AppViewModel(
     private var requestInboxNotice: String? = null
     private var requestSaving: Boolean = false
     private var requestSaveSucceeded: Boolean = false
+    private var closureDecision: ClosureDecision = ClosureDecision.Blocked(listOf("아직 상태를 확인하지 않았습니다."))
+    private var lastStateRead: StateReadResult? = null
+    private var recoveryDiagnostics: RecoveryDiagnostics = RecoveryDiagnostics.Empty
 
     init {
         refresh()
@@ -181,8 +195,12 @@ class AppViewModel(
                 UiAction.RunReplan -> onHarnessRunRequested(UiAction.RunReplan, HarnessCommandKind.Replan)
                 UiAction.RunCodeSlice -> onHarnessRunRequested(UiAction.RunCodeSlice, HarnessCommandKind.ExecutionCode)
                 UiAction.RunDocSlice -> onHarnessRunRequested(UiAction.RunDocSlice, HarnessCommandKind.ExecutionDoc)
+                UiAction.RunClosureValidation ->
+                    onClosureValidationRequested(incompleteHandoffAcknowledged = false)
                 else -> Unit
             }
+            is HrnsUiEvent.ClosureValidationRequested ->
+                onClosureValidationRequested(event.incompleteHandoffAcknowledged)
             is HrnsUiEvent.ProjectSelected -> viewModelScope.launch { onProjectSelected(event.id) }
             is HrnsUiEvent.ProjectRegistrationRequested ->
                 viewModelScope.launch { onProjectRegistrationRequested(event.candidate) }
@@ -481,8 +499,23 @@ class AppViewModel(
             inspectLock(activeProject?.id, daySelection.workspaceDay.date)
         }
         strategyText = withContext(ioDispatcher) { todayStrategyReader.read(daySelection.workspaceDay) }
+        val repositoryStatus = withContext(ioDispatcher) {
+            activeProject?.repositoryRoot?.let(gitStatusPort::read) ?: RepositoryStatus.Unknown
+        }
+        val loadedRecoveryDiagnostics = withContext(ioDispatcher) {
+            recoveryDiagnosticsPort.read(daySelection.workspaceDay)
+        }
         if (sequence != loadSequence || contextGeneration != loadContextGeneration) return
         lastLockInspection = lockInspection
+        lastStateRead = loaded.stateRead
+        recoveryDiagnostics = loadedRecoveryDiagnostics
+        closureDecision = closurePolicy.evaluate(
+            ClosureContext(
+                stateRead = loaded.stateRead,
+                lockHeld = lockInspection != null,
+                repositoryStatus = repositoryStatus,
+            ),
+        )
 
         selectedDay = daySelection
         availableDates = dayResolution.availableDates
@@ -543,6 +576,8 @@ class AppViewModel(
             requestSaving = requestSaving,
             requestSaveSucceeded = requestSaveSucceeded,
             lockSummaryLabel = lockSummaryLabel(lockInspection, now),
+            closureDecision = closureDecision,
+            recoveryDiagnostics = recoveryDiagnostics,
         )
     }
 
@@ -603,9 +638,44 @@ class AppViewModel(
      * 근거로 남게 하기 위함이다. project/day가 실행 도중 바뀌면
      * [loadContextGeneration] 비교로 late-write를 막는다.
      */
-    private fun onHarnessRunRequested(action: UiAction, kind: HarnessCommandKind) {
+    private fun onClosureValidationRequested(incompleteHandoffAcknowledged: Boolean) {
+        when (closureDecision) {
+            ClosureDecision.Allowed ->
+                onHarnessRunRequested(UiAction.RunClosureValidation, HarnessCommandKind.ClosureValidation)
+
+            is ClosureDecision.RequiresExplicitIncompleteHandoff -> {
+                if (incompleteHandoffAcknowledged) {
+                    onHarnessRunRequested(
+                        UiAction.RunClosureValidation,
+                        HarnessCommandKind.ClosureValidation,
+                        closureAcknowledged = true,
+                    )
+                } else {
+                    showClosureValidationBlockedNotice()
+                }
+            }
+
+            is ClosureDecision.Blocked -> showClosureValidationBlockedNotice()
+        }
+    }
+
+    private fun showClosureValidationBlockedNotice() {
+        harnessRunView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.ClosureValidation,
+            notice = "현재 Closure 조건에서는 마감 검증을 실행할 수 없습니다. 복구 센터의 checklist를 확인하세요.",
+        )
+        refreshRunProjectionOnly()
+    }
+
+    private fun onHarnessRunRequested(
+        action: UiAction,
+        kind: HarnessCommandKind,
+        closureAcknowledged: Boolean = false,
+    ) {
         if (harnessRunView.isRunning) return
-        if (!isHarnessRunAllowed(action)) {
+        val allowedAfterExplicitAcknowledgement =
+            action == UiAction.RunClosureValidation && closureAcknowledged
+        if (!isHarnessRunAllowed(action) && !allowedAfterExplicitAcknowledgement) {
             harnessRunView = HarnessRunViewState(
                 lastCommand = kind,
                 notice = "현재 상태에서 허용되지 않은 실행입니다. 상태를 새로고침한 뒤 권장 행동을 확인하세요.",
@@ -795,6 +865,7 @@ class AppViewModel(
             allowedActions = current.cockpit.allowedActions.map { item -> item.withRunEnabled(runEnabled) },
         )
         val now = clock()
+        val newLockSummaryLabel = lockSummaryLabel(lastLockInspection, now)
         _state.value = current.copy(
             runStatus = runStatusAssembler.assemble(
                 runView = harnessRunView,
@@ -809,8 +880,19 @@ class AppViewModel(
                 requestInboxNotice,
                 requestSaving,
                 requestSaveSucceeded,
-                lockSummaryLabel(lastLockInspection, now),
+                newLockSummaryLabel,
             ),
+            recovery = lastStateRead?.let { stateRead ->
+                buildRecoveryProjection(
+                    updatedCockpit,
+                    stateRead,
+                    closureDecision,
+                    newLockSummaryLabel,
+                    closureValidationEnabledAfterAcknowledgement =
+                        current.recovery.closureValidationEnabledAfterAcknowledgement,
+                    recoveryDiagnostics = recoveryDiagnostics,
+                )
+            } ?: current.recovery,
         )
     }
 
@@ -858,6 +940,7 @@ class AppViewModel(
             UiAction.RunReplan,
             UiAction.RunCodeSlice,
             UiAction.RunDocSlice,
+            UiAction.RunClosureValidation,
         )
     }
 }

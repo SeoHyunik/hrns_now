@@ -4,6 +4,7 @@ import io.hrns_now.app.presentation.model.ActionButtonModel
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.app.presentation.model.InfoCardModel
+import io.hrns_now.app.presentation.model.RecoveryProjection
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.ShellProjection
@@ -143,5 +144,19 @@ class MockProjectionProvider {
                 ActionButtonModel("응답 로그 열기"),
                 ActionButtonModel("조건 확인 후 재시도"),
             ),
+        )
+
+    fun recovery(): RecoveryProjection =
+        RecoveryProjection(
+            title = "복구 센터 · 마감 확인",
+            subtitle = "발생한 일 / 보존된 기록 / 현재 허용된 행동을 분리해서 보여줍니다.",
+            activeCard = null,
+            closureChecklistRows = listOf(StatusChipModel("마감 조건", "demo", "neutral")),
+            closureNote = "demo mode에서는 실제 마감 조건을 평가하지 않습니다.",
+            incompleteHandoffItems = emptyList(),
+            lastKnownGoodLabel = "demo",
+            compatibilityLabel = "호환됨",
+            lockLabel = "없음",
+            actions = emptyList(),
         )
 }

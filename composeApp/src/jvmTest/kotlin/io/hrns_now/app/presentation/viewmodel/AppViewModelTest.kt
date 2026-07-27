@@ -57,6 +57,8 @@ import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.port.RequestSaveResult
 import io.hrns_now.core.port.RequestWriterPort
+import io.hrns_now.core.domain.model.RepositoryStatus
+import io.hrns_now.core.port.GitStatusPort
 import io.hrns_now.core.port.TodayStrategyReaderPort
 import io.hrns_now.core.port.WorkflowStatePort
 import io.hrns_now.core.result.HarnessDiagnosticContract
@@ -206,7 +208,12 @@ class AppViewModelTest {
             UiAction.RunReplan -> workflowState("replan").copy(status = WorkflowStatus.PlanningFailed)
             UiAction.RunCodeSlice -> executionReadyState(ExecutionWrapperState.Code, "code-target")
             UiAction.RunDocSlice -> executionReadyState(ExecutionWrapperState.Doc, "doc-target")
-            else -> error("Phase 4 harness action expected")
+            UiAction.RunClosureValidation -> workflowState("closure-validation").copy(
+                phase = WorkflowPhase.ExecutionCompleted,
+                status = WorkflowStatus.ExecutionCompleted,
+                executionCompleted = true,
+            )
+            else -> error("Phase 4/5 harness action expected")
         }
 
     private fun executionReadyState(wrapper: ExecutionWrapperState, target: String): WorkflowState =
@@ -375,6 +382,7 @@ class AppViewModelTest {
         processLock: ProcessLockPort = FakeProcessLockPort(clock = { fixedInstant }),
         requestWriter: RequestWriterPort = FakeRequestWriterPort(),
         todayStrategyReader: TodayStrategyReaderPort = TodayStrategyReaderPort { null },
+        gitStatusPort: GitStatusPort = GitStatusPort { RepositoryStatus.Clean },
     ): AppViewModel = AppViewModel(
         loadCockpit = loadUseCase(statePort, availableDates = availableDates),
         changeProbe = changeProbe,
@@ -400,6 +408,7 @@ class AppViewModelTest {
         ),
         saveRequest = SaveRequestUseCase(requestWriter),
         todayStrategyReader = todayStrategyReader,
+        gitStatusPort = gitStatusPort,
         ioDispatcher = dispatcher,
         pollIntervalMillis = pollIntervalMillis,
         clock = { fixedInstant },
@@ -576,6 +585,7 @@ class AppViewModelTest {
             ),
             saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -654,6 +664,7 @@ class AppViewModelTest {
             ),
             saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -799,6 +810,7 @@ class AppViewModelTest {
             ),
             saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -901,6 +913,7 @@ class AppViewModelTest {
             ),
             saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -1179,6 +1192,7 @@ class AppViewModelTest {
             ),
             saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 50L,
             clock = { fixedInstant },
@@ -1268,6 +1282,7 @@ class AppViewModelTest {
             UiAction.RunReplan,
             UiAction.RunCodeSlice,
             UiAction.RunDocSlice,
+            UiAction.RunClosureValidation,
         )
 
         for (action in actionsInOrder) {
@@ -1297,6 +1312,87 @@ class AppViewModelTest {
         assertEquals(ExecutionWrapper.Code, codeExecution.wrapper)
         val docExecution = assertIs<HarnessCommand.RunExecution>(capturedCommands[4])
         assertEquals(ExecutionWrapper.Doc, docExecution.wrapper)
+        assertIs<HarnessCommand.ValidateClosure>(capturedCommands[5])
+    }
+
+    @Test
+    fun `ActionPolicy가 RunClosureValidation을 허용해도 ClosurePolicy가 막으면 비활성화된다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val executions = AtomicInteger(0)
+        // ActionPolicy 관점에서는 RunClosureValidation이 허용되는 상태이지만, ops validation을
+        // 통과하지 못해 ClosurePolicy는 Blocked를 반환해야 한다 — 실행 성공(exit 0)과 closure
+        // 허용은 별개의 신호임을 확인한다.
+        val state = stateForAllowedHarnessAction(UiAction.RunClosureValidation)
+            .copy(opsValidation = OpsValidationState(passed = false, validatedAt = null, notes = null))
+        val statePort = FakeStatePort {
+            StateReadResult.Success(state, FileVersion(fixedInstant, 1, "closure-blocked"))
+        }
+        val viewModel = newViewModel(
+            statePort,
+            dispatcher,
+            registry = registry,
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { _, _, _ ->
+                executions.incrementAndGet()
+                ProcessRunResult.Completed(0, null, null, false, false)
+            },
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        val closureAction = (listOfNotNull(ready.cockpit.primaryAction) + ready.cockpit.allowedActions)
+            .firstOrNull { it.action == UiAction.RunClosureValidation }
+        assertEquals(false, closureAction?.enabled)
+
+        // UI button이 disabled여도 stale/direct event가 들어올 수 있으므로 ViewModel 경계에서
+        // ClosurePolicy를 다시 적용해야 한다.
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunClosureValidation))
+        runCurrent()
+        assertEquals(0, executions.get())
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `dirty repository의 closure 검증은 명시적 acknowledgement 없이는 실행되지 않는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val executions = AtomicInteger(0)
+        val statePort = FakeStatePort {
+            StateReadResult.Success(
+                stateForAllowedHarnessAction(UiAction.RunClosureValidation),
+                FileVersion(fixedInstant, 1, "closure-dirty-repository"),
+            )
+        }
+        val viewModel = newViewModel(
+            statePort,
+            dispatcher,
+            registry = registry,
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Dirty(listOf("src/Foo.kt")) },
+            harnessRunner = HarnessRunnerPort { _, _, _ ->
+                executions.incrementAndGet()
+                ProcessRunResult.Completed(0, null, null, false, false)
+            },
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(ready.recovery.incompleteHandoffItems.isNotEmpty())
+        assertEquals(false, ready.cockpit.allowedActions.first { it.action == UiAction.RunClosureValidation }.enabled)
+
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunClosureValidation))
+        runCurrent()
+        assertEquals(0, executions.get())
+
+        viewModel.onEvent(HrnsUiEvent.ClosureValidationRequested(incompleteHandoffAcknowledged = true))
+        runCurrent()
+        assertEquals(1, executions.get())
+        viewModel.dispose()
     }
 
     @Test
@@ -1483,6 +1579,7 @@ class AppViewModelTest {
             ),
             saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
+            gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },

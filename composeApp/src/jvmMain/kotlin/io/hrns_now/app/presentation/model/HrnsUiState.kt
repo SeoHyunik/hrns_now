@@ -41,6 +41,7 @@ sealed interface HrnsUiState {
         val cockpit: CockpitProjection,
         val todayWork: TodayWorkProjection,
         val runStatus: RunStatusProjection,
+        val recovery: RecoveryProjection,
         val registryProjects: List<RegistryProjectItem>,
         val workspaceDays: List<WorkspaceDayItem>,
         val activeProjectSourceLabel: String,

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.RegistryProjectItem
 import io.hrns_now.app.presentation.model.WorkspaceDayItem
+import io.hrns_now.app.presentation.model.RecoveryProjection
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.TodayWorkProjection
@@ -63,6 +65,7 @@ fun ScreenRoute(
     cockpitProjection: CockpitProjection,
     todayWorkProjection: TodayWorkProjection,
     runStatusProjection: RunStatusProjection,
+    recoveryProjection: RecoveryProjection,
     readiness: WorkspaceReadiness,
     onCockpitAction: (UiAction) -> Unit,
     registryProjects: List<RegistryProjectItem>,
@@ -87,6 +90,7 @@ fun ScreenRoute(
         AppRoute.Cockpit -> CockpitScreen(cockpitProjection, onCockpitAction)
         AppRoute.Strategy -> StrategyScreen(todayWorkProjection, onUiEvent)
         AppRoute.Run -> RunScreen(runStatusProjection, onUiEvent)
+        AppRoute.Recovery -> RecoveryScreen(recoveryProjection, onUiEvent)
     }
 }
 
@@ -847,6 +851,133 @@ private fun ConsoleDot(color: androidx.compose.ui.graphics.Color) {
             .size(9.dp)
             .background(color.copy(alpha = 0.85f), CircleShape),
     )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recovery (복구 센터 · 마감 확인)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> Unit = {}) {
+    val colors = LocalHrnsColors.current
+    var incompleteHandoffAcknowledged by remember(projection.incompleteHandoffItems) { mutableStateOf(false) }
+
+    ScreenContainer {
+        ScreenHero(
+            eyebrow = "05 · Recovery",
+            title = projection.title,
+            subtitle = projection.subtitle,
+        )
+
+        val card = projection.activeCard
+        if (card != null) {
+            SectionCard(title = card.title, eyebrow = "발생한 일 · 보존된 기록 · 허용된 행동") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RecoveryFact(label = "발생한 일", value = card.whatHappened)
+                    RecoveryFact(label = "보존된 기록", value = card.preservedRecord)
+                    RecoveryFact(label = "현재 허용된 행동", value = card.allowedNextAction)
+                }
+            }
+        } else {
+            SectionCard(title = "복구가 필요한 문제 없음", eyebrow = "Recovery") {
+                Text(
+                    text = "현재 관측된 stop reason이나 queue blocked marker가 없습니다.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    color = colors.secondaryText,
+                )
+            }
+        }
+
+        SectionCard(title = "마감 체크리스트", eyebrow = "Closure") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                InlineChips(chips = projection.closureChecklistRows)
+                Text(
+                    text = projection.closureNote,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                    color = colors.secondaryText,
+                )
+                if (projection.incompleteHandoffItems.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        projection.incompleteHandoffItems.forEach { item ->
+                            Text(
+                                text = "• $item",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                ),
+                                color = colors.tertiaryText,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = incompleteHandoffAcknowledged,
+                                onCheckedChange = { incompleteHandoffAcknowledged = it },
+                            )
+                            Text(
+                                text = "위 미완료 항목을 인지했으며 이 상태로 마감을 진행합니다.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                                color = colors.primaryText,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        SectionCard(title = "읽기 전용 진단", eyebrow = "Diagnostics") {
+            KeyValueGrid(
+                rows = listOf(
+                    "연속성 진단" to projection.continuityDiagnosticsLabel,
+                    "Usage ledger" to projection.usageLedgerLabel,
+                    "실패 이력" to projection.failureHistoryLabel,
+                    "마지막 정상 State" to projection.lastKnownGoodLabel,
+                    "Harness 호환성" to projection.compatibilityLabel,
+                    "잠금" to projection.lockLabel,
+                ),
+            )
+        }
+
+        SectionCard(title = "실행 작업", eyebrow = "Actions") {
+            val gatedActions = projection.actions.map { action ->
+                if (
+                    action.action == UiAction.RunClosureValidation &&
+                    projection.incompleteHandoffItems.isNotEmpty()
+                ) {
+                    action.copy(
+                        enabled = projection.closureValidationEnabledAfterAcknowledgement &&
+                            incompleteHandoffAcknowledged,
+                    )
+                } else {
+                    action
+                }
+            }
+            ActionButtonGroup(gatedActions, onAction = { action ->
+                if (action == UiAction.RunClosureValidation) {
+                    onUiEvent(HrnsUiEvent.ClosureValidationRequested(incompleteHandoffAcknowledged))
+                } else {
+                    onUiEvent(HrnsUiEvent.ActionRequested(action))
+                }
+            })
+        }
+    }
+}
+
+@Composable
+private fun RecoveryFact(label: String, value: String) {
+    val colors = LocalHrnsColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            fontWeight = FontWeight.SemiBold,
+            color = colors.secondaryText,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp, lineHeight = 19.sp),
+            color = colors.primaryText,
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

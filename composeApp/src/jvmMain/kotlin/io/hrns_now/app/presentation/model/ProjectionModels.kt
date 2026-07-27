@@ -64,6 +64,43 @@ data class TodayWorkProjection(
     val requestSaveSucceeded: Boolean = false,
 )
 
+/** stop reason/blocked marker 하나의 3분리 표시다: 발생한 일 / 보존된 기록 / 현재 허용 행동. */
+data class RecoveryCardModel(
+    val title: String,
+    val whatHappened: String,
+    val preservedRecord: String,
+    val allowedNextAction: String,
+)
+
+/**
+ * Recovery Center와 마감 확인 화면 projection이다(Phase 5). `closureChecklist`는
+ * [io.hrns_now.core.domain.policy.ClosureDecision]을 read-only로 표현하고, 실행 CTA
+ * enable/disable은 여전히 `ActionPolicy`/`ClosurePolicy`가 결정한 값만 그대로 보여준다 —
+ * 이 화면 자체가 판단하지 않는다.
+ */
+data class RecoveryProjection(
+    val title: String,
+    val subtitle: String,
+    /** 현재 관측된 stop reason/queue blocked marker/state 오류가 있을 때만 채워진다. */
+    val activeCard: RecoveryCardModel?,
+    val closureChecklistRows: List<StatusChipModel>,
+    val closureNote: String,
+    /** repository에 커밋되지 않은 변경이 있어 명시적 인지가 필요할 때만 채워진다. */
+    val incompleteHandoffItems: List<String>,
+    /**
+     * ActionPolicy가 허용한 closure action을 `RequiresExplicitIncompleteHandoff` 화면에서만
+     * acknowledgement와 교집합으로 다시 활성화할 수 있는지 나타낸다.
+     */
+    val closureValidationEnabledAfterAcknowledgement: Boolean = false,
+    val lastKnownGoodLabel: String,
+    val continuityDiagnosticsLabel: String = "없음",
+    val usageLedgerLabel: String = "없음",
+    val failureHistoryLabel: String = "없음",
+    val compatibilityLabel: String,
+    val lockLabel: String,
+    val actions: List<ActionButtonModel>,
+)
+
 data class RunStatusProjection(
     val title: String,
     val subtitle: String,
