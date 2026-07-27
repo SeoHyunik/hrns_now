@@ -45,8 +45,11 @@ import io.hrns_now.infra.WorkspaceArtifactProbe
 import io.hrns_now.infra.WorkspaceDayDiscovery
 import io.hrns_now.infra.WorkspacePathProbe
 import io.hrns_now.infra.kitversion.JsonKitVersionManifestAdapter
+import io.hrns_now.infra.lock.LocalProcessLockAdapter
+import io.hrns_now.infra.process.PowerShellHarnessAdapter
 import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
+import io.hrns_now.infra.security.SecretMaskingProcessRunner
 import io.hrns_now.infra.serialization.JsonWorkflowStateAdapter
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -162,6 +165,13 @@ private fun resolveRegistryPath(): Path {
     return Paths.get(appData, "hrns-now", "projects.json")
 }
 
+/** `%LOCALAPPDATA%\hrns-now\locks\` — Harness workspace 밖의 앱 소유 lock 디렉터리다(Phase 3). */
+private fun resolveLocksRoot(): Path {
+    val localAppData = System.getenv("LOCALAPPDATA")?.trim()?.takeIf(String::isNotEmpty)
+        ?: (System.getProperty("user.home") + "\\AppData\\Local")
+    return Paths.get(localAppData, "hrns-now", "locks")
+}
+
 private fun createProductionViewModel(): AppViewModel {
     val pathProbe = WorkspacePathProbe()
     val artifactProbe = WorkspaceArtifactProbe()
@@ -192,5 +202,7 @@ private fun createProductionViewModel(): AppViewModel {
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = realPathGateway::resolve,
         compatibilityPort = JsonKitVersionManifestAdapter(),
+        harnessRunner = SecretMaskingProcessRunner(PowerShellHarnessAdapter()),
+        processLock = LocalProcessLockAdapter(locksRoot = resolveLocksRoot()),
     )
 }

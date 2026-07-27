@@ -402,10 +402,21 @@ fun PlaceholderActionButton(
 }
 
 @Composable
-fun PlaceholderActionButton(action: ActionButtonModel, primary: Boolean = false, modifier: Modifier = Modifier) {
+fun PlaceholderActionButton(
+    action: ActionButtonModel,
+    primary: Boolean = false,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
     val colors = LocalHrnsColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlaceholderActionButton(text = action.label, primary = primary, modifier = modifier, enabled = action.enabled)
+        PlaceholderActionButton(
+            text = action.label,
+            primary = primary,
+            modifier = modifier,
+            enabled = action.enabled,
+            onClick = onClick,
+        )
         action.helperText?.let { helper ->
             Text(
                 text = helper,
@@ -418,14 +429,22 @@ fun PlaceholderActionButton(action: ActionButtonModel, primary: Boolean = false,
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ActionButtonGroup(actions: List<ActionButtonModel>, modifier: Modifier = Modifier) {
+fun ActionButtonGroup(
+    actions: List<ActionButtonModel>,
+    onAction: (UiAction) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         actions.forEachIndexed { index, action ->
-            PlaceholderActionButton(action = action, primary = index == 0)
+            PlaceholderActionButton(
+                action = action,
+                primary = index == 0,
+                onClick = { action.action?.let(onAction) },
+            )
         }
     }
 }

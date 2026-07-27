@@ -81,7 +81,7 @@ fun ScreenRoute(
         )
         AppRoute.Cockpit -> CockpitScreen(cockpitProjection, onCockpitAction)
         AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
-        AppRoute.Run -> RunScreen(runStatusProjection)
+        AppRoute.Run -> RunScreen(runStatusProjection, onUiEvent)
     }
 }
 
@@ -238,7 +238,7 @@ fun SetupScreen(
 
         SectionCard(title = "실행 작업", eyebrow = "Actions") {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ActionButtonGroup(projection.actions)
+                ActionButtonGroup(projection.actions, onAction = { action -> onUiEvent(HrnsUiEvent.ActionRequested(action)) })
                 Text(
                     text = projection.note,
                     style = MaterialTheme.typography.bodySmall.copy(
@@ -598,7 +598,7 @@ fun StrategyScreen(projection: TodayWorkProjection) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun RunScreen(projection: RunStatusProjection) {
+fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit) {
     val colors = LocalHrnsColors.current
 
     ScreenContainer {
@@ -629,7 +629,18 @@ fun RunScreen(projection: RunStatusProjection) {
         }
 
         SectionCard(title = "실행 작업", eyebrow = "Actions") {
-            ActionButtonGroup(projection.actions)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlaceholderActionButton(
+                    text = "실행 취소",
+                    enabled = projection.cancelEnabled,
+                    onClick = { onUiEvent(HrnsUiEvent.HarnessRunCancelRequested) },
+                )
+                PlaceholderActionButton(
+                    text = "잠금 강제 해제",
+                    enabled = projection.forceReleaseEnabled,
+                    onClick = { onUiEvent(HrnsUiEvent.LockForceReleaseRequested) },
+                )
+            }
         }
     }
 }

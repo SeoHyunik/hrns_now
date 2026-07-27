@@ -39,6 +39,7 @@ class CockpitProjectionAssembler(
         process: ProcessRunStatus,
         lastSuccessfulReadAtLabel: String?,
         lastAttemptAtLabel: String?,
+        harnessRunInProgress: Boolean = false,
     ): CockpitProjection {
         val (displayState, isStale) = resolveDisplayState(stateRead)
         // 최종 계획 부록 A와 live State는 queue.active를 card/slice pointer로만 보증한다.
@@ -77,8 +78,8 @@ class CockpitProjectionAssembler(
             executionCompletedLabel = displayState?.let { if (it.executionCompleted) "완료" else "진행 중" } ?: NOT_AVAILABLE,
             lastSuccessfulReadAtLabel = lastSuccessfulReadAtLabel,
             lastAttemptAtLabel = lastAttemptAtLabel,
-            primaryAction = recommended.primary?.let(::actionItem),
-            allowedActions = recommended.allowed.map(::actionItem),
+            primaryAction = recommended.primary?.let { actionItem(it, harnessRunInProgress) },
+            allowedActions = recommended.allowed.map { actionItem(it, harnessRunInProgress) },
             diagnostics = diagnosticsFor(stateRead, recommended.blockedReason),
             compatibilityDiagnostics = diagnosticsForCompatibility(compatibilityDetail, recommended.blockedReason),
         )
@@ -191,11 +192,15 @@ class CockpitProjectionAssembler(
             )
         }
 
-    private fun actionItem(action: UiAction): CockpitActionItem =
+    private fun actionItem(action: UiAction, harnessRunInProgress: Boolean): CockpitActionItem =
         CockpitActionItem(
             action = action,
             label = action.displayLabel(),
-            enabled = action == UiAction.Refresh,
+            enabled = when (action) {
+                UiAction.Refresh -> true
+                UiAction.RunDoctor, UiAction.RunOpsValidation -> !harnessRunInProgress
+                else -> false
+            },
         )
     private companion object {
         const val NOT_AVAILABLE = "확인 불가"

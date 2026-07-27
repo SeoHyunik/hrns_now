@@ -1,8 +1,8 @@
 package io.hrns_now.app.presentation
 
 import io.hrns_now.app.presentation.model.ActionButtonModel
+import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.InfoCardModel
-import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.ShellProjection
 import io.hrns_now.app.presentation.model.SourceFreshnessItem
@@ -11,6 +11,7 @@ import io.hrns_now.app.presentation.model.TodayWorkProjection
 import io.hrns_now.core.config.PathProbeState
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
+import io.hrns_now.core.domain.model.UiAction
 
 /**
  * production 기본 경로에서 쓰는, mock이 아닌 정적/실데이터 기반 projection 조립부다.
@@ -32,7 +33,11 @@ fun buildShellProjection(): ShellProjection =
         ),
     )
 
-fun buildSetupProjection(config: WorkspaceConfig, probeSummary: WorkspaceProbeSummary): SetupProjection {
+fun buildSetupProjection(
+    config: WorkspaceConfig,
+    probeSummary: WorkspaceProbeSummary,
+    diagnosticActions: List<CockpitActionItem> = emptyList(),
+): SetupProjection {
     val rows = listOf(
         probeSummary.kitRoot,
         probeSummary.workspaceRoot,
@@ -51,13 +56,34 @@ fun buildSetupProjection(config: WorkspaceConfig, probeSummary: WorkspaceProbeSu
             InfoCardModel("실행 프로필", listOf("프로필" to config.profileName)),
         ),
         actions = listOf(
-            ActionButtonModel("상태 점검 실행"),
-            ActionButtonModel("프로젝트 연결"),
+            diagnosticAction(
+                label = "상태 점검 실행",
+                action = UiAction.RunDoctor,
+                diagnosticActions = diagnosticActions,
+            ),
+            diagnosticAction(
+                label = "운영 검증 실행",
+                action = UiAction.RunOpsValidation,
+                diagnosticActions = diagnosticActions,
+            ),
         ),
-        note = "PS1 실행 연결은 Phase 3에서 추가됩니다.",
+        note = "상태 점검과 운영 검증은 선택한 프로젝트·날짜 및 안전 조건을 충족할 때만 실행됩니다.",
     )
 }
 
+private fun diagnosticAction(
+    label: String,
+    action: UiAction,
+    diagnosticActions: List<CockpitActionItem>,
+): ActionButtonModel {
+    val actionItem = diagnosticActions.firstOrNull { it.action == action }
+    return ActionButtonModel(
+        label = label,
+        enabled = actionItem?.enabled == true,
+        helperText = if (actionItem == null) "현재 상태에서는 실행할 수 없습니다." else null,
+        action = action,
+    )
+}
 private fun PathProbeState.summaryLabel(): String =
     when (this) {
         PathProbeState.NotConfigured -> "미설정"
@@ -78,15 +104,4 @@ fun buildPlaceholderTodayWorkProjection(): TodayWorkProjection =
         ),
         actions = emptyList(),
         note = "수동 실행은 이후 PS1 façade에 연결됩니다.",
-    )
-
-fun buildPlaceholderRunStatusProjection(): RunStatusProjection =
-    RunStatusProjection(
-        title = "실행 현황",
-        subtitle = "이 화면은 Phase 3(진단용 PowerShell 실행 어댑터)에서 실데이터로 연결됩니다.",
-        stages = emptyList(),
-        consoleLines = listOf("[대기] 실행 어댑터가 아직 연결되지 않았습니다."),
-        stageDetailRows = emptyList(),
-        failureChips = emptyList(),
-        actions = emptyList(),
     )

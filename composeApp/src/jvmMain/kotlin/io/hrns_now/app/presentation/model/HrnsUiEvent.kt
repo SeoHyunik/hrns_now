@@ -12,4 +12,10 @@ sealed interface HrnsUiEvent {
     data class ProjectRegistrationRequested(val candidate: RegisterProjectCandidate) : HrnsUiEvent
     data class ProjectDeletionRequested(val id: ProjectId) : HrnsUiEvent
     data class WorkspaceDaySelected(val date: LocalDate) : HrnsUiEvent
+
+    /** 진행 중인 Doctor/ValidateOps 실행 취소를 요청한다(Phase 3). 실행 중이 아니면 무시된다. */
+    data object HarnessRunCancelRequested : HrnsUiEvent
+
+    /** 현재 날짜의 UI 소유 lock을 명시적으로 강제 해제한다(Phase 3). */
+    data object LockForceReleaseRequested : HrnsUiEvent
 }

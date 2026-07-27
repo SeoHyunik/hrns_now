@@ -16,10 +16,16 @@ import io.hrns_now.core.domain.model.ClosureState
 import io.hrns_now.core.domain.model.ContractVersion
 import io.hrns_now.core.domain.model.ExecutionWrapperState
 import io.hrns_now.core.domain.model.FileVersion
+import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.KitVersion
 import io.hrns_now.core.domain.model.KitVersionManifest
 import io.hrns_now.core.domain.model.KitVersionReadResult
+import io.hrns_now.core.domain.model.LockAcquireResult
+import io.hrns_now.core.domain.model.LockHandle
+import io.hrns_now.core.domain.model.LockPayload
+import io.hrns_now.core.domain.model.LockReleaseResult
+import io.hrns_now.core.domain.model.LockState
 import io.hrns_now.core.domain.model.OpsValidationState
 import io.hrns_now.core.domain.model.PathIssue
 import io.hrns_now.core.domain.model.ProjectId
@@ -35,9 +41,13 @@ import io.hrns_now.core.domain.model.WorkflowStatus
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
+import io.hrns_now.core.port.HarnessRunnerPort
 import io.hrns_now.core.port.KitVersionManifestPort
+import io.hrns_now.core.port.LockInspection
+import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.port.WorkflowStatePort
+import io.hrns_now.core.result.ProcessRunResult
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
 import io.hrns_now.core.result.StateReadResult
@@ -164,6 +174,52 @@ class AppViewModelTest {
         override fun read(day: WorkspaceDay): StateReadResult = result(callCount.incrementAndGet())
     }
 
+    /** 인메모리 [ProcessLockPort] 테스트 대역이다 — 기본은 항상 즉시 획득에 성공한다. */
+    private class FakeProcessLockPort(
+        private val clock: () -> Instant = Instant::now,
+    ) : ProcessLockPort {
+        private val locks = mutableMapOf<Pair<ProjectId, LocalDate>, LockPayload>()
+        val acquireCalls = AtomicInteger(0)
+        val heartbeatCalls = AtomicInteger(0)
+
+        override suspend fun acquire(
+            projectId: ProjectId,
+            date: LocalDate,
+            commandKind: HarnessCommandKind,
+        ): LockAcquireResult {
+            acquireCalls.incrementAndGet()
+            val key = projectId to date
+            val existing = locks[key]
+            if (existing != null) return LockAcquireResult.Busy(existing)
+            val now = clock()
+            locks[key] = LockPayload(projectId, date, 4242L, commandKind, now, now)
+            return LockAcquireResult.Acquired(LockHandle(projectId, date, 4242L, now))
+        }
+
+        override suspend fun heartbeat(handle: LockHandle): Boolean {
+            heartbeatCalls.incrementAndGet()
+            val key = handle.projectId to handle.date
+            val existing = locks[key] ?: return false
+            locks[key] = existing.copy(heartbeatAt = clock())
+            return true
+        }
+
+        override suspend fun release(handle: LockHandle): LockReleaseResult {
+            locks.remove(handle.projectId to handle.date)
+            return LockReleaseResult.Released
+        }
+
+        override suspend fun inspect(projectId: ProjectId, date: LocalDate): LockInspection? {
+            val payload = locks[projectId to date] ?: return null
+            return LockInspection(payload, LockState.Active)
+        }
+
+        override suspend fun forceRelease(projectId: ProjectId, date: LocalDate): LockReleaseResult {
+            locks.remove(projectId to date)
+            return LockReleaseResult.Released
+        }
+    }
+
     /** 인메모리 [ProjectRegistryPort] 테스트 대역이다. */
     private class FakeProjectRegistryPort(
         initialProjects: List<HarnessProject> = emptyList(),
@@ -245,6 +301,8 @@ class AppViewModelTest {
         availableDates: List<LocalDate> = emptyList(),
         boundaryResolver: (String?) -> RootPathCheck = { RootPathCheck.Invalid(PathIssue.NotProvided) },
         compatibilityPort: KitVersionManifestPort = KitVersionManifestPort { KitVersionReadResult.Missing },
+        harnessRunner: HarnessRunnerPort = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+        processLock: ProcessLockPort = FakeProcessLockPort(clock = { fixedInstant }),
     ): AppViewModel = AppViewModel(
         loadCockpit = loadUseCase(statePort, availableDates = availableDates),
         changeProbe = changeProbe,
@@ -259,6 +317,8 @@ class AppViewModelTest {
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = boundaryResolver,
         compatibilityPort = compatibilityPort,
+        harnessRunner = harnessRunner,
+        processLock = processLock,
         ioDispatcher = dispatcher,
         pollIntervalMillis = pollIntervalMillis,
         clock = { fixedInstant },
@@ -400,6 +460,32 @@ class AppViewModelTest {
                 recordThread()
                 KitVersionReadResult.Missing
             },
+            harnessRunner = HarnessRunnerPort { _, _, _ ->
+                recordThread()
+                ProcessRunResult.StartFailed("not configured")
+            },
+            processLock = object : ProcessLockPort {
+                override suspend fun acquire(projectId: ProjectId, date: LocalDate, commandKind: HarnessCommandKind): LockAcquireResult {
+                    recordThread()
+                    return LockAcquireResult.Failed("not configured")
+                }
+                override suspend fun heartbeat(handle: LockHandle): Boolean {
+                    recordThread()
+                    return false
+                }
+                override suspend fun release(handle: LockHandle): LockReleaseResult {
+                    recordThread()
+                    return LockReleaseResult.Released
+                }
+                override suspend fun inspect(projectId: ProjectId, date: LocalDate): LockInspection? {
+                    recordThread()
+                    return null
+                }
+                override suspend fun forceRelease(projectId: ProjectId, date: LocalDate): LockReleaseResult {
+                    recordThread()
+                    return LockReleaseResult.Released
+                }
+            },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -467,6 +553,8 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -601,6 +689,8 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = compatibilityPort,
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -692,6 +782,8 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -924,6 +1016,8 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 50L,
             clock = { fixedInstant },
@@ -954,5 +1048,167 @@ class AppViewModelTest {
             ioExecutor.shutdownNow()
             mainExecutor.shutdownNow()
         }
+    }
+
+    @Test
+    fun `Doctor 실행 중 중복 클릭은 harnessRunner를 한 번만 호출한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val executeCount = AtomicInteger(0)
+        val runner = HarnessRunnerPort { _, _, _ ->
+            executeCount.incrementAndGet()
+            ProcessRunResult.Completed(0, null, null, false, false)
+        }
+        val viewModel = newViewModel(statePort, dispatcher, registry = registry, harnessRunner = runner)
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        runCurrent()
+
+        assertEquals(1, executeCount.get())
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `실행이 끝나면 harnessRunner 결과와 별개로 State를 다시 읽는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val runner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.Completed(0, null, null, false, false) }
+        val viewModel = newViewModel(statePort, dispatcher, registry = registry, harnessRunner = runner)
+        runCurrent()
+        val callsBeforeRun = statePort.callCount.get()
+
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        runCurrent()
+
+        assertTrue(statePort.callCount.get() > callsBeforeRun)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `실행 도중 프로젝트를 전환하면 늦게 끝난 실행 결과가 새 프로젝트 상태를 덮지 않는다`() = runBlocking {
+        val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "run-switch-io") }
+        val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "run-switch-main") }
+        val ioDispatcher = ioExecutor.asCoroutineDispatcher()
+        val mainDispatcher = mainExecutor.asCoroutineDispatcher()
+
+        val projectA = harnessProject("a", "S:\\project-a")
+        val projectB = harnessProject("b", "S:\\project-b")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(projectA, projectB), initialActiveId = projectA.id)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+
+        val runEntered = CountDownLatch(1)
+        val releaseRun = CountDownLatch(1)
+        val runner = HarnessRunnerPort { _, _, _ ->
+            runEntered.countDown()
+            assertTrue(releaseRun.await(5, TimeUnit.SECONDS))
+            ProcessRunResult.Completed(0, null, "project-a-late-result", false, false)
+        }
+
+        val loadCockpit = LoadCockpitUseCase(
+            pathProbe = { probeSummary() },
+            readinessProvider = { _, _ -> readiness() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+            dayDiscovery = { emptyList() },
+            daySelectionPolicy = WorkspaceDaySelectionPolicy(LocalDate.of(2026, 6, 26)),
+            statePort = statePort,
+        )
+        val viewModel = AppViewModel(
+            loadCockpit = loadCockpit,
+            changeProbe = { null },
+            resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
+            loadProjects = LoadProjectsUseCase(registry),
+            registerProject = RegisterProjectUseCase(
+                pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                registry = registry,
+            ),
+            selectProject = SelectProjectUseCase(registry),
+            selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
+            deleteProject = DeleteProjectUseCase(registry),
+            boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+            compatibilityPort = { KitVersionReadResult.Missing },
+            harnessRunner = runner,
+            processLock = FakeProcessLockPort(),
+            ioDispatcher = ioDispatcher,
+            pollIntervalMillis = 60_000L,
+            clock = { fixedInstant },
+            mainDispatcher = mainDispatcher,
+        )
+
+        try {
+            withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { ready -> ready.registryProjects.firstOrNull { it.isActive }?.id == projectA.id }
+            }
+
+            viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+            assertTrue(runEntered.await(5, TimeUnit.SECONDS))
+
+            viewModel.onEvent(HrnsUiEvent.ProjectSelected(projectB.id))
+            val readyB = withTimeout(5_000) {
+                viewModel.state.filterIsInstance<HrnsUiState.Ready>()
+                    .first { ready -> ready.registryProjects.firstOrNull { it.isActive }?.id == projectB.id }
+            }
+            assertTrue(readyB.runStatus.consoleLines.any { it.contains("대기") })
+
+            releaseRun.countDown()
+            mainExecutor.submit {}.get(5, TimeUnit.SECONDS)
+            val stillB = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+            assertTrue(stillB.runStatus.consoleLines.any { it.contains("대기") })
+            assertFalse(stillB.runStatus.consoleLines.any { it.contains("project-a-late-result") })
+            assertTrue(stillB.registryProjects.firstOrNull { it.isActive }?.id == projectB.id)
+        } finally {
+            releaseRun.countDown()
+            viewModel.dispose()
+            ioDispatcher.close()
+            mainDispatcher.close()
+            ioExecutor.shutdownNow()
+            mainExecutor.shutdownNow()
+        }
+    }
+    @Test
+    fun `UI 밖 State 변경은 새 Doctor 실행을 보류하고 새로고침 후에만 해제한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        var mtime = FileTime.fromMillis(0)
+        val executions = AtomicInteger(0)
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            changeProbe = { mtime },
+            pollIntervalMillis = 100L,
+            registry = registry,
+            harnessRunner = HarnessRunnerPort { _, _, _ ->
+                executions.incrementAndGet()
+                ProcessRunResult.Completed(0, null, null, false, false)
+            },
+        )
+        runCurrent()
+
+        mtime = FileTime.fromMillis(1)
+        advanceTimeBy(101L)
+        runCurrent()
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        runCurrent()
+
+        val held = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals(0, executions.get())
+        assertTrue(held.runStatus.consoleLines.any { it.contains("외부 실행 가능성") })
+
+        viewModel.refresh()
+        runCurrent()
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        runCurrent()
+
+        assertEquals(1, executions.get())
+        viewModel.dispose()
     }
 }
