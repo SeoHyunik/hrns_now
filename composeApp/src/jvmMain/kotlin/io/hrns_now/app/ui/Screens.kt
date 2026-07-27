@@ -416,7 +416,7 @@ private fun ProjectRegistrationForm(onUiEvent: (HrnsUiEvent) -> Unit) {
         LabeledTextField(label = "Profile", value = profileId, onValueChange = { profileId = it })
 
         PlaceholderActionButton(
-            text = "등록",
+            text = "진단 후 등록",
             primary = true,
             enabled = displayName.isNotBlank() && kitRoot.isNotBlank() && workspaceRoot.isNotBlank() &&
                 repositoryRoot.isNotBlank() && profileId.isNotBlank(),

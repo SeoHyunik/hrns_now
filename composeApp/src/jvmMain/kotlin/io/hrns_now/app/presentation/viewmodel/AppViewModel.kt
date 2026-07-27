@@ -33,6 +33,7 @@ import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
+import io.hrns_now.core.result.HarnessOverallStatus
 import io.hrns_now.core.result.ProcessRunResult
 import io.hrns_now.core.result.StateReadResult
 import io.hrns_now.core.usecase.ActiveProjectSource
@@ -40,6 +41,7 @@ import io.hrns_now.core.usecase.DeleteProjectUseCase
 import io.hrns_now.core.usecase.LoadCockpitUseCase
 import io.hrns_now.core.usecase.LoadProjectsUseCase
 import io.hrns_now.core.usecase.RegisterProjectCandidate
+import io.hrns_now.core.usecase.ProjectRegistrationInspection
 import io.hrns_now.core.usecase.RegisterProjectResult
 import io.hrns_now.core.usecase.RegisterProjectUseCase
 import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
@@ -177,13 +179,94 @@ class AppViewModel(
         loadOnce(forceRead = true)
     }
 
+    /**
+     * 신규 프로젝트는 Registry에 쓰기 전에 경계 검사 → Doctor → compatibility 순서로 검증한다.
+     * Doctor warn(GPU capability 등)은 결과 카드로 보존하되, fail/계약 미파싱/호환성 불일치는
+     * fail-closed로 Registry 저장을 막는다.
+     */
     private suspend fun onProjectRegistrationRequested(candidate: RegisterProjectCandidate) {
-        when (val result = withContext(ioDispatcher) { registerProject(candidate) }) {
+        val inspection = withContext(ioDispatcher) { registerProject.inspect(candidate) }
+        val prepared = when (inspection) {
+            is ProjectRegistrationInspection.Ready -> inspection
+            is ProjectRegistrationInspection.InvalidCandidate -> {
+                registryMessage = "등록할 수 없습니다: ${inspection.message}"
+                loadOnce(forceRead = true)
+                return
+            }
+            is ProjectRegistrationInspection.BoundaryRejected -> {
+                registryMessage = "등록할 수 없습니다: 경로 경계 조건을 확인하세요 (${inspection.boundary.violations.size}건 위반)."
+                loadOnce(forceRead = true)
+                return
+            }
+        }
+        val project = prepared.project
+        val date = clock().atZone(ZoneId.systemDefault()).toLocalDate()
+        val command = HarnessCommand.Doctor(
+            kitRoot = project.kitRoot,
+            workspaceRoot = project.projectWorkspaceRoot,
+            projectRoot = project.repositoryRoot,
+            date = date,
+        )
+        harnessRunCancellationToken = ProcessCancellationToken()
+        harnessRunView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.Doctor,
+            isRunning = true,
+            runStartedAt = clock(),
+        )
+        refreshRunProjectionOnly()
+
+        val lockResult = withContext(ioDispatcher) {
+            processLock.acquire(project.id, date, HarnessCommandKind.Doctor)
+        }
+        val acquired = lockResult as? LockAcquireResult.Acquired
+        if (acquired == null) {
+            harnessRunView = harnessRunView.copy(
+                isRunning = false,
+                notice = "온보딩 진단 잠금을 안전하게 획득하지 못해 Registry를 저장하지 않았습니다.",
+            )
+            refreshRunProjectionOnly()
+            return
+        }
+
+        currentLockHandle = acquired.handle
+        startHeartbeat(acquired.handle)
+        val result = try {
+            withContext(ioDispatcher) {
+                harnessRunner.execute(command, runTimeout, requireNotNull(harnessRunCancellationToken))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ProcessRunResult.StartFailed("온보딩 진단 프로세스를 안전하게 관찰하지 못했습니다.")
+        } finally {
+            stopHeartbeat()
+            withContext(ioDispatcher) { processLock.release(acquired.handle) }
+            currentLockHandle = null
+            lastLockInspection = null
+        }
+        harnessRunView = harnessRunView.copy(isRunning = false, lastResult = result, notice = null)
+        refreshRunProjectionOnly()
+
+        val compatibility = withContext(ioDispatcher) {
+            compatibilityPolicy.evaluate(compatibilityPort.readManifest(project.kitRoot))
+        }
+        if (!doctorAllowsRegistration(result)) {
+            registryMessage = "Doctor 진단을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 현황에서 결과를 확인하세요."
+            loadOnce(forceRead = true)
+            return
+        }
+        if (!compatibilityAllowsRegistration(compatibility)) {
+            registryMessage = "Harness 호환성을 확인하지 못해 Registry를 저장하지 않았습니다."
+            loadOnce(forceRead = true)
+            return
+        }
+
+        when (val result = withContext(ioDispatcher) { registerProject.save(prepared) }) {
             is RegisterProjectResult.Registered -> {
                 when (val selected = withContext(ioDispatcher) { selectProject(result.project.id) }) {
                     is SelectProjectResult.Selected -> {
                         applyActiveProject(selected.project)
-                        refreshRegistryProjects("'${selected.project.displayName}' 프로젝트를 등록하고 선택했습니다.")
+                        refreshRegistryProjects("Doctor·호환성 확인 후 '${selected.project.displayName}' 프로젝트를 등록했습니다.")
                     }
                     SelectProjectResult.NotFound ->
                         refreshRegistryProjects("프로젝트는 저장됐지만 다시 찾을 수 없습니다.")
@@ -191,17 +274,22 @@ class AppViewModel(
                         refreshRegistryProjects("프로젝트는 저장됐지만 활성 선택을 기록하지 못했습니다: ${selected.message}")
                 }
             }
-            is RegisterProjectResult.InvalidCandidate ->
-                registryMessage = "등록할 수 없습니다: ${result.message}"
-            is RegisterProjectResult.BoundaryRejected -> {
-                registryMessage =
-                    "등록할 수 없습니다: 경로 경계 조건을 확인하세요 (${result.boundary.violations.size}건 위반)."
-            }
-            is RegisterProjectResult.SaveFailed ->
-                registryMessage = "등록 실패: ${result.message}"
+            is RegisterProjectResult.SaveFailed -> registryMessage = "Registry 저장 실패: ${result.message}"
+            is RegisterProjectResult.InvalidCandidate,
+            is RegisterProjectResult.BoundaryRejected,
+            -> error("검증된 후보를 저장할 때는 발생할 수 없는 결과입니다.")
         }
         loadOnce(forceRead = true)
     }
+
+    private fun doctorAllowsRegistration(result: ProcessRunResult): Boolean =
+        result is ProcessRunResult.Completed &&
+            result.exitCode == 0 &&
+            result.contract?.overall !is HarnessOverallStatus.Fail &&
+            result.contract?.overall !is HarnessOverallStatus.Unknown
+
+    private fun compatibilityAllowsRegistration(detail: HarnessCompatibilityDetail): Boolean =
+        detail is HarnessCompatibilityDetail.Supported || detail is HarnessCompatibilityDetail.SupportedWithUnknownFields
 
     private suspend fun onProjectDeletionRequested(id: ProjectId) {
         when (val deleted = withContext(ioDispatcher) { deleteProject(id) }) {

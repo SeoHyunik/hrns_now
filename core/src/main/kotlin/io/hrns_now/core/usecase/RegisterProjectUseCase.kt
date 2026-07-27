@@ -26,6 +26,13 @@ sealed interface RegisterProjectResult {
     data class SaveFailed(val message: String) : RegisterProjectResult
 }
 
+/** Registry write 전 단계의 typed 후보 검증 결과다. */
+sealed interface ProjectRegistrationInspection {
+    data class Ready(val project: HarnessProject) : ProjectRegistrationInspection
+    data class InvalidCandidate(val message: String) : ProjectRegistrationInspection
+    data class BoundaryRejected(val boundary: ProjectBoundaryResult) : ProjectRegistrationInspection
+}
+
 /**
  * 신규 프로젝트를 경계 검증 후 Registry에 저장하는 use case다.
  *
@@ -40,39 +47,52 @@ class RegisterProjectUseCase(
     private val boundaryPolicy: BoundaryPolicy = BoundaryPolicy(),
     private val idFactory: () -> ProjectId = { ProjectId(UUID.randomUUID().toString()) },
 ) {
-    suspend operator fun invoke(candidate: RegisterProjectCandidate): RegisterProjectResult {
+    /**
+     * 후보를 저장하지 않고 경계까지 검증한다. Phase 3 onboarding은 이 결과로 Doctor와
+     * compatibility를 먼저 확인한 뒤 [save]를 호출한다.
+     */
+    fun inspect(candidate: RegisterProjectCandidate): ProjectRegistrationInspection {
         val displayName = candidate.displayName.trim().takeIf(String::isNotEmpty)
-            ?: return RegisterProjectResult.InvalidCandidate("표시명을 입력하세요.")
+            ?: return ProjectRegistrationInspection.InvalidCandidate("표시명을 입력하세요.")
         val profileId = candidate.profileId.trim().takeIf(String::isNotEmpty)
-            ?: return RegisterProjectResult.InvalidCandidate("Profile을 입력하세요.")
+            ?: return ProjectRegistrationInspection.InvalidCandidate("Profile을 입력하세요.")
         val kit = pathResolver(candidate.kitRootRaw)
         val workspace = pathResolver(candidate.projectWorkspaceRootRaw)
         val repository = pathResolver(candidate.repositoryRootRaw)
         val boundary = boundaryPolicy.evaluate(kit = kit, workspace = workspace, repository = repository)
 
         if (boundary.status != BoundaryStatus.Valid) {
-            return RegisterProjectResult.BoundaryRejected(boundary)
+            return ProjectRegistrationInspection.BoundaryRejected(boundary)
         }
 
         val validKit = boundary.kit as RootPathCheck.Valid
         val validWorkspace = boundary.workspace as RootPathCheck.Valid
         val validRepository = boundary.repository as RootPathCheck.Valid
-
-        val project = HarnessProject(
-            id = idFactory(),
-            displayName = displayName,
-            kitRoot = validKit.normalized,
-            projectWorkspaceRoot = validWorkspace.normalized,
-            repositoryRoot = validRepository.normalized,
-            profileId = profileId,
-            lastSelectedDate = null,
-            lastDiagnosticsSummary = null,
-            lastRunAt = null,
+        return ProjectRegistrationInspection.Ready(
+            HarnessProject(
+                id = idFactory(),
+                displayName = displayName,
+                kitRoot = validKit.normalized,
+                projectWorkspaceRoot = validWorkspace.normalized,
+                repositoryRoot = validRepository.normalized,
+                profileId = profileId,
+                lastSelectedDate = null,
+                lastDiagnosticsSummary = null,
+                lastRunAt = null,
+            ),
         )
+    }
 
-        return when (val saved = registry.save(project)) {
-            RegistrySaveResult.Success -> RegisterProjectResult.Registered(project)
+    suspend fun save(inspection: ProjectRegistrationInspection.Ready): RegisterProjectResult =
+        when (val saved = registry.save(inspection.project)) {
+            RegistrySaveResult.Success -> RegisterProjectResult.Registered(inspection.project)
             is RegistrySaveResult.Failed -> RegisterProjectResult.SaveFailed(saved.message)
         }
-    }
+
+    suspend operator fun invoke(candidate: RegisterProjectCandidate): RegisterProjectResult =
+        when (val inspection = inspect(candidate)) {
+            is ProjectRegistrationInspection.Ready -> save(inspection)
+            is ProjectRegistrationInspection.InvalidCandidate -> RegisterProjectResult.InvalidCandidate(inspection.message)
+            is ProjectRegistrationInspection.BoundaryRejected -> RegisterProjectResult.BoundaryRejected(inspection.boundary)
+        }
 }

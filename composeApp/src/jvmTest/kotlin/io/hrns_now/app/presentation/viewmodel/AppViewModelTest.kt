@@ -47,6 +47,8 @@ import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.port.WorkflowStatePort
+import io.hrns_now.core.result.HarnessDiagnosticContract
+import io.hrns_now.core.result.HarnessOverallStatus
 import io.hrns_now.core.result.ProcessRunResult
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
@@ -167,6 +169,19 @@ class AppViewModelTest {
         queue = WorkflowQueue(QueueStatus.PlanningRequired, QueuePointer(null, null), null, null),
     )
 
+    private fun supportedManifest(): KitVersionManifest = KitVersionManifest(
+        kitVersion = KitVersion("2026.07.23"),
+        stateSchemaVersion = ContractVersion(1, 0, "1.0"),
+        uiContractVersion = ContractVersion(1, 0, "1.0"),
+    )
+
+    private fun successfulDoctorResult(): ProcessRunResult.Completed = ProcessRunResult.Completed(
+        exitCode = 0,
+        contract = HarnessDiagnosticContract("1.0", HarnessOverallStatus.Ok, emptyList()),
+        rawOutputSnippet = null,
+        stdoutTruncated = false,
+        stderrTruncated = false,
+    )
     private class FakeStatePort(
         private val result: (callIndex: Int) -> StateReadResult,
     ) : WorkflowStatePort {
@@ -836,6 +851,8 @@ class AppViewModelTest {
             dispatcher = dispatcher,
             registry = registry,
             boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { _, _, _ -> successfulDoctorResult() },
         )
         runCurrent()
 
@@ -856,10 +873,43 @@ class AppViewModelTest {
         assertEquals(1, ready.registryProjects.size)
         assertTrue(ready.registryProjects.single().isActive)
         assertEquals("S:\\workspace-new", ready.workspaceConfig.roots.workspaceRoot)
-        assertTrue(ready.registryMessage?.contains("등록하고 선택") == true)
+        assertTrue(ready.registryMessage?.contains("Doctor·호환성 확인 후") == true)
         viewModel.dispose()
     }
 
+    @Test
+    fun `온보딩 Doctor 실패면 Registry에 프로젝트를 저장하지 않는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            raw?.let(Path::of)?.let { path -> RootPathCheck.Valid(path, path) }
+                ?: RootPathCheck.Invalid(PathIssue.NotProvided)
+        }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { _, _, _ ->
+                ProcessRunResult.Completed(1, null, null, false, false)
+            },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate("실패 프로젝트", "S:\\kit-fail", "S:\\workspace-fail", "S:\\repo-fail", "기본"),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(ready.registryProjects.isEmpty())
+        assertTrue(ready.registryMessage?.contains("Registry를 저장하지 않았습니다") == true)
+        viewModel.dispose()
+    }
     @Test
     fun `프로젝트 삭제 저장 실패를 성공으로 표시하거나 목록에서 제거하지 않는다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
