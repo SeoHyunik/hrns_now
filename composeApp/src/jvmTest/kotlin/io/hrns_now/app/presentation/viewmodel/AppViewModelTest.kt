@@ -14,8 +14,10 @@ import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.ClosureState
 import io.hrns_now.core.domain.model.ContractVersion
+import io.hrns_now.core.domain.model.ExecutionWrapper
 import io.hrns_now.core.domain.model.ExecutionWrapperState
 import io.hrns_now.core.domain.model.FileVersion
+import io.hrns_now.core.domain.model.HarnessCommand
 import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.KitVersion
@@ -31,6 +33,11 @@ import io.hrns_now.core.domain.model.PathIssue
 import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.QueuePointer
 import io.hrns_now.core.domain.model.QueueStatus
+import io.hrns_now.core.domain.model.ReplanReason
+import io.hrns_now.core.domain.model.RequestEntryDraft
+import io.hrns_now.core.domain.model.RequestEntryPriority
+import io.hrns_now.core.domain.model.RequestEntrySource
+import io.hrns_now.core.domain.model.RequestEntryType
 import io.hrns_now.core.domain.model.RootPathCheck
 import io.hrns_now.core.domain.model.SchemaVersion
 import io.hrns_now.core.domain.model.UiAction
@@ -40,12 +47,17 @@ import io.hrns_now.core.domain.model.WorkflowState
 import io.hrns_now.core.domain.model.WorkflowStatus
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.model.WorkspaceDay
+import io.hrns_now.core.domain.policy.ActionPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
 import io.hrns_now.core.port.HarnessRunnerPort
 import io.hrns_now.core.port.KitVersionManifestPort
+import io.hrns_now.core.port.LoadedRequest
 import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.ProjectRegistryPort
+import io.hrns_now.core.port.RequestSaveResult
+import io.hrns_now.core.port.RequestWriterPort
+import io.hrns_now.core.port.TodayStrategyReaderPort
 import io.hrns_now.core.port.WorkflowStatePort
 import io.hrns_now.core.result.HarnessDiagnosticContract
 import io.hrns_now.core.result.HarnessOverallStatus
@@ -54,11 +66,14 @@ import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
 import io.hrns_now.core.result.StateReadResult
 import io.hrns_now.core.usecase.DeleteProjectUseCase
+import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
+import io.hrns_now.core.usecase.HarnessCommandMapper
 import io.hrns_now.core.usecase.LoadCockpitUseCase
 import io.hrns_now.core.usecase.LoadProjectsUseCase
 import io.hrns_now.core.usecase.RegisterProjectCandidate
 import io.hrns_now.core.usecase.RegisterProjectUseCase
 import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
+import io.hrns_now.core.usecase.SaveRequestUseCase
 import io.hrns_now.core.usecase.SelectProjectUseCase
 import io.hrns_now.core.usecase.SelectWorkspaceDayUseCase
 import java.nio.file.Path
@@ -175,6 +190,39 @@ class AppViewModelTest {
         uiContractVersion = ContractVersion(1, 0, "1.0"),
     )
 
+    private fun requestIntakeState(projectName: String = "request"): WorkflowState =
+        workflowState(projectName).copy(status = WorkflowStatus.RequestIntakePending)
+
+    private fun stateForAllowedHarnessAction(action: UiAction): WorkflowState =
+        when (action) {
+            UiAction.BootstrapDay -> workflowState("bootstrap").copy(
+                phase = WorkflowPhase.ClosureValidated,
+                status = WorkflowStatus.ExecutionCompleted,
+                executionCompleted = true,
+                closureValidated = true,
+                closure = ClosureState(isCleanHandoff = true, validated = true, validatedAt = null, validatorNotes = null),
+            )
+            UiAction.RunPlanning -> workflowState("planning").copy(status = WorkflowStatus.PlanningRequired)
+            UiAction.RunReplan -> workflowState("replan").copy(status = WorkflowStatus.PlanningFailed)
+            UiAction.RunCodeSlice -> executionReadyState(ExecutionWrapperState.Code, "code-target")
+            UiAction.RunDocSlice -> executionReadyState(ExecutionWrapperState.Doc, "doc-target")
+            else -> error("Phase 4 harness action expected")
+        }
+
+    private fun executionReadyState(wrapper: ExecutionWrapperState, target: String): WorkflowState =
+        workflowState("execution").copy(
+            phase = WorkflowPhase.ExecutionReady,
+            status = WorkflowStatus.ExecutionReady,
+            executionWrapper = wrapper,
+            authorizedTargetFile = "S:\\repo\\$target.md",
+            queue = WorkflowQueue(QueueStatus.Active, QueuePointer("card-1", "slice-1"), null, null),
+        )
+
+    private fun validBoundary(raw: String?): RootPathCheck {
+        val path = Path.of(requireNotNull(raw))
+        return RootPathCheck.Valid(path, path)
+    }
+
     private fun successfulDoctorResult(): ProcessRunResult.Completed = ProcessRunResult.Completed(
         exitCode = 0,
         contract = HarnessDiagnosticContract("1.0", HarnessOverallStatus.Ok, emptyList()),
@@ -187,6 +235,13 @@ class AppViewModelTest {
     ) : WorkflowStatePort {
         val callCount = AtomicInteger(0)
         override fun read(day: WorkspaceDay): StateReadResult = result(callCount.incrementAndGet())
+    }
+
+    /** 항상 파일이 없는 것처럼 동작하는 [RequestWriterPort] 테스트 대역이다(Phase 4). */
+    private class FakeRequestWriterPort : RequestWriterPort {
+        override fun load(day: WorkspaceDay): LoadedRequest? = null
+        override fun save(day: WorkspaceDay, content: String, expectedVersion: FileVersion): RequestSaveResult =
+            RequestSaveResult.Failed("not configured")
     }
 
     /** 인메모리 [ProcessLockPort] 테스트 대역이다 — 기본은 항상 즉시 획득에 성공한다. */
@@ -318,6 +373,8 @@ class AppViewModelTest {
         compatibilityPort: KitVersionManifestPort = KitVersionManifestPort { KitVersionReadResult.Missing },
         harnessRunner: HarnessRunnerPort = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
         processLock: ProcessLockPort = FakeProcessLockPort(clock = { fixedInstant }),
+        requestWriter: RequestWriterPort = FakeRequestWriterPort(),
+        todayStrategyReader: TodayStrategyReaderPort = TodayStrategyReaderPort { null },
     ): AppViewModel = AppViewModel(
         loadCockpit = loadUseCase(statePort, availableDates = availableDates),
         changeProbe = changeProbe,
@@ -332,8 +389,17 @@ class AppViewModelTest {
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = boundaryResolver,
         compatibilityPort = compatibilityPort,
-        harnessRunner = harnessRunner,
         processLock = processLock,
+        harnessRunner = harnessRunner,
+        executeHarnessAction = ExecuteHarnessActionUseCase(
+            actionPolicy = ActionPolicy(),
+            commandMapper = HarnessCommandMapper(),
+            processLock = processLock,
+            harnessRunner = harnessRunner,
+            workflowState = statePort,
+        ),
+        saveRequest = SaveRequestUseCase(requestWriter),
+        todayStrategyReader = todayStrategyReader,
         ioDispatcher = dispatcher,
         pollIntervalMillis = pollIntervalMillis,
         clock = { fixedInstant },
@@ -501,6 +567,15 @@ class AppViewModelTest {
                     return LockReleaseResult.Released
                 }
             },
+            executeHarnessAction = ExecuteHarnessActionUseCase(
+                actionPolicy = ActionPolicy(),
+                commandMapper = HarnessCommandMapper(),
+                processLock = FakeProcessLockPort(clock = { fixedInstant }),
+                harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+                workflowState = statePort,
+            ),
+            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            todayStrategyReader = TodayStrategyReaderPort { null },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -570,6 +645,15 @@ class AppViewModelTest {
             compatibilityPort = { KitVersionReadResult.Missing },
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            executeHarnessAction = ExecuteHarnessActionUseCase(
+                actionPolicy = ActionPolicy(),
+                commandMapper = HarnessCommandMapper(),
+                processLock = FakeProcessLockPort(clock = { fixedInstant }),
+                harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+                workflowState = statePort,
+            ),
+            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            todayStrategyReader = TodayStrategyReaderPort { null },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -706,6 +790,15 @@ class AppViewModelTest {
             compatibilityPort = compatibilityPort,
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            executeHarnessAction = ExecuteHarnessActionUseCase(
+                actionPolicy = ActionPolicy(),
+                commandMapper = HarnessCommandMapper(),
+                processLock = FakeProcessLockPort(clock = { fixedInstant }),
+                harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+                workflowState = statePort,
+            ),
+            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            todayStrategyReader = TodayStrategyReaderPort { null },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -799,6 +892,15 @@ class AppViewModelTest {
             compatibilityPort = { KitVersionReadResult.Missing },
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            executeHarnessAction = ExecuteHarnessActionUseCase(
+                actionPolicy = ActionPolicy(),
+                commandMapper = HarnessCommandMapper(),
+                processLock = FakeProcessLockPort(clock = { fixedInstant }),
+                harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+                workflowState = statePort,
+            ),
+            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            todayStrategyReader = TodayStrategyReaderPort { null },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -1068,6 +1170,15 @@ class AppViewModelTest {
             compatibilityPort = { KitVersionReadResult.Missing },
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            executeHarnessAction = ExecuteHarnessActionUseCase(
+                actionPolicy = ActionPolicy(),
+                commandMapper = HarnessCommandMapper(),
+                processLock = FakeProcessLockPort(clock = { fixedInstant }),
+                harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+                workflowState = statePort,
+            ),
+            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            todayStrategyReader = TodayStrategyReaderPort { null },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 50L,
             clock = { fixedInstant },
@@ -1142,6 +1253,184 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `BootstrapDay RunPlanning RunReplan RunCodeSlice RunDocSlice는 각각 대응하는 typed command를 만든다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val capturedCommands = mutableListOf<HarnessCommand>()
+        val runner = HarnessRunnerPort { command, _, _ ->
+            capturedCommands.add(command)
+            ProcessRunResult.Completed(0, null, null, false, false)
+        }
+        val actionsInOrder = listOf(
+            UiAction.BootstrapDay,
+            UiAction.RunPlanning,
+            UiAction.RunReplan,
+            UiAction.RunCodeSlice,
+            UiAction.RunDocSlice,
+        )
+
+        for (action in actionsInOrder) {
+            val statePort = FakeStatePort {
+                StateReadResult.Success(stateForAllowedHarnessAction(action), FileVersion(fixedInstant, 1, action.toString()))
+            }
+            val viewModel = newViewModel(
+                statePort,
+                dispatcher,
+                registry = registry,
+                boundaryResolver = ::validBoundary,
+                compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+                harnessRunner = runner,
+            )
+            runCurrent()
+            viewModel.onEvent(HrnsUiEvent.ActionRequested(action))
+            runCurrent()
+            viewModel.dispose()
+        }
+
+        assertEquals(actionsInOrder.size, capturedCommands.size)
+        assertIs<HarnessCommand.BootstrapDay>(capturedCommands[0])
+        assertIs<HarnessCommand.RunPlanning>(capturedCommands[1])
+        val replan = assertIs<HarnessCommand.RunReplan>(capturedCommands[2])
+        assertEquals(ReplanReason.HumanRequestedReplan, replan.reason)
+        val codeExecution = assertIs<HarnessCommand.RunExecution>(capturedCommands[3])
+        assertEquals(ExecutionWrapper.Code, codeExecution.wrapper)
+        val docExecution = assertIs<HarnessCommand.RunExecution>(capturedCommands[4])
+        assertEquals(ExecutionWrapper.Doc, docExecution.wrapper)
+    }
+
+    @Test
+    fun `다른 실행이 lock을 보유 중이면 새 Planning 실행은 harnessRunner를 호출하지 않는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort {
+            StateReadResult.Success(stateForAllowedHarnessAction(UiAction.RunPlanning), FileVersion(fixedInstant, 1, "planning"))
+        }
+        val executeCount = AtomicInteger(0)
+        val runner = HarnessRunnerPort { _, _, _ ->
+            executeCount.incrementAndGet()
+            ProcessRunResult.Completed(0, null, null, false, false)
+        }
+        val busyLock = FakeProcessLockPort(clock = { fixedInstant })
+        // 이미 다른 소유자(Doctor 실행)가 이 날짜의 잠금을 보유한 상태를 만든다.
+        runBlocking { busyLock.acquire(project.id, LocalDate.of(2026, 6, 26), HarnessCommandKind.Doctor) }
+
+        val viewModel = newViewModel(
+            statePort,
+            dispatcher,
+            registry = registry,
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = runner,
+            processLock = busyLock,
+        )
+        runCurrent()
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunPlanning))
+        runCurrent()
+
+        assertEquals(0, executeCount.get())
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `요청 저장은 REQUEST_INBOX만 쓰고 성공 notice를 보인다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort {
+            StateReadResult.Success(requestIntakeState(), FileVersion(fixedInstant, 1, "request"))
+        }
+        val savedContent = mutableListOf<String>()
+        val requestWriter = object : RequestWriterPort {
+            override fun load(day: WorkspaceDay): LoadedRequest =
+                LoadedRequest("# REQUEST_INBOX\n\n## Current Day Entries\n", FileVersion(fixedInstant, 10, "hash"))
+
+            override fun save(day: WorkspaceDay, content: String, expectedVersion: FileVersion): RequestSaveResult {
+                savedContent.add(content)
+                return RequestSaveResult.Saved
+            }
+        }
+        val viewModel = newViewModel(
+            statePort,
+            dispatcher,
+            registry = registry,
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            requestWriter = requestWriter,
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.RequestEntrySubmitted(
+                RequestEntryDraft(
+                    title = "새 버그",
+                    type = RequestEntryType.Bug,
+                    source = RequestEntrySource.Human,
+                    priority = RequestEntryPriority.High,
+                    summary = "요약",
+                    detail = "상세",
+                    constraints = "",
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(1, savedContent.size)
+        assertTrue(savedContent.single().contains("### 새 버그"))
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals("요청을 저장했습니다.", ready.todayWork.requestInboxNotice)
+        assertTrue(ready.todayWork.requestSaveSucceeded)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `요청 저장이 충돌하면 실패 문구 대신 충돌 안내를 보인다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort {
+            StateReadResult.Success(requestIntakeState(), FileVersion(fixedInstant, 1, "request"))
+        }
+        val requestWriter = object : RequestWriterPort {
+            override fun load(day: WorkspaceDay): LoadedRequest =
+                LoadedRequest("# REQUEST_INBOX\n", FileVersion(fixedInstant, 10, "hash"))
+
+            override fun save(day: WorkspaceDay, content: String, expectedVersion: FileVersion): RequestSaveResult =
+                RequestSaveResult.Conflict(FileVersion(fixedInstant, 99, "other-hash"))
+        }
+        val viewModel = newViewModel(
+            statePort,
+            dispatcher,
+            registry = registry,
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            requestWriter = requestWriter,
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.RequestEntrySubmitted(
+                RequestEntryDraft(
+                    title = "제목",
+                    type = RequestEntryType.Idea,
+                    source = RequestEntrySource.Human,
+                    priority = RequestEntryPriority.Unknown,
+                    summary = "요약",
+                    detail = "",
+                    constraints = "",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals("다른 곳에서 파일이 변경되어 저장하지 못했습니다. 초안은 유지됩니다. 다시 시도하면 최신 내용을 다시 읽으며, 필요하면 REQUEST_INBOX.md를 확인해 수동 병합하세요.", ready.todayWork.requestInboxNotice)
+        assertFalse(ready.todayWork.requestSaveSucceeded)
+        viewModel.dispose()
+    }
+
+    @Test
     fun `실행 도중 프로젝트를 전환하면 늦게 끝난 실행 결과가 새 프로젝트 상태를 덮지 않는다`() = runBlocking {
         val ioExecutor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "run-switch-io") }
         val mainExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "run-switch-main") }
@@ -1185,6 +1474,15 @@ class AppViewModelTest {
             compatibilityPort = { KitVersionReadResult.Missing },
             harnessRunner = runner,
             processLock = FakeProcessLockPort(),
+            executeHarnessAction = ExecuteHarnessActionUseCase(
+                actionPolicy = ActionPolicy(),
+                commandMapper = HarnessCommandMapper(),
+                processLock = FakeProcessLockPort(),
+                harnessRunner = runner,
+                workflowState = statePort,
+            ),
+            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            todayStrategyReader = TodayStrategyReaderPort { null },
             ioDispatcher = ioDispatcher,
             pollIntervalMillis = 60_000L,
             clock = { fixedInstant },
@@ -1255,6 +1553,113 @@ class AppViewModelTest {
 
         viewModel.refresh()
         runCurrent()
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        runCurrent()
+
+        assertEquals(1, executions.get())
+        viewModel.dispose()
+    }
+    @Test
+    fun `CTA policy rejects a harness action even when a stale event is delivered`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val executions = AtomicInteger(0)
+        val viewModel = newViewModel(
+            statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) },
+            dispatcher = dispatcher,
+            registry = registry,
+            harnessRunner = HarnessRunnerPort { _, _, _ ->
+                executions.incrementAndGet()
+                ProcessRunResult.Completed(0, null, null, false, false)
+            },
+        )
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunPlanning))
+        runCurrent()
+
+        assertEquals(0, executions.get())
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(ready.runStatus.consoleLines.any { it.contains("허용되지 않은 실행") })
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `past workspace day rejects a request event before the writer is called`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val today = LocalDate.of(2026, 6, 26)
+        val past = LocalDate.of(2026, 6, 25)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val writerCalls = AtomicInteger(0)
+        val writer = object : RequestWriterPort {
+            override fun load(day: WorkspaceDay): LoadedRequest? {
+                writerCalls.incrementAndGet()
+                return null
+            }
+
+            override fun save(day: WorkspaceDay, content: String, expectedVersion: FileVersion): RequestSaveResult {
+                writerCalls.incrementAndGet()
+                return RequestSaveResult.Saved
+            }
+        }
+        val viewModel = newViewModel(
+            statePort = FakeStatePort {
+                StateReadResult.Success(requestIntakeState(), FileVersion(fixedInstant, 1, "request"))
+            },
+            dispatcher = dispatcher,
+            registry = registry,
+            availableDates = listOf(past, today),
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            requestWriter = writer,
+        )
+        runCurrent()
+        viewModel.onEvent(HrnsUiEvent.WorkspaceDaySelected(past))
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.RequestEntrySubmitted(
+                RequestEntryDraft("past", RequestEntryType.Bug, RequestEntrySource.Human, RequestEntryPriority.Low, "summary", "", ""),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(0, writerCalls.get())
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(ready.cockpit.isReadOnlyDay)
+        assertFalse(ready.todayWork.requestEditingEnabled)
+        assertFalse(ready.todayWork.requestSaveSucceeded)
+        viewModel.dispose()
+    }
+    @Test
+    fun `past workspace day still allows the read-only Doctor diagnostic`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val today = LocalDate.of(2026, 6, 26)
+        val past = LocalDate.of(2026, 6, 25)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val executions = AtomicInteger(0)
+        val viewModel = newViewModel(
+            statePort = FakeStatePort {
+                StateReadResult.Success(requestIntakeState(), FileVersion(fixedInstant, 1, "request"))
+            },
+            dispatcher = dispatcher,
+            registry = registry,
+            availableDates = listOf(past, today),
+            boundaryResolver = ::validBoundary,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { command, _, _ ->
+                assertIs<HarnessCommand.Doctor>(command)
+                executions.incrementAndGet()
+                ProcessRunResult.Completed(0, null, null, false, false)
+            },
+        )
+        runCurrent()
+        viewModel.onEvent(HrnsUiEvent.WorkspaceDaySelected(past))
+        runCurrent()
+
         viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
         runCurrent()
 

@@ -56,6 +56,31 @@ sealed interface ActiveSliceKind {
 }
 
 /**
+ * `state.execution_wrapper`에서 [ActiveSliceKind]를 유도한다.
+ *
+ * harness-kit의 `state_surface.py`(`sync_harness_state_projection_from_queue`)가 active queue
+ * slice를 가진 동안 `execution_wrapper`를 그 slice 자신의 `wrapper` 값으로 동기화하므로,
+ * `queue.active`가 유효한 pointer일 때(= [io.hrns_now.core.domain.policy.ActionPolicy]의
+ * `executionContractReady`) 이 필드는 실제로 활성 slice가 요구하는 wrapper를 반영한다
+ * (`docs/STATE_MODEL.md` §6.3 근거).
+ *
+ * `None`/`Auto`는 의도적으로 `null`로 fail-closed한다: "none (verification-only)"은 사람용
+ * `TODAY_STRATEGY.md` 산문 관례일 뿐 machine `wrapper` 값의 정확한 문자열 형태가 확정되지
+ * 않았고, `Auto`는 CLI 계약 충실성을 위해서만 존재하며 UI 액션으로 노출하지 않는다
+ * (`doc/hrns_now_design_pattern.md` §6.2). 둘 다 [ActionPolicy]에서 동일하게
+ * "활성 slice 종류를 확인할 수 없습니다" 복구 경로로 이어진다.
+ */
+fun ExecutionWrapperState.toActiveSliceKind(): ActiveSliceKind? =
+    when (this) {
+        ExecutionWrapperState.Code -> ActiveSliceKind.Code
+        ExecutionWrapperState.Doc -> ActiveSliceKind.Doc
+        ExecutionWrapperState.None,
+        ExecutionWrapperState.Auto,
+        -> null
+        is ExecutionWrapperState.Unknown -> ActiveSliceKind.Unknown(raw)
+    }
+
+/**
  * [io.hrns_now.core.domain.policy.ActionPolicy]의 유일한 입력이다. domain 값만 가진 불변
  * context이며, 파일 경로·JSON·Compose·프로세스 핸들을 전혀 참조하지 않는다.
  *

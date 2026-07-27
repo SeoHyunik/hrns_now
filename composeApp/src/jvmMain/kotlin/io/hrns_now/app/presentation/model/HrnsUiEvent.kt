@@ -1,6 +1,7 @@
 package io.hrns_now.app.presentation.model
 
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.usecase.RegisterProjectCandidate
 import java.time.LocalDate
@@ -18,4 +19,7 @@ sealed interface HrnsUiEvent {
 
     /** 현재 날짜의 UI 소유 lock을 명시적으로 강제 해제한다(Phase 3). */
     data object LockForceReleaseRequested : HrnsUiEvent
+
+    /** `REQUEST_INBOX.md`에 새 항목을 추가 저장한다(Phase 4). `REQUEST_STRUCTURED.md`는 건드리지 않는다. */
+    data class RequestEntrySubmitted(val draft: RequestEntryDraft) : HrnsUiEvent
 }

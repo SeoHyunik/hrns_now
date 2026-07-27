@@ -14,7 +14,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Doctor/ValidateOps 실행 상태와 lock 조회 결과를 [RunStatusProjection]으로 조립한다(Phase 3).
+ * Harness 실행·진단 상태와 lock 조회 결과를 [RunStatusProjection]으로 조립한다(Phase 3/4).
  * raw stdout/session/PID 원문을 그대로 노출하지 않는다 — [ProcessRunResult]는 이미
  * `SecretMaskingProcessRunner`를 거친 값이며, 여기서는 label/tone 변환만 한다.
  */
@@ -33,7 +33,7 @@ class RunStatusProjectionAssembler {
 
         return RunStatusProjection(
             title = "실행 현황",
-            subtitle = "Harness 진단(Doctor/Ops Validation) 실행 상태입니다. 실행 시작은 Cockpit 화면에서 합니다.",
+            subtitle = "Harness 실행·진단 상태입니다. 권장 행동은 Cockpit과 오늘 할 일 화면에서 시작합니다.",
             stages = stages,
             consoleLines = consoleLines,
             stageDetailRows = detailRows,
@@ -112,17 +112,7 @@ class RunStatusProjectionAssembler {
         runView.lastCommand?.let { add("마지막 실행" to it.displayLabel()) }
         runView.runStartedAt?.let { add("실행 시작 시각" to it.formatted()) }
         (runView.lastResult as? ProcessRunResult.Completed)?.let { add("종료 코드" to it.exitCode.toString()) }
-        if (lockInspection != null) {
-            val ageSeconds = java.time.Duration.between(lockInspection.payload.heartbeatAt, now).seconds
-            val staleLabel = if (lockInspection.state == LockState.Stale) " (stale로 보임)" else ""
-            add(
-                "잠금 소유자" to
-                    "${lockInspection.payload.commandKind.displayLabel()} " +
-                    "(PID ${lockInspection.payload.pid}, 마지막 heartbeat ${ageSeconds}초 전$staleLabel)",
-            )
-        } else {
-            add("잠금 소유자" to "없음")
-        }
+        add("잠금 소유자" to lockSummaryLabel(lockInspection, now))
     }
 
     private fun failureChips(runView: HarnessRunViewState): List<StatusChipModel> {
@@ -131,12 +121,6 @@ class RunStatusProjectionAssembler {
             .filter { it.severity is HarnessCheckSeverity.Warn || it.severity is HarnessCheckSeverity.Error }
             .map { StatusChipModel(it.id, it.severity.displayTag(), if (it.severity is HarnessCheckSeverity.Error) "error" else "warning") }
     }
-
-    private fun HarnessCommandKind.displayLabel(): String =
-        when (this) {
-            HarnessCommandKind.Doctor -> "Doctor"
-            HarnessCommandKind.ValidateOps -> "Ops Validation"
-        }
 
     private fun ProcessRunResult.outcomeLabel(): String =
         when (this) {
@@ -176,3 +160,14 @@ class RunStatusProjectionAssembler {
     private fun Instant.formatted(): String =
         DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault()).format(this)
 }
+
+internal fun HarnessCommandKind.displayLabel(): String =
+    when (this) {
+        HarnessCommandKind.Doctor -> "Doctor"
+        HarnessCommandKind.ValidateOps -> "Ops Validation"
+        HarnessCommandKind.Bootstrap -> "오늘 준비"
+        HarnessCommandKind.Planning -> "계획 실행"
+        HarnessCommandKind.Replan -> "재계획 실행"
+        HarnessCommandKind.ExecutionCode -> "코드 작업 실행"
+        HarnessCommandKind.ExecutionDoc -> "문서 작업 실행"
+    }

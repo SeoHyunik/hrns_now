@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,10 @@ import io.hrns_now.app.presentation.model.WorkspaceDayItem
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.TodayWorkProjection
+import io.hrns_now.core.domain.model.RequestEntryDraft
+import io.hrns_now.core.domain.model.RequestEntryPriority
+import io.hrns_now.core.domain.model.RequestEntrySource
+import io.hrns_now.core.domain.model.RequestEntryType
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.usecase.RegisterProjectCandidate
 
@@ -80,7 +85,7 @@ fun ScreenRoute(
             onUiEvent = onUiEvent,
         )
         AppRoute.Cockpit -> CockpitScreen(cockpitProjection, onCockpitAction)
-        AppRoute.Strategy -> StrategyScreen(todayWorkProjection)
+        AppRoute.Strategy -> StrategyScreen(todayWorkProjection, onUiEvent)
         AppRoute.Run -> RunScreen(runStatusProjection, onUiEvent)
     }
 }
@@ -562,7 +567,7 @@ private fun KeyValueGrid(rows: List<Pair<String, String>>) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun StrategyScreen(projection: TodayWorkProjection) {
+fun StrategyScreen(projection: TodayWorkProjection, onUiEvent: (HrnsUiEvent) -> Unit = {}) {
     val colors = LocalHrnsColors.current
 
     ScreenContainer {
@@ -577,9 +582,19 @@ fun StrategyScreen(projection: TodayWorkProjection) {
             ProjectionInfoCard(section)
         }
 
+        SectionCard(title = "요청 작성", eyebrow = "REQUEST_INBOX.md") {
+            RequestEntryForm(
+                saving = projection.requestSaving,
+                editingEnabled = projection.requestEditingEnabled,
+                clearDraftAfterSave = projection.requestSaveSucceeded,
+                notice = projection.requestInboxNotice,
+                onSubmit = { draft -> onUiEvent(HrnsUiEvent.RequestEntrySubmitted(draft)) },
+            )
+        }
+
         SectionCard(title = "실행 작업", eyebrow = "Actions") {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ActionButtonGroup(projection.actions)
+                ActionButtonGroup(projection.actions, onAction = { action -> onUiEvent(HrnsUiEvent.ActionRequested(action)) })
                 Text(
                     text = projection.note,
                     style = MaterialTheme.typography.bodySmall.copy(
@@ -590,6 +605,93 @@ fun StrategyScreen(projection: TodayWorkProjection) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun RequestEntryForm(
+    saving: Boolean,
+    editingEnabled: Boolean,
+    clearDraftAfterSave: Boolean,
+    notice: String?,
+    onSubmit: (RequestEntryDraft) -> Unit,
+) {
+    val colors = LocalHrnsColors.current
+    var title by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf(RequestEntryType.Bug) }
+    var source by remember { mutableStateOf(RequestEntrySource.Human) }
+    var priority by remember { mutableStateOf(RequestEntryPriority.Unknown) }
+    var summary by remember { mutableStateOf("") }
+    var detail by remember { mutableStateOf("") }
+    var constraints by remember { mutableStateOf("") }
+
+    LaunchedEffect(clearDraftAfterSave) {
+        if (clearDraftAfterSave) {
+            title = ""
+            summary = ""
+            detail = ""
+            constraints = ""
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "이 file은 raw 입력 영역입니다. 구조화된 계획 입력은 REQUEST_STRUCTURED.md에서 별도로 다룹니다.",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+            color = colors.tertiaryText,
+        )
+        LabeledTextField(label = "제목", value = title, onValueChange = { title = it })
+        EnumOptionRow(
+            label = "유형",
+            options = RequestEntryType.entries,
+            selected = type,
+            optionLabel = { it.label },
+            onSelect = { type = it },
+        )
+        EnumOptionRow(
+            label = "출처",
+            options = RequestEntrySource.entries,
+            selected = source,
+            optionLabel = { it.label },
+            onSelect = { source = it },
+        )
+        EnumOptionRow(
+            label = "우선순위",
+            options = RequestEntryPriority.entries,
+            selected = priority,
+            optionLabel = { it.label },
+            onSelect = { priority = it },
+        )
+        LabeledTextField(label = "요약", value = summary, onValueChange = { summary = it })
+        LabeledTextField(label = "상세", value = detail, onValueChange = { detail = it }, multiline = true)
+        LabeledTextField(label = "제약", value = constraints, onValueChange = { constraints = it }, multiline = true)
+
+        notice?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                color = colors.accent,
+            )
+        }
+
+        PlaceholderActionButton(
+            text = if (saving) "저장 중..." else "요청 저장",
+            primary = true,
+            enabled = editingEnabled && !saving && title.isNotBlank() && summary.isNotBlank(),
+            onClick = {
+                onSubmit(
+                    RequestEntryDraft(
+                        title = title,
+                        type = type,
+                        source = source,
+                        priority = priority,
+                        summary = summary,
+                        detail = detail,
+                        constraints = constraints,
+                    ),
+                )
+            },
+        )
     }
 }
 

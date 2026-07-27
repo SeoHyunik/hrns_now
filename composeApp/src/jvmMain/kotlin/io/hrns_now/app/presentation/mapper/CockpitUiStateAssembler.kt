@@ -1,8 +1,8 @@
 package io.hrns_now.app.presentation.mapper
 
-import io.hrns_now.app.presentation.buildPlaceholderTodayWorkProjection
 import io.hrns_now.app.presentation.buildSetupProjection
 import io.hrns_now.app.presentation.buildShellProjection
+import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.app.presentation.model.RegistryProjectItem
 import io.hrns_now.app.presentation.model.RunStatusProjection
@@ -34,6 +34,11 @@ class CockpitUiStateAssembler(
         processRunStatus: ProcessRunStatus,
         runStatus: RunStatusProjection,
         harnessRunInProgress: Boolean,
+        strategyText: String?,
+        requestInboxNotice: String?,
+        requestSaving: Boolean,
+        requestSaveSucceeded: Boolean,
+        lockSummaryLabel: String,
     ): HrnsUiState.Ready {
         val cockpit = cockpitAssembler.assemble(
             projectConnected = loaded.projectConnected,
@@ -59,7 +64,14 @@ class CockpitUiStateAssembler(
             workspaceReadiness = loaded.workspaceReadiness,
             workspaceArtifactSummary = loaded.workspaceArtifactSummary,
             cockpit = cockpit,
-            todayWork = buildPlaceholderTodayWorkProjection(),
+            todayWork = buildTodayWorkProjection(
+                cockpit,
+                strategyText,
+                requestInboxNotice,
+                requestSaving,
+                requestSaveSucceeded,
+                lockSummaryLabel,
+            ),
             runStatus = runStatus,
             registryProjects = registryProjects.map { project ->
                 RegistryProjectItem(

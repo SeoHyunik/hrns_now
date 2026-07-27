@@ -31,12 +31,16 @@ import io.hrns_now.core.domain.model.ArtifactProbeState
 import io.hrns_now.core.domain.model.ArtifactRequirement
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
+import io.hrns_now.core.domain.policy.ActionPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
 import io.hrns_now.core.usecase.DeleteProjectUseCase
+import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
+import io.hrns_now.core.usecase.HarnessCommandMapper
 import io.hrns_now.core.usecase.LoadCockpitUseCase
 import io.hrns_now.core.usecase.LoadProjectsUseCase
 import io.hrns_now.core.usecase.RegisterProjectUseCase
 import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
+import io.hrns_now.core.usecase.SaveRequestUseCase
 import io.hrns_now.core.usecase.SelectProjectUseCase
 import io.hrns_now.core.usecase.SelectWorkspaceDayUseCase
 import io.hrns_now.infra.EnvironmentWorkspaceConfigProvider
@@ -49,6 +53,8 @@ import io.hrns_now.infra.lock.LocalProcessLockAdapter
 import io.hrns_now.infra.process.PowerShellHarnessAdapter
 import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
+import io.hrns_now.infra.request.RequestInboxWriterAdapter
+import io.hrns_now.infra.request.TodayStrategyFileReaderAdapter
 import io.hrns_now.infra.security.SecretMaskingProcessRunner
 import io.hrns_now.infra.serialization.JsonWorkflowStateAdapter
 import java.nio.file.Path
@@ -175,13 +181,17 @@ private fun resolveLocksRoot(): Path {
 private fun createProductionViewModel(): AppViewModel {
     val pathProbe = WorkspacePathProbe()
     val artifactProbe = WorkspaceArtifactProbe()
+    val workflowState = JsonWorkflowStateAdapter()
+    val processLock = LocalProcessLockAdapter(locksRoot = resolveLocksRoot())
+    val harnessRunner = SecretMaskingProcessRunner(PowerShellHarnessAdapter())
+    val requestWriter = RequestInboxWriterAdapter()
     val loadCockpit = LoadCockpitUseCase(
         pathProbe = pathProbe::probe,
         readinessProvider = pathProbe::readiness,
         artifactProbe = { config, day -> artifactProbe.probe(config.roots.workspaceRoot, day.date) },
         dayDiscovery = WorkspaceDayDiscovery()::discover,
         daySelectionPolicy = WorkspaceDaySelectionPolicy(),
-        statePort = JsonWorkflowStateAdapter(),
+        statePort = workflowState,
     )
     val registry = JsonProjectRegistryAdapter(registryPath = resolveRegistryPath())
     val realPathGateway = RealPathGateway()
@@ -202,7 +212,16 @@ private fun createProductionViewModel(): AppViewModel {
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = realPathGateway::resolve,
         compatibilityPort = JsonKitVersionManifestAdapter(),
-        harnessRunner = SecretMaskingProcessRunner(PowerShellHarnessAdapter()),
-        processLock = LocalProcessLockAdapter(locksRoot = resolveLocksRoot()),
+        processLock = processLock,
+        harnessRunner = harnessRunner,
+        executeHarnessAction = ExecuteHarnessActionUseCase(
+            actionPolicy = ActionPolicy(),
+            commandMapper = HarnessCommandMapper(),
+            processLock = processLock,
+            harnessRunner = harnessRunner,
+            workflowState = workflowState,
+        ),
+        saveRequest = SaveRequestUseCase(requestWriter),
+        todayStrategyReader = TodayStrategyFileReaderAdapter(),
     )
 }

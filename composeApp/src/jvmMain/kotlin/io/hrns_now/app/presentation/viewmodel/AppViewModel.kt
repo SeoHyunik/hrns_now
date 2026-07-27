@@ -2,12 +2,15 @@ package io.hrns_now.app.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.mapper.CockpitUiStateAssembler
 import io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler
+import io.hrns_now.app.presentation.mapper.lockSummaryLabel
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.core.config.WorkspaceConfig
+import io.hrns_now.core.domain.model.ActionContext
 import io.hrns_now.core.domain.model.BoundaryStatus
 import io.hrns_now.core.domain.model.HarnessCommand
 import io.hrns_now.core.domain.model.HarnessCommandKind
@@ -20,9 +23,13 @@ import io.hrns_now.core.domain.model.LockState
 import io.hrns_now.core.domain.model.ProcessCancellationToken
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.RootPathCheck
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceDay
+import io.hrns_now.core.domain.model.SelectedDayKind
+import io.hrns_now.core.domain.model.toActiveSliceKind
+import io.hrns_now.core.domain.model.toCompatibilityStatus
 import io.hrns_now.core.domain.policy.BoundaryPolicy
 import io.hrns_now.core.domain.policy.CompatibilityPolicy
 import io.hrns_now.core.domain.policy.ExternalExecutionDetectionPolicy
@@ -31,6 +38,12 @@ import io.hrns_now.core.port.HarnessRunnerPort
 import io.hrns_now.core.port.KitVersionManifestPort
 import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
+import io.hrns_now.core.port.TodayStrategyReaderPort
+import io.hrns_now.core.usecase.ExecuteHarnessActionOutcome
+import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
+import io.hrns_now.core.usecase.HarnessExecutionContext
+import io.hrns_now.core.usecase.SaveRequestOutcome
+import io.hrns_now.core.usecase.SaveRequestUseCase
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
 import io.hrns_now.core.result.HarnessOverallStatus
@@ -89,8 +102,12 @@ class AppViewModel(
     private val deleteProject: DeleteProjectUseCase,
     private val boundaryPathResolver: (String?) -> RootPathCheck,
     private val compatibilityPort: KitVersionManifestPort,
-    private val harnessRunner: HarnessRunnerPort,
     private val processLock: ProcessLockPort,
+    /** 프로젝트 등록 전 Doctor gate는 아직 selected ActionContext가 없으므로 별도 진단 경로로 남긴다. */
+    private val harnessRunner: HarnessRunnerPort,
+    private val executeHarnessAction: ExecuteHarnessActionUseCase,
+    private val saveRequest: SaveRequestUseCase,
+    private val todayStrategyReader: TodayStrategyReaderPort,
     private val boundaryPolicy: BoundaryPolicy = BoundaryPolicy(),
     private val compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy(),
     private val externalExecutionDetectionPolicy: ExternalExecutionDetectionPolicy = ExternalExecutionDetectionPolicy(),
@@ -101,7 +118,7 @@ class AppViewModel(
     private val runTimeout: Duration = Duration.ofSeconds(90),
     private val lockHeartbeatIntervalMillis: Long = 10_000L,
     private val clock: () -> Instant = Instant::now,
-    mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : ViewModel(CoroutineScope(SupervisorJob() + mainDispatcher)) {
 
     private val _state = MutableStateFlow<HrnsUiState>(HrnsUiState.Loading)
@@ -133,6 +150,12 @@ class AppViewModel(
     private var lastLockInspection: LockInspection? = null
     private var externalExecutionSuspected: Boolean = false
     private var localStateRefreshPending: Boolean = false
+    private var latestExecutionContext: HarnessExecutionContext? = null
+
+    private var strategyText: String? = null
+    private var requestInboxNotice: String? = null
+    private var requestSaving: Boolean = false
+    private var requestSaveSucceeded: Boolean = false
 
     init {
         refresh()
@@ -151,8 +174,13 @@ class AppViewModel(
         when (event) {
             is HrnsUiEvent.ActionRequested -> when (event.action) {
                 UiAction.Refresh -> refresh()
-                UiAction.RunDoctor -> onHarnessRunRequested(HarnessCommandKind.Doctor)
-                UiAction.RunOpsValidation -> onHarnessRunRequested(HarnessCommandKind.ValidateOps)
+                UiAction.RunDoctor -> onHarnessRunRequested(UiAction.RunDoctor, HarnessCommandKind.Doctor)
+                UiAction.RunOpsValidation -> onHarnessRunRequested(UiAction.RunOpsValidation, HarnessCommandKind.ValidateOps)
+                UiAction.BootstrapDay -> onHarnessRunRequested(UiAction.BootstrapDay, HarnessCommandKind.Bootstrap)
+                UiAction.RunPlanning -> onHarnessRunRequested(UiAction.RunPlanning, HarnessCommandKind.Planning)
+                UiAction.RunReplan -> onHarnessRunRequested(UiAction.RunReplan, HarnessCommandKind.Replan)
+                UiAction.RunCodeSlice -> onHarnessRunRequested(UiAction.RunCodeSlice, HarnessCommandKind.ExecutionCode)
+                UiAction.RunDocSlice -> onHarnessRunRequested(UiAction.RunDocSlice, HarnessCommandKind.ExecutionDoc)
                 else -> Unit
             }
             is HrnsUiEvent.ProjectSelected -> viewModelScope.launch { onProjectSelected(event.id) }
@@ -162,6 +190,7 @@ class AppViewModel(
             is HrnsUiEvent.WorkspaceDaySelected -> viewModelScope.launch { onWorkspaceDaySelected(event.date) }
             HrnsUiEvent.HarnessRunCancelRequested -> harnessRunCancellationToken?.requestCancel()
             HrnsUiEvent.LockForceReleaseRequested -> viewModelScope.launch { onLockForceReleaseRequested() }
+            is HrnsUiEvent.RequestEntrySubmitted -> viewModelScope.launch { onRequestEntrySubmitted(event.draft) }
         }
     }
 
@@ -372,6 +401,7 @@ class AppViewModel(
         lastLockInspection = null
         externalExecutionSuspected = false
         localStateRefreshPending = false
+        latestExecutionContext = null
     }
 
     private fun startPolling() {
@@ -436,7 +466,7 @@ class AppViewModel(
         ) {
             externalExecutionSuspected = true
         }
-        // Own Doctor/ValidateOps completion triggers exactly one State reread. Its State change is not external.
+        // Own Harness completion triggers exactly one State reread. Its State change is not external.
         if (localStateRefreshPending && (forceRead || mtimeChanged)) {
             localStateRefreshPending = false
         }
@@ -450,6 +480,7 @@ class AppViewModel(
         val lockInspection = withContext(ioDispatcher) {
             inspectLock(activeProject?.id, daySelection.workspaceDay.date)
         }
+        strategyText = withContext(ioDispatcher) { todayStrategyReader.read(daySelection.workspaceDay) }
         if (sequence != loadSequence || contextGeneration != loadContextGeneration) return
         lastLockInspection = lockInspection
 
@@ -465,6 +496,28 @@ class AppViewModel(
         if (loaded.stateRead is StateReadResult.Success) {
             lastSuccessfulReadAt = now
         }
+
+        latestExecutionContext = activeProject
+            ?.takeIf { loaded.projectConnected }
+            ?.let { project ->
+                val activeSliceKind = (loaded.stateRead as? StateReadResult.Success)
+                    ?.state
+                    ?.executionWrapper
+                    ?.toActiveSliceKind()
+                HarnessExecutionContext(
+                    project = project,
+                    day = daySelection.workspaceDay,
+                    actionContext = ActionContext(
+                        projectConnected = loaded.projectConnected,
+                        selectedDayKind = if (daySelection.isReadOnly) SelectedDayKind.Past else SelectedDayKind.Today,
+                        stateRead = loaded.stateRead,
+                        compatibility = compatibilityDetail.toCompatibilityStatus(),
+                        boundary = boundaryStatus,
+                        process = currentProcessRunStatus(lockInspection),
+                        activeSliceKind = activeSliceKind,
+                    ),
+                )
+            }
 
         _state.value = uiStateAssembler.assemble(
             loaded = loaded,
@@ -485,6 +538,11 @@ class AppViewModel(
                 externalExecutionSuspected = externalExecutionSuspected,
             ),
             harnessRunInProgress = harnessRunView.isRunning,
+            strategyText = strategyText,
+            requestInboxNotice = requestInboxNotice,
+            requestSaving = requestSaving,
+            requestSaveSucceeded = requestSaveSucceeded,
+            lockSummaryLabel = lockSummaryLabel(lockInspection, now),
         )
     }
 
@@ -539,25 +597,31 @@ class AppViewModel(
     }
 
     /**
-     * 중복 클릭을 막고(이미 실행 중이면 무시), lock을 획득한 뒤에만 [harnessRunner]를 호출한다
+     * 중복 클릭을 막고(이미 실행 중이면 무시), 정책·lock을 통과한 뒤에만 [executeHarnessAction]을 호출한다
      * (Phase 3). 실행 종료 뒤에는 lock을 보유한 채 State를 다시 읽고, heartbeat를 멈춘 뒤
      * lock을 해제·재검사한다. stdout 성공 문구가 아니라 재읽은 State가 완료 판단의
      * 근거로 남게 하기 위함이다. project/day가 실행 도중 바뀌면
      * [loadContextGeneration] 비교로 late-write를 막는다.
      */
-    private fun onHarnessRunRequested(kind: HarnessCommandKind) {
+    private fun onHarnessRunRequested(action: UiAction, kind: HarnessCommandKind) {
         if (harnessRunView.isRunning) return
-        if (externalExecutionSuspected) {
+        if (!isHarnessRunAllowed(action)) {
             harnessRunView = HarnessRunViewState(
                 lastCommand = kind,
-                notice = "WORKFLOW_STATE.json의 외부 변경이 감지되어 새 진단 실행을 보류했습니다. 새로고침으로 다시 확인하세요.",
+                notice = "현재 상태에서 허용되지 않은 실행입니다. 상태를 새로고침한 뒤 권장 행동을 확인하세요.",
             )
             refreshRunProjectionOnly()
             return
         }
-        val project = activeProject ?: return
-        val day = selectedDay?.workspaceDay ?: return
-
+        if (externalExecutionSuspected) {
+            harnessRunView = HarnessRunViewState(
+                lastCommand = kind,
+                notice = "WORKFLOW_STATE.json의 외부 변경 가능성이 감지되어 새 실행을 보류했습니다. 새로고침으로 다시 확인하세요.",
+            )
+            refreshRunProjectionOnly()
+            return
+        }
+        val context = latestExecutionContext ?: return
         val capturedGeneration = loadContextGeneration
         val cancellationToken = ProcessCancellationToken()
         harnessRunCancellationToken = cancellationToken
@@ -565,54 +629,82 @@ class AppViewModel(
         refreshRunProjectionOnly()
 
         harnessRunJob = viewModelScope.launch {
-            val command = buildHarnessCommand(kind, project, day)
-            val lockResult = withContext(ioDispatcher) { processLock.acquire(project.id, day.date, kind) }
-            val acquired = lockResult as? LockAcquireResult.Acquired
-            if (acquired == null) {
-                if (capturedGeneration == loadContextGeneration) {
-                    lastLockInspection = withContext(ioDispatcher) { inspectLock(project.id, day.date) }
-                    val notice = when (lockResult) {
-                        is LockAcquireResult.Busy -> "다른 HRNS-NOW 실행이 이 프로젝트와 날짜의 잠금을 보유 중입니다."
-                        is LockAcquireResult.Failed -> "잠금을 안전하게 획득하지 못해 실행을 시작하지 않았습니다."
-                        is LockAcquireResult.Acquired -> error("acquired result was already handled")
-                    }
-                    harnessRunView = harnessRunView.copy(isRunning = false, notice = notice)
-                    refreshRunProjectionOnly()
+            val outcome = try {
+                withContext(ioDispatcher) {
+                    executeHarnessAction.invoke(
+                        context = context,
+                        action = action,
+                        timeout = runTimeout,
+                        cancellationToken = cancellationToken,
+                        onLockAcquired = { handle ->
+                            withContext(mainDispatcher) {
+                                currentLockHandle = handle
+                                startHeartbeat(handle)
+                            }
+                        },
+                        onBeforeLockRelease = {
+                            withContext(mainDispatcher) {
+                                stopHeartbeat()
+                                currentLockHandle = null
+                            }
+                        },
+                    )
                 }
-                return@launch
-            }
-            currentLockHandle = acquired.handle
-            startHeartbeat(acquired.handle)
-
-            val result = try {
-                val executionResult = withContext(ioDispatcher) {
-                    harnessRunner.execute(command, runTimeout, cancellationToken)
-                }
-                if (capturedGeneration == loadContextGeneration) {
-                    // State 재읽기는 own lock을 가진 상태에서 수행한다. 실행 결과는 stdout이 아니라
-                    // 이 State projection을 통해 해석되며 own mtime 변화는 외부 실행으로 오인하지 않는다.
-                    localStateRefreshPending = true
-                    loadOnce(forceRead = true)
-                }
-                executionResult
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                ProcessRunResult.StartFailed("진단 프로세스를 안전하게 관찰하지 못했습니다.")
+                ExecuteHarnessActionOutcome.Failed(
+                    ProcessRunResult.StartFailed("Harness 실행 프로세스를 안전하게 관찰하지 못했습니다."),
+                )
             } finally {
                 stopHeartbeat()
-                withContext(ioDispatcher) { processLock.release(acquired.handle) }
                 currentLockHandle = null
-                lastLockInspection = withContext(ioDispatcher) { inspectLock(project.id, day.date) }
+                lastLockInspection = withContext(ioDispatcher) { inspectLock(context.project.id, context.day.date) }
             }
 
             if (capturedGeneration != loadContextGeneration) return@launch
 
-            harnessRunView = harnessRunView.copy(isRunning = false, lastResult = result, notice = null)
+            when (outcome) {
+                is ExecuteHarnessActionOutcome.Completed -> {
+                    // Use case는 own lock 보유 중 State를 이미 다시 읽었다. 아래 full reload는 strategy/artifact/UI
+                    // projection을 갱신하기 위한 후속 표시 작업이며, own mtime 변화는 외부 실행으로 오인하지 않는다.
+                    localStateRefreshPending = true
+                    loadOnce(forceRead = true)
+                    harnessRunView = harnessRunView.copy(
+                        isRunning = false,
+                        lastResult = outcome.processResult,
+                        notice = null,
+                    )
+                }
+
+                is ExecuteHarnessActionOutcome.Rejected -> {
+                    harnessRunView = HarnessRunViewState(lastCommand = kind, notice = outcome.reason)
+                }
+
+                is ExecuteHarnessActionOutcome.Failed -> {
+                    harnessRunView = HarnessRunViewState(lastCommand = kind, lastResult = outcome.processResult)
+                }
+
+                is ExecuteHarnessActionOutcome.LockUnavailable -> {
+                    val lockResult = outcome.result
+                    val notice = when (lockResult) {
+                        is LockAcquireResult.Busy -> "다른 HRNS-NOW 실행이 이 프로젝트와 날짜의 잠금을 보유 중입니다."
+                        is LockAcquireResult.Failed -> "실행 잠금을 안전하게 획득하지 못했습니다: ${lockResult.reason}"
+                        is LockAcquireResult.Acquired -> error("획득한 잠금은 LockUnavailable이 될 수 없습니다.")
+                    }
+                    harnessRunView = HarnessRunViewState(lastCommand = kind, notice = notice)
+                }
+
+                is ExecuteHarnessActionOutcome.UnsupportedAction -> {
+                    harnessRunView = HarnessRunViewState(
+                        lastCommand = kind,
+                        notice = "현재 Phase에서 지원하지 않는 실행 action입니다.",
+                    )
+                }
+            }
             refreshRunProjectionOnly()
         }
     }
-
     private suspend fun onLockForceReleaseRequested() {
         val project = activeProject ?: return
         val day = selectedDay?.workspaceDay ?: return
@@ -620,22 +712,59 @@ class AppViewModel(
         loadOnce(forceRead = true)
     }
 
-    private fun buildHarnessCommand(kind: HarnessCommandKind, project: HarnessProject, day: WorkspaceDay): HarnessCommand =
-        when (kind) {
-            HarnessCommandKind.Doctor -> HarnessCommand.Doctor(
-                kitRoot = project.kitRoot,
-                workspaceRoot = project.projectWorkspaceRoot,
-                projectRoot = project.repositoryRoot,
-                date = day.date,
-            )
-
-            HarnessCommandKind.ValidateOps -> HarnessCommand.ValidateOps(
-                workspaceRoot = project.projectWorkspaceRoot,
-                kitRoot = project.kitRoot,
-                profile = project.profileId,
-                date = day.date,
-            )
+    /**
+     * `REQUEST_INBOX.md`에만 쓴다 — `REQUEST_STRUCTURED.md`/`WORKFLOW_STATE.json`은 절대
+     * 건드리지 않는다. lock/process와 무관한 파일 쓰기이므로 harness 실행 lock을 잡지 않는다.
+     */
+    private suspend fun onRequestEntrySubmitted(draft: RequestEntryDraft) {
+        if (requestSaving) return
+        val daySelection = selectedDay ?: return
+        if (daySelection.isReadOnly) {
+            requestSaveSucceeded = false
+            requestInboxNotice = "과거 날짜는 읽기 전용입니다. 오늘 날짜에서만 요청을 저장할 수 있습니다."
+            refreshTodayWorkProjectionOnly()
+            return
         }
+        if (!isRequestEditingAllowed()) {
+            requestSaveSucceeded = false
+            requestInboxNotice = "현재 상태에서는 요청을 저장할 수 없습니다. 상태를 새로고침한 뒤 허용된 다음 행동을 확인하세요."
+            refreshTodayWorkProjectionOnly()
+            return
+        }
+        val day = daySelection.workspaceDay
+
+        requestSaving = true
+        requestSaveSucceeded = false
+        requestInboxNotice = null
+        refreshTodayWorkProjectionOnly()
+
+        val outcome = withContext(ioDispatcher) { saveRequest.invoke(day, draft) }
+        requestSaving = false
+        requestSaveSucceeded = outcome == SaveRequestOutcome.Saved
+        requestInboxNotice = when (outcome) {
+            SaveRequestOutcome.Saved -> "요청을 저장했습니다."
+            SaveRequestOutcome.InboxUnavailable -> "요청 입력 파일을 찾을 수 없습니다. 먼저 '오늘 준비'를 실행하세요."
+            SaveRequestOutcome.Conflict -> "다른 곳에서 파일이 변경되어 저장하지 못했습니다. 초안은 유지됩니다. 다시 시도하면 최신 내용을 다시 읽으며, 필요하면 REQUEST_INBOX.md를 확인해 수동 병합하세요."
+            is SaveRequestOutcome.Failed -> "요청을 저장하지 못했습니다: ${outcome.reason}"
+        }
+        refreshTodayWorkProjectionOnly()
+    }
+
+    /** 화면의 버튼 상태와 같은 typed CTA 정책을 저장 직전에도 다시 확인한다. */
+    private fun isRequestEditingAllowed(): Boolean {
+        val ready = _state.value as? HrnsUiState.Ready ?: return false
+        return !ready.cockpit.isReadOnlyDay && isActionAllowed(UiAction.EditRequest)
+    }
+
+    /** typed CTA 정책상 허용되고 현재 활성화된 action만 실행/저장 경계까지 통과한다. */
+    private fun isActionAllowed(action: UiAction): Boolean {
+        val ready = _state.value as? HrnsUiState.Ready ?: return false
+        return listOfNotNull(ready.cockpit.primaryAction)
+            .plus(ready.cockpit.allowedActions)
+            .any { item -> item.action == action && item.enabled }
+    }
+
+    private fun isHarnessRunAllowed(action: UiAction): Boolean = isActionAllowed(action)
 
     private suspend fun inspectLock(projectId: ProjectId?, date: LocalDate): LockInspection? {
         if (projectId == null) return null
@@ -661,22 +790,47 @@ class AppViewModel(
     private fun refreshRunProjectionOnly() {
         val current = _state.value as? HrnsUiState.Ready ?: return
         val runEnabled = !harnessRunView.isRunning && !externalExecutionSuspected
+        val updatedCockpit = current.cockpit.copy(
+            primaryAction = current.cockpit.primaryAction?.let { item -> item.withRunEnabled(runEnabled) },
+            allowedActions = current.cockpit.allowedActions.map { item -> item.withRunEnabled(runEnabled) },
+        )
+        val now = clock()
         _state.value = current.copy(
             runStatus = runStatusAssembler.assemble(
                 runView = harnessRunView,
                 lockInspection = lastLockInspection,
-                now = clock(),
+                now = now,
                 externalExecutionSuspected = externalExecutionSuspected,
             ),
-            cockpit = current.cockpit.copy(
-                primaryAction = current.cockpit.primaryAction?.let { item -> item.withRunEnabled(runEnabled) },
-                allowedActions = current.cockpit.allowedActions.map { item -> item.withRunEnabled(runEnabled) },
+            cockpit = updatedCockpit,
+            todayWork = buildTodayWorkProjection(
+                updatedCockpit,
+                strategyText,
+                requestInboxNotice,
+                requestSaving,
+                requestSaveSucceeded,
+                lockSummaryLabel(lastLockInspection, now),
+            ),
+        )
+    }
+
+    /** `todayWork`만 다시 조립한다 — 요청 저장 notice처럼 cockpit 재조회 없이 바뀌는 값 전용이다. */
+    private fun refreshTodayWorkProjectionOnly() {
+        val current = _state.value as? HrnsUiState.Ready ?: return
+        _state.value = current.copy(
+            todayWork = buildTodayWorkProjection(
+                current.cockpit,
+                strategyText,
+                requestInboxNotice,
+                requestSaving,
+                requestSaveSucceeded,
+                lockSummaryLabel(lastLockInspection, clock()),
             ),
         )
     }
 
     private fun CockpitActionItem.withRunEnabled(runEnabled: Boolean) =
-        if (action == UiAction.RunDoctor || action == UiAction.RunOpsValidation) copy(enabled = runEnabled) else this
+        if (action in MUTATING_RUN_ACTIONS) copy(enabled = runEnabled) else this
 
     /** 테스트나 lifecycle owner가 없는 host에서 polling과 내부 scope를 명시적으로 취소한다. */
     fun dispose() {
@@ -693,4 +847,17 @@ class AppViewModel(
         DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault())
             .format(instant)
+
+    private companion object {
+        /** lock/process 하나를 공유하는 harness 실행 action — 실행 중에는 모두 함께 비활성화한다. */
+        val MUTATING_RUN_ACTIONS = setOf(
+            UiAction.RunDoctor,
+            UiAction.RunOpsValidation,
+            UiAction.BootstrapDay,
+            UiAction.RunPlanning,
+            UiAction.RunReplan,
+            UiAction.RunCodeSlice,
+            UiAction.RunDocSlice,
+        )
+    }
 }

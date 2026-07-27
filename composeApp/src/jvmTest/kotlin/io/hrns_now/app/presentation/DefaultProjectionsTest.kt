@@ -1,6 +1,7 @@
 package io.hrns_now.app.presentation
 
 import io.hrns_now.app.presentation.model.CockpitActionItem
+import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.core.config.PathProbeKind
 import io.hrns_now.core.config.PathProbeResult
 import io.hrns_now.core.config.PathProbeState
@@ -41,5 +42,97 @@ class DefaultProjectionsTest {
     private fun probeSummary(): WorkspaceProbeSummary {
         val probe = PathProbeResult("KitRoot", null, PathProbeKind.Directory, PathProbeState.NotConfigured, "미설정")
         return WorkspaceProbeSummary(probe, probe, probe, probe, probe)
+    }
+
+    private fun cockpitProjection(
+        primaryAction: CockpitActionItem?,
+        allowedActions: List<CockpitActionItem>,
+    ): CockpitProjection = CockpitProjection(
+        projectName = "sample",
+        profileLabel = "corp-default",
+        dateLabel = "2026-07-27",
+        isReadOnlyDay = false,
+        isStale = false,
+        phaseLabel = "실행 준비",
+        statusLabel = "실행 준비",
+        queueStatusLabel = "active",
+        activeCardId = "card-1",
+        activeSliceId = "slice-1",
+        authorizedTargetLabel = "S:\\repo\\TARGET.md",
+        stopReasonLabel = null,
+        blockedReasonLabel = null,
+        artifactItems = emptyList(),
+        opsValidationLabel = "통과",
+        closureLabel = "미완료",
+        executionCompletedLabel = "진행 중",
+        lastSuccessfulReadAtLabel = null,
+        lastAttemptAtLabel = null,
+        primaryAction = primaryAction,
+        allowedActions = allowedActions,
+        diagnostics = null,
+        compatibilityDiagnostics = null,
+    )
+
+    @Test
+    fun `오늘 할 일 action 목록은 Doctor OpsValidation을 제외하고 일일 흐름 action만 남긴다`() {
+        val cockpit = cockpitProjection(
+            primaryAction = CockpitActionItem(UiAction.RunCodeSlice, "선택된 코드 작업 실행", enabled = true),
+            allowedActions = listOf(
+                CockpitActionItem(UiAction.RunCodeSlice, "선택된 코드 작업 실행", enabled = true),
+                CockpitActionItem(UiAction.Refresh, "새로고침", enabled = true),
+                CockpitActionItem(UiAction.RunDoctor, "상태 점검 실행", enabled = false),
+            ),
+        )
+
+        val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
+
+        assertEquals(listOf(UiAction.RunCodeSlice), projection.actions.map { it.action })
+    }
+
+    @Test
+    fun `실행 확인 섹션은 wrapper 승인된 대상 파일 예상 검증 잠금을 read-only로 보여준다`() {
+        val cockpit = cockpitProjection(
+            primaryAction = CockpitActionItem(UiAction.RunDocSlice, "선택된 문서 작업 실행", enabled = true),
+            allowedActions = listOf(CockpitActionItem(UiAction.RunDocSlice, "선택된 문서 작업 실행", enabled = true)),
+        )
+
+        val projection = buildTodayWorkProjection(
+            cockpit,
+            strategyText = "Execution wrapper: doc",
+            requestInboxNotice = null,
+            requestSaving = false,
+            lockSummaryLabel = "Ops Validation (PID 4242, 마지막 heartbeat 3초 전)",
+        )
+
+        val confirmation = projection.sections.last()
+        assertEquals("wrapper" to "doc", confirmation.rows[0])
+        assertEquals("승인된 대상 파일" to "S:\\repo\\TARGET.md", confirmation.rows[1])
+        assertEquals("예상 검증" to "통과", confirmation.rows.first { it.first == "예상 검증" })
+        assertEquals("잠금" to "Ops Validation (PID 4242, 마지막 heartbeat 3초 전)", confirmation.rows.last())
+    }
+
+    @Test
+    fun `Strategy 섹션은 사람용 원문이 없으면 안내 문구를 보인다`() {
+        val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
+
+        val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
+
+        assertEquals("내용" to "아직 없습니다.", projection.sections.first().rows.single())
+    }
+
+    @Test
+    fun `요청 저장 notice와 saving 상태를 그대로 투영한다`() {
+        val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
+
+        val projection = buildTodayWorkProjection(
+            cockpit,
+            strategyText = null,
+            requestInboxNotice = "요청을 저장했습니다.",
+            requestSaving = true,
+            lockSummaryLabel = "없음",
+        )
+
+        assertEquals("요청을 저장했습니다.", projection.requestInboxNotice)
+        assertTrue(projection.requestSaving)
     }
 }

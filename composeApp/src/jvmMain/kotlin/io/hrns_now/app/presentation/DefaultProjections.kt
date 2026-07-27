@@ -2,6 +2,7 @@ package io.hrns_now.app.presentation
 
 import io.hrns_now.app.presentation.model.ActionButtonModel
 import io.hrns_now.app.presentation.model.CockpitActionItem
+import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.app.presentation.model.InfoCardModel
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.ShellProjection
@@ -94,14 +95,94 @@ private fun PathProbeState.summaryLabel(): String =
         PathProbeState.Unknown -> "확인 필요"
     }
 
-fun buildPlaceholderTodayWorkProjection(): TodayWorkProjection =
-    TodayWorkProjection(
-        title = "오늘 할 일",
-        subtitle = "이 화면은 Phase 4(표준 일일 실행 흐름)에서 실데이터로 연결됩니다.",
-        statusChip = StatusChipModel("아직 연결되지 않음", "", "muted"),
-        sections = listOf(
-            InfoCardModel("안내", listOf("상태" to "이 화면은 아직 준비 중입니다.")),
-        ),
-        actions = emptyList(),
-        note = "수동 실행은 이후 PS1 façade에 연결됩니다.",
+/**
+ * "오늘 할 일" 화면 projection이다. 사람용 `TODAY_STRATEGY.md` 원문과 기계
+ * `WORKFLOW_STATE.json` queue 판단을 서로 다른 섹션으로 분리해 보여준다 — 둘이 어긋나면
+ * `WORKFLOW_STATE.json`(= [cockpit])이 최종 진실이다(`doc/claude_prompts/phase4-standard-daily-flow.md` §3).
+ * action 목록은 [cockpit]이 이미 계산한 allowed action 중 일일 실행 흐름에 속하는 것만 남긴다 —
+ * Doctor/ValidateOps는 작업공간 연결 화면, Closure류는 Phase 5 범위라 여기서 다루지 않는다.
+ */
+fun buildTodayWorkProjection(
+    cockpit: CockpitProjection,
+    strategyText: String?,
+    requestInboxNotice: String?,
+    requestSaving: Boolean,
+    requestSaveSucceeded: Boolean = false,
+    lockSummaryLabel: String,
+): TodayWorkProjection {
+    val dailyFlowActions = setOf(
+        UiAction.BootstrapDay,
+        UiAction.EditRequest,
+        UiAction.RunPlanning,
+        UiAction.RunReplan,
+        UiAction.ReviewPlan,
+        UiAction.RunCodeSlice,
+        UiAction.RunDocSlice,
+        UiAction.RunValidationSlice,
     )
+    val actions = (listOfNotNull(cockpit.primaryAction) + cockpit.allowedActions)
+        .distinctBy { it.action }
+        .filter { it.action in dailyFlowActions }
+        .map { item ->
+            ActionButtonModel(
+                label = item.label,
+                enabled = item.enabled,
+                helperText = if (!item.enabled) cockpit.blockedReasonLabel else null,
+                action = item.action,
+            )
+        }
+
+    val wrapperLabel = when {
+        actions.any { it.action == UiAction.RunCodeSlice } -> "code"
+        actions.any { it.action == UiAction.RunDocSlice } -> "doc"
+        else -> "확인 필요"
+    }
+    val compatibilityLabel = cockpit.compatibilityDiagnostics?.whatHappened ?: "호환됨"
+
+    return TodayWorkProjection(
+        title = "오늘 할 일",
+        subtitle = "요청 작성 → 오늘 준비 → 계획/재계획 → 승인된 단일 code/doc 실행",
+        statusChip = StatusChipModel(
+            label = cockpit.queueStatusLabel,
+            value = cockpit.activeSliceId ?: "",
+            tone = if (cockpit.blockedReasonLabel != null) "warning" else "neutral",
+        ),
+        sections = listOf(
+            InfoCardModel(
+                "Strategy (사람이 읽는 TODAY_STRATEGY.md 원문)",
+                listOf("내용" to (strategyText?.takeIf(String::isNotBlank) ?: "아직 없습니다.")),
+            ),
+            InfoCardModel(
+                "Queue (기계 판단 · WORKFLOW_STATE.json 기준, 최종 진실)",
+                listOf(
+                    "상태" to cockpit.statusLabel,
+                    "queue 상태" to cockpit.queueStatusLabel,
+                    "활성 card" to (cockpit.activeCardId ?: "없음"),
+                    "활성 slice" to (cockpit.activeSliceId ?: "없음"),
+                    "승인된 대상 파일" to (cockpit.authorizedTargetLabel ?: "없음"),
+                    "중단 사유" to (cockpit.stopReasonLabel ?: "없음"),
+                ),
+            ),
+            InfoCardModel(
+                "실행 확인 (code/doc 실행 전 필수 확인, read-only)",
+                listOf(
+                    "wrapper" to wrapperLabel,
+                    "승인된 대상 파일" to (cockpit.authorizedTargetLabel ?: "없음"),
+                    "허용 범위" to "승인된 대상 파일 안에서만 변경이 허용됩니다.",
+                    "금지 범위" to "승인된 대상 파일 밖의 변경과 이 화면에서의 대상 경로 편집은 금지됩니다.",
+                    "예상 검증" to cockpit.opsValidationLabel,
+                    "compatibility" to compatibilityLabel,
+                    "잠금" to lockSummaryLabel,
+                ),
+            ),
+        ),
+        actions = actions,
+        note = "실행 전 승인된 대상 파일과 wrapper를 반드시 확인하세요. 이 화면에서 대상 경로를 직접 편집할 수 없습니다.",
+        requestInboxNotice = requestInboxNotice,
+        requestSaving = requestSaving,
+        requestEditingEnabled = !cockpit.isReadOnlyDay &&
+            (cockpit.primaryAction?.action == UiAction.EditRequest ||
+                cockpit.allowedActions.any { it.action == UiAction.EditRequest }),
+        requestSaveSucceeded = requestSaveSucceeded,
+    )
+}

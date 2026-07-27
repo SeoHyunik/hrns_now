@@ -44,6 +44,7 @@ class CockpitProjectionAssemblerTest {
         status: WorkflowStatus = WorkflowStatus.ExecutionReady,
         phase: WorkflowPhase = WorkflowPhase.ExecutionReady,
         blockedReason: String? = null,
+        executionWrapper: ExecutionWrapperState = ExecutionWrapperState.Code,
     ): WorkflowState = WorkflowState(
         schemaVersion = SchemaVersion(1, 0, "1.0"),
         date = LocalDate.of(2026, 6, 26),
@@ -55,7 +56,7 @@ class CockpitProjectionAssemblerTest {
         phase = phase,
         status = status,
         nextAction = null,
-        executionWrapper = ExecutionWrapperState.Code,
+        executionWrapper = executionWrapper,
         stopReason = stopReason,
         blockedReason = blockedReason,
         failedReason = null,
@@ -127,7 +128,7 @@ class CockpitProjectionAssemblerTest {
         StateReadResult.Success(state, FileVersion(Instant.EPOCH, 10, "hash"))
 
     @Test
-    fun `Success는 live pointer와 상태를 표시하되 active 종류 미보증으로 실행 CTA를 잠근다`() {
+    fun `Success는 live pointer와 상태를 표시하고 execution_wrapper가 가리키는 code slice를 실행 CTA로 연다`() {
         val projection = assemble(success())
 
         assertFalse(projection.isStale)
@@ -141,18 +142,17 @@ class CockpitProjectionAssemblerTest {
         assertEquals("통과", projection.opsValidationLabel)
         assertEquals("미완료", projection.closureLabel)
         assertEquals(4, projection.artifactItems.size)
-        assertEquals(UiAction.OpenRecoveryCenter, projection.primaryAction?.action)
-        assertFalse(projection.allowedActions.any { it.action == UiAction.RunCodeSlice })
+        assertEquals(UiAction.RunCodeSlice, projection.primaryAction?.action)
+        assertTrue(projection.allowedActions.any { it.action == UiAction.RunCodeSlice })
     }
 
     @Test
-    fun `정책 CTA 중 Phase 1C에서 구현된 Refresh만 활성화한다`() {
+    fun `정책 CTA 중 실행 중이 아닐 때는 code slice 실행과 Refresh가 활성화된다`() {
         val projection = assemble(success())
 
-        assertEquals(UiAction.OpenRecoveryCenter, projection.primaryAction?.action)
-        assertFalse(requireNotNull(projection.primaryAction).enabled)
+        assertEquals(UiAction.RunCodeSlice, projection.primaryAction?.action)
+        assertTrue(requireNotNull(projection.primaryAction).enabled)
         assertTrue(requireNotNull(projection.allowedActions.single { it.action == UiAction.Refresh }).enabled)
-        assertTrue(projection.allowedActions.filterNot { it.action == UiAction.Refresh }.none { it.enabled })
     }
 
     @Test
@@ -277,11 +277,31 @@ class CockpitProjectionAssemblerTest {
     }
 
     @Test
-    fun `pointer만 있는 live execution_ready는 활성 slice 종류를 추측하지 않는다`() {
-        val projection = assemble(success())
+    fun `execution_wrapper가 auto나 none이면 활성 slice 종류를 추측하지 않고 fail-closed한다`() {
+        val autoProjection = assemble(success(healthyExecutionReadyState(executionWrapper = ExecutionWrapperState.Auto)))
+        val noneProjection = assemble(success(healthyExecutionReadyState(executionWrapper = ExecutionWrapperState.None)))
+
+        listOf(autoProjection, noneProjection).forEach { projection ->
+            assertEquals(UiAction.OpenRecoveryCenter, projection.primaryAction?.action)
+            assertEquals("execution_ready 상태이지만 활성 slice 종류를 확인할 수 없습니다.", projection.blockedReasonLabel)
+        }
+    }
+
+    @Test
+    fun `execution_wrapper가 doc이면 문서 slice 실행을 primary로 연다`() {
+        val projection = assemble(success(healthyExecutionReadyState(executionWrapper = ExecutionWrapperState.Doc)))
+
+        assertEquals(UiAction.RunDocSlice, projection.primaryAction?.action)
+    }
+
+    @Test
+    fun `execution_wrapper가 알 수 없는 원문이면 복구 센터로 fail-closed하고 원문을 노출하지 않는다`() {
+        val secret = "raw-wrapper-value-secret"
+        val projection = assemble(success(healthyExecutionReadyState(executionWrapper = ExecutionWrapperState.Unknown(secret))))
 
         assertEquals(UiAction.OpenRecoveryCenter, projection.primaryAction?.action)
-        assertEquals("execution_ready 상태이지만 활성 slice 종류를 확인할 수 없습니다.", projection.blockedReasonLabel)
+        assertEquals("알 수 없는 execution wrapper입니다.", projection.blockedReasonLabel)
+        assertFalse(requireNotNull(projection.blockedReasonLabel).contains(secret))
     }
 
     @Test

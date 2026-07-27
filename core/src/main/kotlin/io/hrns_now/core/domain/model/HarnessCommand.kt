@@ -10,6 +10,46 @@ import java.time.LocalDate
 enum class HarnessCommandKind {
     Doctor,
     ValidateOps,
+    Bootstrap,
+    Planning,
+    Replan,
+    ExecutionCode,
+    ExecutionDoc,
+}
+
+/**
+ * `run-cycle.ps1 -RunExecutionWrapper`의 실계약 값(`none|code|doc|auto`, `Auto` 제외 — `None`은
+ * outbound 명령에 존재하지 않는다)이다. `Auto`는 CLI 계약 충실성을 위해 타입에 남기되, UI는
+ * [io.hrns_now.core.domain.model.ActiveSliceKind]가 `Code`/`Doc`일 때만 dispatch하므로
+ * `HarnessCommand.RunExecution(wrapper = Auto)`는 실제로 생성되지 않는다
+ * (`doc/hrns_now_design_pattern.md` §6.2).
+ */
+enum class ExecutionWrapper(val cliValue: String) {
+    Code("code"),
+    Doc("doc"),
+    Auto("auto"),
+}
+
+/** `run-cycle.ps1 -PlanningReason`의 `ValidateSet` 실계약과 동일하다. */
+enum class PlanningReason(val cliValue: String) {
+    InitialPlan("initial-plan"),
+    ContinueExistingPlan("continue-existing-plan"),
+    RepairCurrentPlan("repair-current-plan"),
+    HumanRequestedReplan("human-requested-replan"),
+    RequestRevisionReplan("request-revision-replan"),
+    StaleArtifactRepair("stale-artifact-repair"),
+}
+
+/**
+ * `run-cycle.ps1 -ReplanReason`의 `ValidateSet` 실계약과 동일하다(빈 문자열 제외 — 빈 문자열은
+ * run-cycle.ps1이 `-RunReplanWrapper`를 `replanReasonRequired`로 차단하는 값이므로 이 타입에
+ * 남기지 않는다).
+ */
+enum class ReplanReason(val cliValue: String) {
+    RepairCurrentPlan("repair-current-plan"),
+    HumanRequestedReplan("human-requested-replan"),
+    RequestRevisionReplan("request-revision-replan"),
+    StaleArtifactRepair("stale-artifact-repair"),
 }
 
 /**
@@ -17,8 +57,9 @@ enum class HarnessCommandKind {
  * 조립이 아니라 [io.hrns_now.core.port.HarnessCommandEncoder]류의 순수 encoder가 이 값을
  * argument 목록으로 변환한다.
  *
- * 이번 Phase에서 실제로 연결하는 command는 read-only `Doctor`/`ValidateOps` 둘뿐이다. Phase
- * 4/5(Planning/Replan/Execution/Closure 등 mutating command)를 여기서 선구현하지 않는다.
+ * Phase 3은 read-only `Doctor`/`ValidateOps`를 연결했다. Phase 4는 `run-cycle.ps1` 기반
+ * mutating command(`BootstrapDay`/`RunPlanning`/`RunReplan`/`RunExecution`)를 추가한다. Closure
+ * validation(Phase 5)은 여기서 선구현하지 않는다.
  */
 sealed interface HarnessCommand {
     val kind: HarnessCommandKind
@@ -41,5 +82,61 @@ sealed interface HarnessCommand {
         val date: LocalDate,
     ) : HarnessCommand {
         override val kind: HarnessCommandKind = HarnessCommandKind.ValidateOps
+    }
+
+    /** `scripts/run-cycle.ps1 -UsePythonSidecars`(wrapper 인자 없음)에 대응한다. */
+    data class BootstrapDay(
+        val workspaceRoot: Path,
+        val projectRoot: Path,
+        val kitRoot: Path,
+        val profile: String?,
+        val date: LocalDate,
+    ) : HarnessCommand {
+        override val kind: HarnessCommandKind = HarnessCommandKind.Bootstrap
+    }
+
+    /** `scripts/run-cycle.ps1 -RunPlanningWrapper -PlanningReason <reason>`에 대응한다. */
+    data class RunPlanning(
+        val workspaceRoot: Path,
+        val projectRoot: Path,
+        val kitRoot: Path,
+        val profile: String?,
+        val date: LocalDate,
+        val reason: PlanningReason = PlanningReason.InitialPlan,
+    ) : HarnessCommand {
+        override val kind: HarnessCommandKind = HarnessCommandKind.Planning
+    }
+
+    /**
+     * `scripts/run-cycle.ps1 -RunReplanWrapper -ReplanReason <reason>`에 대응한다. `reason`은
+     * run-cycle.ps1이 빈 값일 때 `-RunReplanWrapper`를 차단하므로 필수 인자로 둔다.
+     */
+    data class RunReplan(
+        val workspaceRoot: Path,
+        val projectRoot: Path,
+        val kitRoot: Path,
+        val profile: String?,
+        val date: LocalDate,
+        val reason: ReplanReason,
+    ) : HarnessCommand {
+        override val kind: HarnessCommandKind = HarnessCommandKind.Replan
+    }
+
+    /** `scripts/run-cycle.ps1 -RunExecutionWrapper code|doc`에 대응한다. */
+    data class RunExecution(
+        val workspaceRoot: Path,
+        val projectRoot: Path,
+        val kitRoot: Path,
+        val profile: String?,
+        val date: LocalDate,
+        val wrapper: ExecutionWrapper,
+    ) : HarnessCommand {
+        override val kind: HarnessCommandKind
+            get() = when (wrapper) {
+                ExecutionWrapper.Code -> HarnessCommandKind.ExecutionCode
+                ExecutionWrapper.Doc -> HarnessCommandKind.ExecutionDoc
+                ExecutionWrapper.Auto ->
+                    error("RunExecution(wrapper = Auto)는 생성되지 않는다 — UI는 code/doc slice만 dispatch한다.")
+            }
     }
 }

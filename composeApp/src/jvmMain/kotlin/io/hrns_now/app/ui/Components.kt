@@ -498,6 +498,7 @@ fun LabeledTextField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     monospace: Boolean = false,
+    multiline: Boolean = false,
 ) {
     val colors = LocalHrnsColors.current
     OutlinedTextField(
@@ -509,7 +510,8 @@ fun LabeledTextField(
             fontFamily = if (monospace) FontFamily.Monospace else MaterialTheme.typography.bodyMedium.fontFamily,
             fontSize = 13.5.sp,
         ),
-        singleLine = true,
+        singleLine = !multiline,
+        minLines = if (multiline) 3 else 1,
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = colors.primaryText,
             unfocusedTextColor = colors.primaryText,
@@ -517,4 +519,35 @@ fun LabeledTextField(
             unfocusedBorderColor = colors.borderStrong,
         ),
     )
+}
+
+/** 선택지 하나가 [selected]인 chip 형태 단일 선택 행이다(요청 편집기의 유형/출처/우선순위). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun <T> EnumOptionRow(
+    label: String,
+    options: List<T>,
+    selected: T,
+    optionLabel: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalHrnsColors.current
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            color = colors.secondaryText,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                PlaceholderActionButton(
+                    text = optionLabel(option),
+                    primary = option == selected,
+                    enabled = true,
+                    onClick = { onSelect(option) },
+                )
+            }
+        }
+    }
 }

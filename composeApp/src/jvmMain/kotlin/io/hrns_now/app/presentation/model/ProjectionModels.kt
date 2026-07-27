@@ -53,7 +53,15 @@ data class TodayWorkProjection(
     val statusChip: StatusChipModel,
     val sections: List<InfoCardModel>,
     val actions: List<ActionButtonModel>,
-    val note: String
+    val note: String,
+    /** 요청 저장 결과 안내다(Phase 4) — 성공/충돌/실패 문구를 그대로 보여준다. */
+    val requestInboxNotice: String? = null,
+    /** 요청 저장 진행 중 여부다 — 편집기 제출 버튼의 중복 클릭 가드에 쓰인다. */
+    val requestSaving: Boolean = false,
+    /** 오늘 날짜이며 정책이 요청 입력을 허용할 때만 true다. */
+    val requestEditingEnabled: Boolean = false,
+    /** 마지막 요청 저장이 성공했는지 나타내며, 편집기는 이 값이 true일 때만 draft를 비운다. */
+    val requestSaveSucceeded: Boolean = false,
 )
 
 data class RunStatusProjection(

@@ -13,6 +13,7 @@ import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkflowState
+import io.hrns_now.core.domain.model.toActiveSliceKind
 import io.hrns_now.core.domain.model.toCompatibilityStatus
 import io.hrns_now.core.domain.policy.ActionPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelection
@@ -42,9 +43,7 @@ class CockpitProjectionAssembler(
         harnessRunInProgress: Boolean = false,
     ): CockpitProjection {
         val (displayState, isStale) = resolveDisplayState(stateRead)
-        // 최종 계획 부록 A와 live State는 queue.active를 card/slice pointer로만 보증한다.
-        // Template의 미사용 필드를 실행 근거로 승격하지 않고 Phase 2 계약 전까지 fail-closed한다.
-        val activeSliceKind = null
+        val activeSliceKind = displayState?.executionWrapper?.toActiveSliceKind()
         val selectedDayKind = if (daySelection.isReadOnly) SelectedDayKind.Past else SelectedDayKind.Today
 
         val context = ActionContext(
@@ -197,8 +196,15 @@ class CockpitProjectionAssembler(
             action = action,
             label = action.displayLabel(),
             enabled = when (action) {
-                UiAction.Refresh -> true
-                UiAction.RunDoctor, UiAction.RunOpsValidation -> !harnessRunInProgress
+                UiAction.Refresh, UiAction.EditRequest -> true
+                UiAction.RunDoctor,
+                UiAction.RunOpsValidation,
+                UiAction.BootstrapDay,
+                UiAction.RunPlanning,
+                UiAction.RunReplan,
+                UiAction.RunCodeSlice,
+                UiAction.RunDocSlice,
+                -> !harnessRunInProgress
                 else -> false
             },
         )

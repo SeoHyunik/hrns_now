@@ -1,6 +1,8 @@
 package io.hrns_now.infra.process
 
+import io.hrns_now.core.domain.model.ExecutionWrapper
 import io.hrns_now.core.domain.model.HarnessCommand
+import io.hrns_now.core.domain.model.PlanningReason
 import io.hrns_now.core.domain.model.ProcessCancellationToken
 import io.hrns_now.core.result.HarnessCheckSeverity
 import io.hrns_now.core.result.HarnessOverallStatus
@@ -175,6 +177,106 @@ class PowerShellHarnessAdapterTest {
 
             val completed = assertIs<ProcessRunResult.Completed>(result)
             assertNull(completed.contract)
+        }
+    }
+
+    // ── Phase 4: run-cycle.ps1 기반 mutating command (JSON 계약 없음) ──────────
+
+    private fun writeRunCycleStub(kitRoot: Path, body: String) {
+        val script = """
+            param(
+                [string]${'$'}WorkspaceRoot,[string]${'$'}ProjectRoot,[string]${'$'}KitRoot,[string]${'$'}Profile,[string]${'$'}Date,
+                [switch]${'$'}SkipDoctor,[switch]${'$'}SkipOpsValidation,[switch]${'$'}ValidateForClosure,
+                [switch]${'$'}RunPlanningWrapper,[switch]${'$'}RunReplanWrapper,
+                [string]${'$'}PlanningReason,[string]${'$'}ReplanReason,
+                [switch]${'$'}DryRunPlanningDecision,[switch]${'$'}AllowSameInputPlanningRerun,
+                [string]${'$'}RunExecutionWrapper,[switch]${'$'}UsePythonSidecars,
+                [switch]${'$'}UseWorkflowStatePrimary,[switch]${'$'}ForceDualFileCompatibility
+            )
+            $body
+        """.trimIndent()
+        Files.write(kitRoot.resolve("scripts/run-cycle.ps1"), script.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    @Test
+    fun `BootstrapDay는 run-cycle 스크립트를 실행하고 프로세스 산문 출력은 contract가 아닌 snippet에만 남는다`() = runBlocking {
+        withTimeout(15_000) {
+            val kitRoot = tempKitRoot()
+            writeRunCycleStub(kitRoot, "Write-Output '==> bootstrap step complete'\nexit 0")
+            val command = HarnessCommand.BootstrapDay(
+                workspaceRoot = kitRoot.resolve("workspace"),
+                projectRoot = kitRoot.resolve("repo"),
+                kitRoot = kitRoot,
+                profile = "corp-default",
+                date = LocalDate.of(2026, 7, 27),
+            )
+
+            val result = adapter.execute(command, Duration.ofSeconds(10), ProcessCancellationToken())
+
+            val completed = assertIs<ProcessRunResult.Completed>(result)
+            assertEquals(0, completed.exitCode)
+            assertNull(completed.contract)
+            assertTrue(completed.rawOutputSnippet?.contains("bootstrap step complete") == true)
+        }
+    }
+
+    @Test
+    fun `RunPlanning은 exit code를 그대로 반영하고 완료 판단을 stdout 문구에 의존하지 않는다`() = runBlocking {
+        withTimeout(15_000) {
+            val kitRoot = tempKitRoot()
+            writeRunCycleStub(kitRoot, "Write-Output 'planning ok looking good'\nexit 1")
+            val command = HarnessCommand.RunPlanning(
+                workspaceRoot = kitRoot.resolve("workspace"),
+                projectRoot = kitRoot.resolve("repo"),
+                kitRoot = kitRoot,
+                profile = null,
+                date = LocalDate.of(2026, 7, 27),
+                reason = PlanningReason.InitialPlan,
+            )
+
+            val result = adapter.execute(command, Duration.ofSeconds(10), ProcessCancellationToken())
+
+            val completed = assertIs<ProcessRunResult.Completed>(result)
+            assertEquals(1, completed.exitCode)
+            assertNull(completed.contract)
+        }
+    }
+
+    @Test
+    fun `RunExecution code doc은 각각 working directory와 exit code를 정확히 관측한다`() = runBlocking {
+        withTimeout(15_000) {
+            val kitRoot = tempKitRoot()
+            writeRunCycleStub(kitRoot, "Write-Output ('wrapper=' + ${'$'}RunExecutionWrapper)\nexit 0")
+
+            val codeResult = adapter.execute(
+                HarnessCommand.RunExecution(
+                    workspaceRoot = kitRoot.resolve("workspace"),
+                    projectRoot = kitRoot.resolve("repo"),
+                    kitRoot = kitRoot,
+                    profile = null,
+                    date = LocalDate.of(2026, 7, 27),
+                    wrapper = ExecutionWrapper.Code,
+                ),
+                Duration.ofSeconds(10),
+                ProcessCancellationToken(),
+            )
+            val docResult = adapter.execute(
+                HarnessCommand.RunExecution(
+                    workspaceRoot = kitRoot.resolve("workspace"),
+                    projectRoot = kitRoot.resolve("repo"),
+                    kitRoot = kitRoot,
+                    profile = null,
+                    date = LocalDate.of(2026, 7, 27),
+                    wrapper = ExecutionWrapper.Doc,
+                ),
+                Duration.ofSeconds(10),
+                ProcessCancellationToken(),
+            )
+
+            val codeCompleted = assertIs<ProcessRunResult.Completed>(codeResult)
+            val docCompleted = assertIs<ProcessRunResult.Completed>(docResult)
+            assertTrue(codeCompleted.rawOutputSnippet?.contains("wrapper=code") == true)
+            assertTrue(docCompleted.rawOutputSnippet?.contains("wrapper=doc") == true)
         }
     }
 }

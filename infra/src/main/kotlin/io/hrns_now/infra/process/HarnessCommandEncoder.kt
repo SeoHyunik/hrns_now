@@ -1,6 +1,8 @@
 package io.hrns_now.infra.process
 
 import io.hrns_now.core.domain.model.HarnessCommand
+import java.nio.file.Path
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 /** [HarnessCommandEncoder.encode]가 만드는, `ProcessBuilder`에 그대로 전달할 실행 형태다. */
@@ -32,6 +34,11 @@ class HarnessCommandEncoder(
         when (command) {
             is HarnessCommand.Doctor -> command.kitRoot.resolve("scripts/doctor.ps1").toString()
             is HarnessCommand.ValidateOps -> command.kitRoot.resolve("scripts/validate-ops.ps1").toString()
+            is HarnessCommand.BootstrapDay,
+            is HarnessCommand.RunPlanning,
+            is HarnessCommand.RunReplan,
+            is HarnessCommand.RunExecution,
+            -> command.kitRoot().resolve("scripts/run-cycle.ps1").toString()
         }
 
     private fun scriptArguments(command: HarnessCommand): List<String> =
@@ -65,5 +72,69 @@ class HarnessCommandEncoder(
                 add(command.date.format(DateTimeFormatter.ISO_LOCAL_DATE))
                 add("-Json")
             }
+
+            is HarnessCommand.BootstrapDay -> runCycleBaseArguments(
+                command.workspaceRoot,
+                command.projectRoot,
+                command.kitRoot,
+                command.profile,
+                command.date,
+            ) + listOf("-UsePythonSidecars")
+
+            is HarnessCommand.RunPlanning -> runCycleBaseArguments(
+                command.workspaceRoot,
+                command.projectRoot,
+                command.kitRoot,
+                command.profile,
+                command.date,
+            ) + listOf("-RunPlanningWrapper", "-PlanningReason", command.reason.cliValue)
+
+            is HarnessCommand.RunReplan -> runCycleBaseArguments(
+                command.workspaceRoot,
+                command.projectRoot,
+                command.kitRoot,
+                command.profile,
+                command.date,
+            ) + listOf("-RunReplanWrapper", "-ReplanReason", command.reason.cliValue)
+
+            is HarnessCommand.RunExecution -> runCycleBaseArguments(
+                command.workspaceRoot,
+                command.projectRoot,
+                command.kitRoot,
+                command.profile,
+                command.date,
+            ) + listOf("-RunExecutionWrapper", command.wrapper.cliValue)
+        }
+
+    /** `run-cycle.ps1`의 실계약 필수/기본 인자(`-WorkspaceRoot`/`-ProjectRoot`/`-KitRoot`/`-Profile`/`-Date`)다. */
+    private fun runCycleBaseArguments(
+        workspaceRoot: Path,
+        projectRoot: Path,
+        kitRoot: Path,
+        profile: String?,
+        date: LocalDate,
+    ): List<String> = buildList {
+        add("-WorkspaceRoot")
+        add(workspaceRoot.toString())
+        add("-ProjectRoot")
+        add(projectRoot.toString())
+        add("-KitRoot")
+        add(kitRoot.toString())
+        profile?.takeIf(String::isNotBlank)?.let {
+            add("-Profile")
+            add(it)
+        }
+        add("-Date")
+        add(date.format(DateTimeFormatter.ISO_LOCAL_DATE))
+    }
+
+    private fun HarnessCommand.kitRoot(): Path =
+        when (this) {
+            is HarnessCommand.Doctor -> kitRoot
+            is HarnessCommand.ValidateOps -> kitRoot
+            is HarnessCommand.BootstrapDay -> kitRoot
+            is HarnessCommand.RunPlanning -> kitRoot
+            is HarnessCommand.RunReplan -> kitRoot
+            is HarnessCommand.RunExecution -> kitRoot
         }
 }
