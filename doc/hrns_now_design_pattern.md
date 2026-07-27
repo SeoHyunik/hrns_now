@@ -921,10 +921,13 @@ Process runner, ViewModel, Lock manager, Polling coordinator, Registry adapter�
 | 3 | Command, Process Adapter, Decorator, Lock coordination | 코어는 Fable |
 | 4 | Application Use Case 완성, CQRS-lite, Optimistic Concurrency | |
 | 5 | Closure Policy, Recovery Strategy | |
-| 6 | Composition Root, runtime configuration | |
+| 6A | Composition Root, external runtime configuration | MSI는 외부 Kit root를 기존 Registry/환경변수/사용자 선택 순서로 주입한다. 화면에서 Program Files·AppData 경로를 조립하지 않는다. |
+| 6B | Runtime distribution adapter, typed runtime installation configuration | Harness 승인 release artifact·manifest/checksum이 생긴 뒤에만 도입한다. 개발 트리를 adapter처럼 취급하거나 UI가 checksum 신뢰를 과장하지 않는다. |
 | 7 | Plugin-like optional adapter, feature isolation | |
 
 계획서는 이 순서를 Gate 단위로 고정하며, State Reader·CTA 정책·Cockpit·Registry 완료 후에만 Process adapter와 실제 실행을 붙인다.
+
+Phase 6의 runtime source 선택은 composition root의 작은 typed configuration으로 한정한다. `KitVersionManifestPort`/`CompatibilityPolicy`의 방향은 유지한다: infra adapter가 manifest를 읽고, core policy가 호환성을 판정하며, UI는 manifest·경로·PowerShell 인자를 직접 조합하지 않는다. workspace 자동 생성은 Registry, BoundaryPolicy, Harness bootstrap을 하나의 God service에 합치지 않고 각각의 use case/port 경계를 유지한다.
 
 ---
 

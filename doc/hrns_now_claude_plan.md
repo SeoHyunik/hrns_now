@@ -51,6 +51,22 @@
 3. **[정정] 개정본의 validation-only 실행 명령** — `run-cycle.ps1`의 `-RunExecutionWrapper`는 `none|code|doc|auto`만 허용한다(실측). `validation` 모드는 존재하지 않으며, validation-only slice는 실행 경로 내부의 parent deterministic closeout으로 처리되고 closure 검증은 별도 `-ValidateForClosure` 스위치다. UI의 `RunValidationSlice` 액션 매핑은 Phase 4 착수 시 이 실계약으로 확정하고, **새 모드를 창작하지 않는다**. `-RunReplanWrapper`(재계획)도 실존 명령으로 typed command에 포함한다.
 4. **[범위 보정] cross-process lock의 정직한 한계** — 개정본은 "Harness-level cross-process lock"이라 표현했으나, harness-kit에는 현재 lock 계약이 없고 터미널에서 실행되는 `run-cycle.ps1`은 UI의 lock 파일을 확인하지 않는다. 따라서 lock의 실제 보장 범위는 ① HRNS-NOW 인스턴스 간 상호배제(신뢰 가능) ② 외부 실행 **감지**(휴리스틱: `WORKFLOW_STATE.json` mtime/hash가 UI가 유발하지 않은 변경을 보임)다. 진짜 harness 협조 lock은 harness 측 설계 승인이 필요한 별도 백로그다(부록 E). lock 파일 위치는 workspace 오염을 피해 `%LOCALAPPDATA%\hrns-now\locks\<projectId>\<date>.lock.json`으로 한다(포터블 SSD가 동시에 두 PC에 물릴 수 없으므로 per-machine 위치로 충분).
 
+## 0.4 패키징 계획 편입 결정 (2026-07-27)
+
+`doc/hrns_now_packaging_plan.md`는 사용자가 제공한 **초안**이며 Git 비추적 입력으로 보존한다. 경로 분리·보존·MSI 우선이라는 방향은 채택하되, 현행 Harness 계약과 배포 소유권을 바꾸는 제안은 조건부로만 편입한다.
+
+| 초안 항목 | 판정 | 편입 위치와 근거 |
+|---|---|---|
+| MSI 우선, 번들 JRE, Program Files 읽기 전용, AppData/LocalAppData 분리, 공백·한글·드라이브 경로 검증 | 채택 | Phase 6A. UI/lock/Registry가 Harness workspace 밖에 있어야 한다는 기존 불변식과 일치한다. 기존 `%APPDATA%\hrns-now\projects.json` 경로는 호환성 때문에 임의 대소문자·위치 변경이나 자동 이관을 하지 않는다. |
+| 프로젝트별 LocalAppData workspace, 이름+short UUID, 첫 실행 자동 생성·복구 | 조건부 채택 | Phase 6B. Harness bootstrap·Registry 저장·경계 검사를 하나의 실패 안전한 흐름으로 묶어야 하며, UI가 daily 4-file을 직접 만들 수 없다. 6A는 기존처럼 사용자가 검증된 workspace를 선택·등록한다. |
+| Harness Runtime을 MSI에 동봉 | 조건부 채택 | Phase 6B. `D:\harness-kit` 개발 트리를 복사하거나 MSI에 넣지 않는다. Harness 저장소 소유의 재현 가능한 release artifact, immutable manifest/checksum, 공개 entrypoint, smoke, 재배포 승인과 UI 호환성 Gate가 모두 먼저 필요하다. |
+| manifest/checksum, staged runtime, secret scan, Runtime smoke | 조건부 채택 | Phase 6B의 Harness+UI 공동 작업. checksum만으로 신뢰·서명을 과장하지 않으며, UI 저장소에는 private Harness 원본이나 staging 산출물을 추적하지 않는다. |
+| 제거 시 사용자 데이터 보존, repair/재설치 복원 | 채택 | Phase 6A는 기본 보존과 무삭제 smoke를 검증하고, repair·이동 복구의 전체 UX는 6B에서 완료한다. |
+| 코드 서명·SmartScreen | 부분 채택 | 6A는 미서명 경고와 서명 필요성을 문서화한다. 인증서·서명 키·CI provenance가 준비된 뒤의 실제 서명은 Phase 7 뒤 배포 확장으로 보류한다. |
+| 자동 업데이트, side-by-side Runtime, CD Key/라이선스, portable data mode, 암호화·난독화 | 보류 | CTA/실행 권한을 바꾸거나 제품 정책 결정을 요구하므로 Phase 7과 분리한 Post-MVP 배포 확장으로만 다룬다. 현 MVP에서 라이선스 미인증으로 Harness 실행을 차단하지 않는다. |
+
+**공통 경계:** Runtime root(설치 소유·읽기/실행), repository root(사용자/Git 소유), project workspace root(Harness 산출물)는 서로 포함되지 않아야 하며 junction/symlink를 포함해 양방향 검사한다. `%APPDATA%`에는 Registry·설정만, `%LOCALAPPDATA%`에는 lock·workspace·비민감 캐시만 둔다. raw session ID, secret, token, raw log는 어느 앱 소유 저장소에도 보관하지 않는다.
+
 ---
 
 # 1. 현재 소스 기준 재평가 (요약)
@@ -336,17 +352,45 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 **종료 기준**: 모든 stop 상태에서 다음 행동이 이해 가능, closure 조건 미충족 시 종료 차단.
 
-## Phase 6 — Windows 패키징·배포
+## Phase 6 — Windows 패키징·배포 (6A/6B Gate)
 
-**작업**: `targetFormats(TargetFormat.Msi)` 전용(DMG/DEB는 PowerShell Core 호환·경로 추상화·process tree cancel 검증 후 별도 로드맵) / 앱 이름·아이콘·버전 정리 / JRE 번들 전략(필요시 jlink) / 첫 실행 kit root 탐색(설정 파일→환경변수→사용자 선택) + compatibility handshake / 미서명 SmartScreen 정책·코드 서명 검토 / 드라이브 문자 변경·공백·한글 경로 검증 / UI와 Harness Kit 별도 배포(포함하지 않고 참조).
+### Phase 6A — 외부 Kit MSI MVP
 
-**종료 기준**: 깨끗한 Windows PC에서 MSI 설치 → Kit root 지정 → 프로젝트 등록 → doctor → 상태 조회 → 표준 일일 사이클 성공.
+**작업**:
+
+1. `targetFormats(TargetFormat.Msi)`만 유지한다. 앱 표시명·package name·버전·Windows icon을 단일 version source와 실제 산출물에 맞춰 정리하고, 실행 가능한 JRE를 번들한다. 모듈 축소(jlink)는 smoke로 증명할 수 있을 때만 허용한다.
+2. 설치 디렉터리는 Program Files의 읽기/실행 영역이다. 앱·JRE 외의 Registry, lock, workspace, 로그, cache를 쓰지 않으며 제거 기본값은 `%APPDATA%\hrns-now` Registry와 `%LOCALAPPDATA%\hrns-now` 사용자 데이터를 보존한다.
+3. Kit 해석은 기존 `Registry → 환경변수 → 사용자 선택`과 `CompatibilityPolicy`를 유지한다. `D:\harness-kit`·개발 fixture·날짜를 하드코딩하거나 Kit을 검색·복사·내장하지 않는다. Runtime/repository/workspace 경계 검사는 기존 `BoundaryPolicy`를 우회하지 않는다.
+4. 실제 MSI build와 clean Windows 설치 smoke를 수행한다: 설치 → 외부 Kit 지정 → 프로젝트 등록 → doctor → State 조회 → 표준 일일 cycle. 공백·한글·서로 다른 drive letter 경로를 포함하고, 앱/프로세스 출력이 Program Files가 아니라 선택 workspace에만 생기는지 확인한다.
+5. 미서명 MSI의 SmartScreen 경고와 코드 서명이 아직 배포 Gate가 아님을 문서화한다. 인증서·private key·secret을 저장·생성·commit하지 않는다.
+
+**6A 종료 기준 (G6A)**: MSI와 JRE가 clean Windows에서 실행되고, 외부 호환 Kit 구성으로 위 smoke와 `%APPDATA%`/`%LOCALAPPDATA%` 보존 smoke가 PASS한다. 이 Gate는 번들 Runtime 없는 설치 MVP만 승인하며 Phase 6 전체 완료나 Phase 7 진입을 뜻하지 않는다.
+
+### Phase 6B — 승인된 Harness Runtime 릴리스 통합
+
+**선행 소유권 Gate (Harness 측)**: Harness 저장소가 다음을 release artifact로 제공하고, UI 측과 함께 검증하기 전에는 시작하지 않는다.
+
+1. 개발 트리와 분리된 재현 가능한 Runtime artifact와 허가된 재배포 범위
+2. 공개 `run-cycle.ps1`/`doctor.ps1`/`validate-ops.ps1` entrypoint 및 필요한 script/template만을 명시한 immutable manifest
+3. SHA-256 checksum, Runtime version, `ui_contract_version`, `state_schema_version`, Runtime smoke와 금지 파일/secret scan 결과
+4. MSI staging으로 넣어도 Program Files를 쓰지 않고 모든 Harness 산출물을 project workspace에만 쓰는 검증
+
+**작업**: 위 artifact만 build staging으로 소비하고 private Harness source·`.git`·workspace·로그·session ID·fixture·secret을 제외한다. Runtime source 선택은 composition root에서 주입하는 typed configuration/adapter로 제한하며, `CompatibilityPolicy`는 계속 UI가 판단한다. 프로젝트 등록의 LocalAppData 기본 workspace 자동 생성, 이름+short UUID, 부분 실패 보존·재시도, repair/재설치 복원은 Registry·BoundaryPolicy·Harness bootstrap 소유권을 지키는 범위에서 구현한다. UI는 daily 4-file을 직접 만들지 않는다.
+
+**6B 종료 기준 (G6B)**: 승인 artifact가 없으면 packaging이 fail-closed로 중단되고, 승인 artifact로만 MSI가 재현 가능하다. clean Windows에서 Kit 경로 수동 지정 없이 project workspace 생성 → doctor → 표준 cycle이 PASS하며 제거·재설치 뒤 사용자 데이터 보존과 재연결이 검증된다.
 
 ## Phase 7 — 실험 기능 (opt-in, 메인 흐름과 완전 분리)
 
 Secondary LLM capability 뷰어 / candidate·audit 뷰어(비권위 라벨 필수) / live Ollama 명시적 opt-in(capability gate 결과 표시, CPU-only는 진단 안내) / legacy compatibility 뷰 / smoke suite runner / raw State 뷰어 / 고급 로그 필터.
 
 원칙: 자동 채택 금지, 메인 CTA에 영향 금지, 기능 실패가 기본 운영에 무영향.
+
+## Phase 7 이후 — Post-MVP 배포 확장 (Phase 7과 분리)
+
+1. **D1 서명·릴리스 운영**: CI provenance와 보관 정책을 갖춘 Authenticode/MSI 서명, SmartScreen 대응, EULA·개인정보·비민감 crash report 정책. 인증서와 서명 키는 저장소·로그·report에 넣지 않는다.
+2. **D2 업데이트·복구**: 전체 MSI update를 우선하고, side-by-side Runtime/current pointer/rollback은 별도 atomicity·lock·복구 설계와 smoke가 승인된 뒤에만 도입한다.
+3. **D3 상품화**: CD Key/라이선스 서명·entitlement 정책은 제품 결정과 보안 검토 후 별도 구현한다. Runtime 암호화·난독화와 혼동하지 않으며 기존 CTA 권한을 소급해 바꾸지 않는다.
+4. **D4 Portable data mode**: 기본 AppData 분리 정책을 유지한다. 외장 저장소 data mode는 lock·장치 분리·삭제·복구 정책을 별도 Gate로 검증하기 전에는 제공하지 않는다.
 
 ---
 
@@ -358,7 +402,8 @@ Secondary LLM capability 뷰어 / candidate·audit 뷰어(비권위 라벨 필�
 |---|---|---|
 | **Phase 2 전체** | **Fable** | 살아있는 harness 엔진 직접 수정 + 자기검증망(smoke 72, SMOKE_INDEX 정합성, docs-scan 하드코딩 카운트 연쇄 갱신) + PS 5.1/StrictMode/UTF-8 no BOM 제약. 실수가 조용히 통과했다가 늦게 터지는 구조 |
 | **Phase 3의 `infra.process` + lock 코어** | **Fable** | Windows process tree 종료, 비동기 스트림 드레인(데드락), cancel·좀비 방지, stale lock 판별, 인코딩 — happy path 테스트를 통과하는 동시성 버그의 전형 지대. Phase 4~5 전체가 딛는 기반 |
-| Phase 0A/0B, 1A~1D, 3의 화면 배선, 4, 5, 6, 7 | Sonnet | 본 문서와 부록이 실행 명세 수준으로 작성됨(계약표·결정표·종료 기준·테스트 목록). 종료 기준 검증으로 품질 고정 |
+| Phase 0A/0B, 1A~1D, 3의 화면 배선, 4, 5, 6A, 7 | Sonnet | 본 문서와 부록이 실행 명세 수준으로 작성됨(계약표·결정표·종료 기준·테스트 목록). 종료 기준 검증으로 품질 고정 |
+| Phase 6B의 Runtime release/staging 경계 | Harness 소유자 + Codex 교차검증 | private Runtime 재배포, manifest/checksum, secret scan, MSI staging은 UI 단독 구현으로 승인할 수 없음 |
 
 Phase 4 착수 시 실행 종료 시퀀스와 lock 상호작용에서 문제가 재발하면 해당 부분만 Fable로 승격한다.
 
@@ -370,7 +415,7 @@ Phase 4 착수 시 실행 종료 시퀀스와 lock 상호작용에서 문제가 
 - **infra**: 날짜 탐색, JSON parsing, partial write retry, BOM/encoding, Registry atomic write·손상 복구, 인자 생성, 마스킹, lock/lease(stale·PID·heartbeat), Windows path(공백·한글)
 - **composeApp**: ViewModel 상태 전이, refresh, 선택 전환, disabled CTA, 오류 projection, demo mode 분리
 - **통합**: fixture workspace, doctor/validate-ops JSON, PowerShell process, cancel, timeout, lock 충돌, 요청 낙관적 동시성, State 재읽기
-- **CI**: 초기 `./gradlew check`(비-Windows 가능) → Phase 3부터 Windows runner(adapter·PS fixture) → Phase 6 MSI build + 설치·실행 smoke
+- **CI**: 초기 `./gradlew check`(비-Windows 가능) → Phase 3부터 Windows runner(adapter·PS fixture) → Phase 6A MSI build + 설치·실행·사용자 데이터 보존 smoke → Phase 6B는 승인 Runtime artifact의 manifest/checksum/secret-scan/Runtime smoke + MSI 재현성 검증
 
 ---
 
@@ -384,7 +429,8 @@ Phase 4 착수 시 실행 종료 시퀀스와 lock 상호작용에서 문제가 
 | G3 | Process adapter, cancel 무잔존, secret masking, lock 체계 |
 | G4 | bootstrap, request 안전 저장, Planning, execution dispatch, 종료 시퀀스 |
 | G5 | Closure policy, Recovery Center, 잘못된 완료 차단 |
-| G6 | MSI, clean Windows smoke, 경로 이식성 |
+| G6A | 외부 Kit MSI, JRE, clean Windows install/uninstall 보존 smoke, 경로 이식성 |
+| G6B | 승인된 Harness Runtime artifact의 staging·manifest/checksum·secret-scan·Runtime smoke, 번들 MSI 재현성·재설치 복원 |
 
 ---
 
@@ -398,6 +444,8 @@ Phase 4 착수 시 실행 종료 시퀀스와 lock 상호작용에서 문제가 
 - optional artifact 누락을 전체 실패로 처리 / **로그 디렉터리를 required로 취급**
 - harness에 없는 wrapper 모드·상태 코드 창작 (`-RunExecutionWrapper validation` 등)
 - macOS/Linux를 Windows MVP와 동시 추진 / 테스트·CI 없이 Phase 진행
+- `D:\harness-kit` 개발 트리·private Harness 원본을 복사하거나 MSI/Git에 포함 / 승인 artifact 없이 번들 Runtime을 성공 처리
+- 라이선스·CD Key·자동 업데이트·portable data mode를 Phase 6A 또는 Phase 7의 CTA 흐름에 선구현
 - harness smoke·docs-scan 연쇄 갱신 없이 Phase 2 완료 선언
 
 ---
@@ -416,7 +464,7 @@ Phase 0A 계약 수정 → fixture 테스트 → Phase 0B CI
 
 # 10. 최종 완료 정의 (MVP)
 
-1. 프로젝트 등록 가능, 2. 경계 위반 차단, 3. 실제 State 읽기, 4. 정확한 상태·권장 행동 표시, 5. unknown 상태 실행 잠금, 6. doctor/validate-ops 앱 내 실행, 7. 요청 작성 시 외부 변경 미덮어쓰기, 8. 허가된 단일 slice만 실행, 9. 실행 후 State 재읽기, 10. UI 외 프로세스 동시 실행 감지·차단, 11. 실행 성공≠Closure 구분, 12. 주요 stop reason 전부 복구 경로 보유, 13. secret·raw session ID 비노출, 14. MSI 배포 가능, 15. clean Windows smoke 통과.
+1. 프로젝트 등록 가능, 2. 경계 위반 차단, 3. 실제 State 읽기, 4. 정확한 상태·권장 행동 표시, 5. unknown 상태 실행 잠금, 6. doctor/validate-ops 앱 내 실행, 7. 요청 작성 시 외부 변경 미덮어쓰기, 8. 허가된 단일 slice만 실행, 9. 실행 후 State 재읽기, 10. UI 외 프로세스 동시 실행 감지·차단, 11. 실행 성공≠Closure 구분, 12. 주요 stop reason 전부 복구 경로 보유, 13. secret·raw session ID 비노출, 14. G6A 외부 Kit MSI와 clean Windows smoke 통과, 15. 번들 제품을 표방할 경우 G6B 승인 Runtime artifact·재현성·재설치 smoke까지 통과.
 
 ---
 
@@ -521,7 +569,8 @@ UI 소유 파일은 harness workspace 밖에 둔다: Registry `%APPDATA%\hrns-no
 계약 재정렬(0A) → 테스트·CI(0B) → State Reader(1A) → CTA Policy(1B)
 → Live Cockpit(1C) → Registry(1D) → [병행] Harness JSON Contract(2, Fable)
 → 진단 Process Adapter + Lock(3, 코어 Fable) → 표준 일일 실행(4)
-→ Closure·Recovery(5) → MSI 배포(6) → 실험 기능(7)
+→ Closure·Recovery(5) → 외부 Kit MSI(6A) → 승인 Runtime 통합(6B, 조건부)
+→ 실험 기능(7) → Post-MVP 배포 확장(D1~D4)
 ```
 
 > **최초 제품 목표(고정): 사용자가 프로젝트를 선택하면, HRNS-NOW는 현재 Harness 상태를 정확히 읽고 지금 허용된 단 하나의 다음 행동만 안전하게 안내하고 실행한다.**
