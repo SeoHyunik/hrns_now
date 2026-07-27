@@ -21,6 +21,7 @@ Phase 5는 `PASS_WITH_FIXES`로 통과했다. Codex 커밋은 다음과 같다.
 ```text
 9e6b267 feat: Phase 5 마감 검증과 복구 센터 구현
 0997dfd docs: Phase 5 검증 보고서와 Phase 6 작업 지시
+6212d45 docs: 패키징 로드맵과 Phase 6A 지시 정렬
 ```
 
 이후 Codex는 `hrns_now_packaging_plan.md`를 검토해 최종 계획과 설계 문서를 다음처럼 정정했다. 이 변경을 보존한다.
