@@ -14,18 +14,15 @@
 - `S:\dev\project\hrns_now\doc\hrns_now_packaging_plan.md`는 관련 없는 사용자 파일이므로 읽거나 수정·삭제·stage하지 않는다.
 - Phase 3 process/lock, Phase 4 request/planning/execution, Phase 5 Closure를 선구현하지 않는다.
 
-## 작업 시작 전 필수 Git 소유권 확인
+## 작업 시작 전 필수 백업 확인 (Git 미사용 확정, 2026-07-24 사용자 결정)
 
-Codex의 2026-07-24 사전 점검에서 `D:\harness-kit`은 파일 tree는 존재하지만 `.git` metadata가 없었다. Phase 2는 Harness 측 변경과 HRNS-NOW 측 변경의 소유권·커밋을 분리해야 하므로 다음 순서를 지킨다.
+`D:\harness-kit`은 **의도적으로** git 저장소로 관리하지 않는다 — Codex의 2026-07-24 사전 점검이 발견한 `.git` metadata 부재는 결함이 아니라 확정된 운영 방식이다. `D:\harness-kit`이 canonical live tree이며, 변경 이력·롤백은 git이 아니라 **수정 전 zip 백업**으로 관리한다(`D:\backup\harness-kit<MMDD>-<n>.zip` 명명 규칙은 이미 4월부터 사용 중인 기존 관례다). Phase 2는 Harness 측 변경과 HRNS-NOW 측 변경의 소유·기록을 분리해야 하므로 다음 순서를 지킨다.
 
 1. `S:\dev\project\hrns_now`의 branch/status/HEAD를 확인한다. 선행 Codex Phase 1D 커밋이 HEAD인지 확인한다.
-2. `D:\harness-kit\.git`과 사용자가 명시한 canonical Harness Git worktree 경로를 확인한다.
-3. canonical Git worktree를 확인할 수 없으면 `git init`, 임의 복사본 생성, live tree 직접 수정으로 우회하지 않는다.
-4. 그 경우 소스 수정 전에 `S:\dev\project\hrns_now\doc\phase_reports\phase2-report.md`에 `BLOCKED`와 필요한 canonical worktree 경로를 기록하고 중단한다.
-5. canonical worktree가 확인되면 그 worktree에서만 Harness 소스를 수정하고, `D:\harness-kit`이 배포/fixture tree라면 사용자가 승인한 동기화 절차 없이 덮어쓰지 않는다.
-6. 두 worktree의 diff와 테스트 결과를 보고서에서 완전히 분리한다. Claude는 양쪽 모두 commit하지 않는다.
-
-이 ownership Gate는 코드 품질과 별개의 안전 조건이며 생략할 수 없다.
+2. `D:\harness-kit` 소스를 수정하기 **전**, 현재 상태 전체를 `D:\backup\harness-kit<MMDD>-<n>.zip`(기존 관례상 다음 순번)으로 압축 백업한다. 백업 파일 경로·크기·시각을 보고서에 기록한다.
+3. 백업 확인 후에는 `D:\harness-kit`을 canonical로 보고 그 자리에서 직접 수정한다. `git init`을 하지 않는다(git으로 관리하지 않기로 확정했으므로 불필요하다).
+4. HRNS-NOW 쪽(`S:\dev\project\hrns_now`)과 Harness 쪽(`D:\harness-kit`)의 변경 파일 목록·diff·테스트 결과를 보고서에서 완전히 분리해 기록한다.
+5. Claude는 어느 쪽에도 git commit을 하지 않는다 — HRNS-NOW는 기존 규칙대로 Codex가 검증 후 커밋하고, `D:\harness-kit`은 애초에 git 대상이 아니므로 zip 백업이 유일한 안전망이다.
 
 ## 선행 Phase 1D의 확정 상태
 
@@ -141,7 +138,7 @@ smoke 추가 후 다음을 실제 계산값으로 함께 갱신한다.
 
 ## B. HRNS-NOW Compatibility Handshake
 
-Harness Git ownership Gate가 해결된 같은 Phase에서 `S:\dev\project\hrns_now`에는 read-only compatibility reader/policy만 구현한다.
+Harness 측 zip 백업이 완료되고 A 항목 구현이 진행된 같은 Phase에서 `S:\dev\project\hrns_now`에는 read-only compatibility reader/policy만 구현한다.
 
 ### 1. Domain과 Policy
 
@@ -227,7 +224,7 @@ Compatibility policy는 파일·JSON·Compose를 참조하지 않는 순수 함�
 
 보고서에 반드시 포함한다.
 
-- Harness canonical Git worktree 확인 결과와 변경 소유 경로
+- Harness 측 zip 백업 파일 경로·크기·시각(수정 전 스냅샷 증거)
 - HRNS-NOW/Harness 변경 파일을 분리한 목록
 - doctor/validate-ops text·JSON·exit code 계약
 - kit-version 실제 값과 근거
@@ -241,4 +238,4 @@ Compatibility policy는 파일·JSON·Compose를 참조하지 않는 순수 함�
 - 미구현 Phase 3 경계
 - Claude가 어느 저장소에서도 commit하지 않았다는 명시
 
-ownership Gate가 해결되지 않으면 소스 변경 없이 BLOCKED 보고서만 작성한다. 구현 완료 선언만 하지 말고 actual file, diff, test/smoke 결과를 근거로 보고한다.
+zip 백업을 만들기 전에는 `D:\harness-kit` 소스를 수정하지 않는다. 구현 완료 선언만 하지 말고 actual file, diff, test/smoke 결과를 근거로 보고한다.
