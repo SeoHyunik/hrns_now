@@ -196,3 +196,59 @@ Codex의 Phase 5 개정(`9e6b267`)이 반영된 현재 소스 트리 기준으�
 `G6A`는 **BLOCKED**다. source/Gradle/release artifact 검증은 통과했지만, 계획서가 요구하는 clean Windows에서의 release MSI 설치 → launch → 외부 Kit 등록 → doctor → State 조회 → standard cycle 및 uninstall 뒤 `%APPDATA%`/`%LOCALAPPDATA%` 보존 smoke가 아직 독립적으로 재현되지 않았다. 이 부족은 코드 실패가 아니라 필수 검증 환경·증거 부족이며, 성공으로 대체하지 않는다.
 
 따라서 `NEXT_ALLOWED_PHASE`는 여전히 **Phase 6A Gate 보완**이다. G6A가 PASS하기 전 Phase 6B(승인 Runtime artifact 통합)와 Phase 7은 시작할 수 없다.
+
+## 12. Codex 독립 검증·보정 — 2026-07-28
+
+이 절은 현재 Gate 판정의 최신 기록이며, 이전 절의 개발 PC debug MSI 설치 기록을 clean Windows 또는 release MSI 증거로 사용하지 않는다.
+
+### 검증 기준 커밋과 브랜치
+
+- 작업 시작 HEAD: `e16f49a11fdb68b83684bdb1919616edf8bd19d6` (`fix: Phase 6A MSI 배포 설정 보정` 포함).
+- GitHub `origin/master`의 README 원본 커밋 `6f64e7984882b5c89e678099e44b5697961437e4`는 `e16f49a`를 부모로 하며 README만 변경한다.
+- `harness-dev`에는 README 사용자 변경이 없고 충돌 가능성도 없어서, 권장 방식대로 해당 단일 커밋을 `2923dd6119d088d323cff2c64753365f5f2e3867`으로 cherry-pick했다. cherry-pick이므로 원본 SHA 자체는 조상이 아니지만 `git diff --exit-code 6f64e79 2923dd6 -- README.md`는 exit 0으로 내용 동일성을 확인했다.
+- `doc/hrns_now_packaging_plan.md`는 사용자 소유 untracked 입력으로 계속 보존했으며 수정·stage하지 않았다.
+
+### 검증 환경
+
+- 현재 호스트는 Windows 11 Home 10.0.26200 (build 26200) 개발 계정이며 관리자 권한이 아니다. 시스템 JDK와 기존 `C:\Program Files\HRNS-NOW` 설치 흔적, 기존 AppData 사용자 데이터가 존재한다.
+- `Get-VM` 명령은 사용 가능하지 않았고 Windows optional feature 상태 조회는 관리자 권한을 요구했다. 따라서 이 호스트에서 VM·Sandbox·독립 계정을 즉시 확보할 수 없었다.
+- 위 호스트는 clean Windows 증거가 아니며, 개발 계정에서 설치·제거를 다시 수행해 대체하지 않았다.
+
+### Release MSI 정보와 정적 검증
+
+- 현재 검증 source HEAD: `2923dd6119d088d323cff2c64753365f5f2e3867` (`docs: README를 현재 개발 상태에 맞게 한글화`).
+- release MSI: `composeApp\build\compose\binaries\main-release\msi\HRNS-NOW-1.0.0.msi`
+- 최종 관찰 파일: 50,448,977 bytes, `2026-07-28T01:10:54.642Z`, SHA-256 `91A325F28151FCC6EE70D891DAD86EAE794C30432434F344E43642F34A1A4B70`.
+- `packageVersion`은 `gradle/libs.versions.toml`의 단일 `hrnsNowApp = "1.0.0"`이며, release app image 생성(`:composeApp:createReleaseDistributable --rerun-tasks`)은 BUILD SUCCESSFUL이다.
+- release app image에서 bundled runtime, `Module: jdk.charsets`, `HRNS-NOW.exe`, 전용 icon을 확인했다. source/output icon SHA-256은 모두 `9269D323C4B5D042068B94F68C99E0165FA69558CE630F5E037708E9AA1D2AA8`이다.
+- `runtime\harness`와 Harness 이름의 포함 항목, Runtime staging manifest/checksum 항목은 없었다. `file.encoding`/stdout/stderr 강제 JVM 옵션도 없었다.
+- `:composeApp:packageReleaseMsi --rerun-tasks`는 이 호스트의 장시간 ProGuard 단계 때문에 호출 도구의 제한 시간을 넘겼지만 Gradle client는 계속 실행되어 새 MSI를 생성했다. 이후 동일 task도 새 산출물로 교체했다. 이 timeout은 clean smoke 성공이나 task exit-code PASS로 대체하지 않는다.
+
+### 설치·실행, 외부 Kit, State 및 표준 Cycle
+
+다음 항목은 **실행하지 않았다**: clean Windows release MSI 설치·실행, 시스템 JDK 없음 확인, 외부 Kit 등록, 공백·한글·다른 drive의 project/workspace/repository 등록, Doctor, State 조회, 표준 daily cycle, Program Files 전후 비교, uninstall, AppData/LocalAppData 보존, 재설치 Registry 복구. 따라서 어느 항목도 PASS로 표시하지 않는다.
+
+### 발견 결함과 보정
+
+`clean` 뒤 최초 `:infra:test`에서 12건이 실패했다. production mapper 결함이 아니라 Git의 Windows CRLF checkout에서 fixture 조작 테스트가 LF(`\n`)만 가정해 필드를 실제로 제거하지 못한 문제였다. 다음 두 test helper에서 fixture 문자열을 LF로 정규화해 Windows checkout과 CI LF checkout에서 동일한 mutation·fail-closed 계약을 검증하게 보정했다.
+
+- `infra/src/test/kotlin/io/hrns_now/infra/serialization/WorkflowStateMapperTest.kt`
+- `infra/src/test/kotlin/io/hrns_now/infra/serialization/JsonWorkflowStateAdapterTest.kt`
+
+또한 clean 환경에서만 실행할 `scripts/Invoke-Phase6ACleanWindowsSmoke.ps1`을 추가했다. 이 PowerShell 5.1 helper는 baseline/install/snapshot/uninstall/reinstall별 UTF-8 no BOM JSON metadata를 남기며, MSI·Program Files의 재귀 inventory·AppData/LocalAppData·daily 4-file hash를 기록한다. raw Registry 내용, secret, session ID, raw log를 복사하지 않는다. UI Kit 등록·Doctor·State·daily cycle을 자동 성공 처리하지 않으므로, clean 환경의 운영자가 실제 UI flow 뒤 `Snapshot`을 실행해야 한다.
+
+### 테스트 결과
+
+| 검증 | 명령/근거 | 결과 |
+|---|---|---|
+| Targeted | `:infra:test` | PASS |
+| Full | `:core:test :infra:test :composeApp:jvmTest check --rerun-tasks` | PASS — 333 tests, failure/error/skip 0 |
+| Release image | `:composeApp:createReleaseDistributable --rerun-tasks` | PASS |
+| Smoke helper | PowerShell 5.1 AST parse + non-destructive `Baseline` temporary execution | PASS — evidence UTF-8 no BOM, raw Registry content 미기록 |
+| Clean release install/uninstall | 독립 VM/Sandbox/새 계정 | 미실행 |
+
+### Gate 판정
+
+`Verdict: BLOCKED`, `G6A: BLOCKED`, `NEXT_ALLOWED_PHASE: Phase 6A Gate 보완`.
+
+clean VM 또는 새 Windows 사용자 계정에서 위 release MSI의 `Baseline → Install → 실제 UI flow → Snapshot → Uninstall → Reinstall → Snapshot` 증거를 수집하기 전에는 Phase 6B와 Phase 7을 시작할 수 없다.

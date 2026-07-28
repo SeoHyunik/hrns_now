@@ -20,7 +20,8 @@ import kotlin.test.assertTrue
 private fun readFixture(name: String): String {
     val resource = WorkflowStateMapperTest::class.java.classLoader.getResource("fixtures/$name")
         ?: error("fixture not found: $name")
-    return Files.readString(Paths.get(resource.toURI()))
+    // Git의 Windows checkout(CRLF)과 CI의 LF checkout에서 같은 fixture mutation을 수행한다.
+    return Files.readString(Paths.get(resource.toURI())).replace("\r\n", "\n")
 }
 
 class WorkflowStateMapperTest {
