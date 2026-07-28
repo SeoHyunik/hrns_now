@@ -57,6 +57,12 @@
 **NEXT_ALLOWED_PHASE: Phase 6A Gate supplement**
 
 The release MSI clean-profile install, launch, external Kit registration, Doctor JSON contract, Program Files no-write check, uninstall data preservation, and reinstall Registry recovery have evidence. A true clean Windows/new-account run, launch with no system JDK, and a Harness typed Bootstrap/Planning/allowed execution standard daily cycle still lack evidence. Do not infer PASS; Phase 6B and Phase 7 remain prohibited.
+
+### Owner-approved sequencing exception
+
+- On 2026-07-28, the product owner explicitly authorized starting **Phase 6B** despite G6A remaining BLOCKED, to continue packaging maturity work in the current environment.
+- This is a sequencing waiver only: it does not convert G6A to PASS, does not satisfy clean-Windows or standard-cycle evidence, and does not relax G6B's approved-artifact/manifest/checksum/secret-scan/runtime-smoke requirements.
+- `NEXT_ALLOWED_PHASE` is therefore **Phase 6B (owner-authorized start)**. Phase 7 remains subject to a separate Phase 6B verification and Gate decision.
 # Phase 6A 작업 보고서 — 외부 Kit Windows MSI MVP
 
 ## 0. 범위 선언
