@@ -1,3 +1,62 @@
+# Phase 6A Gate supplement — latest Codex record (2026-07-28)
+
+> This is the authoritative current Gate record. Retain earlier history below, but resolve conflicts in favor of this section, live source, and cited evidence.
+
+## Codex independent verification and correction — 2026-07-28
+
+### Commit and branch basis
+
+- Repository / branch: `S:\dev\project\hrns_now`, `harness-dev`.
+- Validation started at `c59b6156b9f2a3a2017f4f91bc664f243e9b271f` (`test: Phase 6A clean Windows smoke verification reinforcement`).
+- The Phase 6A MSI correction `e16f49a11fdb68b83684bdb1919616edf8bd19d6` is an ancestor.
+- The original GitHub README commit `6f64e7984882b5c89e678099e44b5697961437e4` is represented by identical cherry-pick `2923dd6119d088d323cff2c64753365f5f2e3867`.
+- User-owned untracked `doc/hrns_now_packaging_plan.md` was not read, changed, staged, or committed.
+
+### Environment and backup
+
+- Host: Windows 11 Home 10.0.26200 (build 26200), a development account with an existing system JDK. No VM, Windows Sandbox, or new Windows account was available.
+- This is therefore **clean HRNS-NOW profile evidence, not clean Windows evidence**. Only the existing install, `%APPDATA%\hrns-now`, and `%LOCALAPPDATA%\hrns-now` were reset.
+- Deletion targets were backed up first: `S:\hrns-now-preclean-profile-20260728-103056.zip`; SHA-256 `B890E6D8C13D720EB8FF4A89A6B8A42C034D4A6A5DAD570456E75F830C85D67A`; 210 entries.
+- The archive contains the prior Program Files install, AppData Registry, LocalAppData locks, and a metadata-only manifest for preserved targets. It contains no Harness Kit/workspace/repository or Claude/Codex cache contents.
+- Redacted evidence metadata is at `S:\hrns-now-cleanprofile-evidence-20260728-103056`; it deliberately excludes raw Registry data, secrets, tokens, session IDs, and raw process logs.
+
+### Release MSI and install results
+
+- The release MSI installed in this smoke was freshly built from the current application source HEAD: `composeApp\build\compose\binaries\main-release\msi\HRNS-NOW-1.0.0.msi`, 50,448,977 bytes, installed-artifact SHA-256 `91A325F28151FCC6EE70D891DAD86EAE794C30432434F344E43642F34A1A4B70`.
+- A subsequent `:composeApp:packageReleaseMsi --rerun-tasks` also passed. Its fresh MSI SHA-256 is `9E7081DB9BDABBC92649042550B098288CE5642BCC129314BC3C668013DF7452` (same byte size, timestamp `2026-07-28T02:00:52.802Z`). MSI container metadata can differ between fresh builds; install and repackaging hashes are recorded separately.
+- Package version is `1.0.0`; bundled runtime and `jdk.charsets` are present; release image has no `runtime\harness`.
+- The release MSI installed elevated with exit code 0. Program Files install root, Start Menu entry, custom icon, and bundled runtime appeared. Installed `HRNS-NOW.exe` launched from Program Files (two app processes observed).
+- The host has a system JDK, so this does not prove launch on a system without JDK.
+
+### External Kit, Registry, and State
+
+- Tested roots were mutually disjoint and used separate drives plus Korean/space-containing path segments: external Kit `D:\harness-kit`, a C: workspace, and a separate S: Git repository. The repository was clean before and after smoke.
+- The user completed UI Kit/workspace/repository/profile registration, Doctor, and State refresh. Independently, `D:\harness-kit\scripts\doctor.ps1 -Json` returned exit 0 and one JSON object with `checks`, `contract_version`, and `overall`. Harness Kit was read/executed only.
+- `%APPDATA%\hrns-now\projects.json` is UTF-8 without BOM, contains one project, retains the selected Kit/workspace/repository/profile values, and has no token/secret/session field name.
+- No Bootstrap was run in the deliberately empty workspace. The required daily files and `WORKFLOW_STATE.json` were not invented by the UI; this is correct behavior but is not standard daily-cycle evidence.
+
+### Program Files, uninstall, and reinstall
+
+- Program Files recursive inventory was 218 entries both immediately before and after app launch; its inventory hash was unchanged. Registry and locks remained outside Program Files.
+- After normal app exit, MSI ProductCode `{222C4952-F8A2-392C-966F-186D6A0D5227}` uninstalled with exit code 0. Program Files, Start Menu entry, and Windows Installer registration were removed.
+- Registry SHA-256 stayed `F57BC8E8FD023E8E104DF5B73435D3D06505167681EDBC78ACF35EF2AA094959`; LocalAppData, workspace, repository, and external Kit were preserved.
+- Reinstalling the same release MSI returned exit code 0. The Registry hash was retained before relaunch, and the user confirmed the previous project appeared automatically after relaunch.
+
+### Verification
+
+- `scripts/Invoke-Phase6ACleanWindowsSmoke.ps1`: PowerShell 5.1 AST parse PASS (0 errors).
+- `:core:test :infra:test :composeApp:jvmTest check --rerun-tasks`: PASS (333 tests; 0 failures/errors/skips).
+- `:composeApp:packageReleaseMsi --rerun-tasks`: PASS.
+- `:composeApp:createReleaseDistributable --rerun-tasks`: PASS.
+
+### Gate decision
+
+**Verdict: BLOCKED**
+
+**G6A: BLOCKED**
+**NEXT_ALLOWED_PHASE: Phase 6A Gate supplement**
+
+The release MSI clean-profile install, launch, external Kit registration, Doctor JSON contract, Program Files no-write check, uninstall data preservation, and reinstall Registry recovery have evidence. A true clean Windows/new-account run, launch with no system JDK, and a Harness typed Bootstrap/Planning/allowed execution standard daily cycle still lack evidence. Do not infer PASS; Phase 6B and Phase 7 remain prohibited.
 # Phase 6A 작업 보고서 — 외부 Kit Windows MSI MVP
 
 ## 0. 범위 선언
