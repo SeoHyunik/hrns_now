@@ -19,7 +19,7 @@ import io.hrns_now.core.domain.model.UiAction
  *
  * `MockProjectionProvider`는 명시적 demo mode 전용이므로(`doc/claude_prompts/phase1c-live-cockpit.md`),
  * production은 이 파일의 함수로 shell/setup 화면을 구성한다. 아직 실행 연결이 없는 화면
- * (오늘 할 일/실행 현황)은 성공한 것처럼 꾸미지 않고 "미구현" 상태를 그대로 보여준다.
+ * (작업 계획/실행 기록)은 성공한 것처럼 꾸미지 않고 "미구현" 상태를 그대로 보여준다.
  */
 fun buildShellProjection(): ShellProjection =
     ShellProjection(
@@ -47,7 +47,7 @@ fun buildSetupProjection(
         probeSummary.claudeCommand,
     )
     return SetupProjection(
-        title = "작업공간 연결",
+        title = "프로젝트 관리",
         subtitle = "프로젝트와 harness-kit 실행 환경을 안전하게 연결합니다.",
         cards = listOf(
             InfoCardModel(
@@ -58,17 +58,17 @@ fun buildSetupProjection(
         ),
         actions = listOf(
             diagnosticAction(
-                label = "상태 점검 실행",
+                label = "환경 점검",
                 action = UiAction.RunDoctor,
                 diagnosticActions = diagnosticActions,
             ),
             diagnosticAction(
-                label = "운영 검증 실행",
+                label = "작업 기준 점검",
                 action = UiAction.RunOpsValidation,
                 diagnosticActions = diagnosticActions,
             ),
         ),
-        note = "상태 점검과 운영 검증은 선택한 프로젝트·날짜 및 안전 조건을 충족할 때만 실행됩니다.",
+        note = "환경 점검과 작업 기준 점검은 선택한 프로젝트·날짜 및 안전 조건을 충족할 때만 실행됩니다.",
     )
 }
 
@@ -96,11 +96,11 @@ private fun PathProbeState.summaryLabel(): String =
     }
 
 /**
- * "오늘 할 일" 화면 projection이다. 사람용 `TODAY_STRATEGY.md` 원문과 기계
+ * "작업 계획" 화면 projection이다. 사람용 `TODAY_STRATEGY.md` 원문과 기계
  * `WORKFLOW_STATE.json` queue 판단을 서로 다른 섹션으로 분리해 보여준다 — 둘이 어긋나면
  * `WORKFLOW_STATE.json`(= [cockpit])이 최종 진실이다(`doc/claude_prompts/phase4-standard-daily-flow.md` §3).
  * action 목록은 [cockpit]이 이미 계산한 allowed action 중 일일 실행 흐름에 속하는 것만 남긴다 —
- * Doctor/ValidateOps는 작업공간 연결 화면, Closure류는 Phase 5 범위라 여기서 다루지 않는다.
+ * 환경 점검/작업 기준 점검은 프로젝트 관리 화면, Closure류는 Phase 5 범위라 여기서 다루지 않는다.
  */
 fun buildTodayWorkProjection(
     cockpit: CockpitProjection,
@@ -140,8 +140,8 @@ fun buildTodayWorkProjection(
     val compatibilityLabel = cockpit.compatibilityDiagnostics?.whatHappened ?: "호환됨"
 
     return TodayWorkProjection(
-        title = "오늘 할 일",
-        subtitle = "요청 작성 → 오늘 준비 → 계획/재계획 → 승인된 단일 code/doc 실행",
+        title = "작업 계획",
+        subtitle = "요구사항 작성 → 작업 준비 → 계획/재계획 → 승인된 단일 code/doc 실행",
         statusChip = StatusChipModel(
             label = cockpit.queueStatusLabel,
             value = cockpit.activeSliceId ?: "",
@@ -149,11 +149,11 @@ fun buildTodayWorkProjection(
         ),
         sections = listOf(
             InfoCardModel(
-                "Strategy (사람이 읽는 TODAY_STRATEGY.md 원문)",
+                "개발 전략",
                 listOf("내용" to (strategyText?.takeIf(String::isNotBlank) ?: "아직 없습니다.")),
             ),
             InfoCardModel(
-                "Queue (기계 판단 · WORKFLOW_STATE.json 기준, 최종 진실)",
+                "작업 대기열",
                 listOf(
                     "상태" to cockpit.statusLabel,
                     "queue 상태" to cockpit.queueStatusLabel,

@@ -10,7 +10,7 @@ data class CockpitActionItem(
 )
 
 /**
- * 오류/stale 상황의 3분리 표시다: 발생한 일 / 마지막 정상 상태 보존 여부 / 사용자가 할 수 있는 일.
+ * 오류/stale 상황의 3분리 표시다: 최근 작업 기록 / 마지막 정상 상태 보존 여부 / 사용자가 할 수 있는 일.
  * `Success`가 아닌 모든 [io.hrns_now.core.result.StateReadResult]는 이 값을 갖는다.
  */
 data class CockpitDiagnostics(

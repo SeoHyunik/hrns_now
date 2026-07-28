@@ -87,7 +87,7 @@ class CockpitProjectionAssembler(
     private fun artifactChips(state: WorkflowState): List<StatusChipModel> =
         listOf(
             "요청 입력함" to state.artifacts.requestInbox,
-            "오늘 할 일 파일" to state.artifacts.todayStrategy,
+            "작업 계획 파일" to state.artifacts.todayStrategy,
             "인수인계 파일" to state.artifacts.dailyHandoff,
             "작업 상태 파일" to state.artifacts.workflowState,
         ).map { (label, readiness) ->

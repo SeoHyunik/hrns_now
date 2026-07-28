@@ -3,6 +3,7 @@ package io.hrns_now.app.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.hrns_now.app.presentation.buildRecoveryProjection
+import io.hrns_now.app.presentation.buildSetupProjection
 import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.mapper.CockpitUiStateAssembler
 import io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler
@@ -291,14 +292,14 @@ class AppViewModel(
             currentLockHandle = null
             lastLockInspection = null
         }
-        harnessRunView = harnessRunView.copy(isRunning = false, lastResult = result, notice = null)
+        harnessRunView = harnessRunView.copy(isRunning = false, runCompletedAt = clock(), lastResult = result, notice = null)
         refreshRunProjectionOnly()
 
         val compatibility = withContext(ioDispatcher) {
             compatibilityPolicy.evaluate(compatibilityPort.readManifest(project.kitRoot))
         }
         if (!doctorAllowsRegistration(result)) {
-            registryMessage = "Doctor 진단을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 현황에서 결과를 확인하세요."
+            registryMessage = "환경 점검을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 기록에서 결과를 확인하세요."
             loadOnce(forceRead = true)
             return
         }
@@ -742,6 +743,7 @@ class AppViewModel(
                     loadOnce(forceRead = true)
                     harnessRunView = harnessRunView.copy(
                         isRunning = false,
+                        runCompletedAt = clock(),
                         lastResult = outcome.processResult,
                         notice = null,
                     )
@@ -752,7 +754,11 @@ class AppViewModel(
                 }
 
                 is ExecuteHarnessActionOutcome.Failed -> {
-                    harnessRunView = HarnessRunViewState(lastCommand = kind, lastResult = outcome.processResult)
+                    harnessRunView = HarnessRunViewState(
+                        lastCommand = kind,
+                        runCompletedAt = clock(),
+                        lastResult = outcome.processResult,
+                    )
                 }
 
                 is ExecuteHarnessActionOutcome.LockUnavailable -> {
@@ -797,7 +803,7 @@ class AppViewModel(
         }
         if (!isRequestEditingAllowed()) {
             requestSaveSucceeded = false
-            requestInboxNotice = "현재 상태에서는 요청을 저장할 수 없습니다. 상태를 새로고침한 뒤 허용된 다음 행동을 확인하세요."
+            requestInboxNotice = "현재 상태에서는 요청을 저장할 수 없습니다. 상태를 새로고침한 뒤 허용된 다음 작업을 확인하세요."
             refreshTodayWorkProjectionOnly()
             return
         }
@@ -813,7 +819,7 @@ class AppViewModel(
         requestSaveSucceeded = outcome == SaveRequestOutcome.Saved
         requestInboxNotice = when (outcome) {
             SaveRequestOutcome.Saved -> "요청을 저장했습니다."
-            SaveRequestOutcome.InboxUnavailable -> "요청 입력 파일을 찾을 수 없습니다. 먼저 '오늘 준비'를 실행하세요."
+            SaveRequestOutcome.InboxUnavailable -> "요청 입력 파일을 찾을 수 없습니다. 먼저 '작업 준비'를 실행하세요."
             SaveRequestOutcome.Conflict -> "다른 곳에서 파일이 변경되어 저장하지 못했습니다. 초안은 유지됩니다. 다시 시도하면 최신 내용을 다시 읽으며, 필요하면 REQUEST_INBOX.md를 확인해 수동 병합하세요."
             is SaveRequestOutcome.Failed -> "요청을 저장하지 못했습니다: ${outcome.reason}"
         }
@@ -874,6 +880,13 @@ class AppViewModel(
                 externalExecutionSuspected = externalExecutionSuspected,
             ),
             cockpit = updatedCockpit,
+            // 실행 중에도 "프로젝트 관리" 화면의 환경 점검/작업 기준 점검 버튼이 즉시 비활성화되도록
+            // setup도 다시 조립한다 — 그렇지 않으면 중복 클릭 방지가 다음 전체 loadOnce까지 지연된다.
+            setup = buildSetupProjection(
+                config = current.workspaceConfig,
+                probeSummary = current.workspaceProbeSummary,
+                diagnosticActions = updatedCockpit.allowedActions,
+            ),
             todayWork = buildTodayWorkProjection(
                 updatedCockpit,
                 strategyText,

@@ -87,6 +87,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -1245,6 +1246,38 @@ class AppViewModelTest {
         runCurrent()
 
         assertEquals(1, executeCount.get())
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `환경 점검 실행 중 프로젝트 관리의 두 진단 action은 즉시 비활성화되고 완료 뒤 정책 상태로 돌아온다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val runnerResult = CompletableDeferred<ProcessRunResult>()
+        val viewModel = newViewModel(
+            statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) },
+            dispatcher = dispatcher,
+            registry = registry,
+            harnessRunner = HarnessRunnerPort { _, _, _ -> runnerResult.await() },
+        )
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.RunDoctor))
+        runCurrent()
+
+        val running = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(running.runStatus.isRunning)
+        assertFalse(running.setup.actions.first { it.action == UiAction.RunDoctor }.enabled)
+        assertFalse(running.setup.actions.first { it.action == UiAction.RunOpsValidation }.enabled)
+
+        runnerResult.complete(successfulDoctorResult())
+        runCurrent()
+
+        val completed = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertFalse(completed.runStatus.isRunning)
+        assertTrue(completed.setup.actions.first { it.action == UiAction.RunDoctor }.enabled)
+        assertTrue(completed.setup.actions.first { it.action == UiAction.RunOpsValidation }.enabled)
         viewModel.dispose()
     }
 

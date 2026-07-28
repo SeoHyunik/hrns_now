@@ -5,6 +5,7 @@ import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.LockPayload
 import io.hrns_now.core.domain.model.LockState
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.result.HarnessCheckResult
 import io.hrns_now.core.result.HarnessCheckSeverity
@@ -16,6 +17,7 @@ import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RunStatusProjectionAssemblerTest {
@@ -106,7 +108,7 @@ class RunStatusProjectionAssemblerTest {
         assertTrue(projection.forceReleaseEnabled)
         val ownerRow = projection.stageDetailRows.single { it.first == "잠금 소유자" }
         assertTrue(ownerRow.second.contains("4242"))
-        assertTrue(ownerRow.second.contains("Doctor"))
+        assertTrue(ownerRow.second.contains("환경 점검"))
         assertFalse(ownerRow.second.contains("stale"), "Active 상태에서는 stale 표시가 없어야 한다")
     }
 
@@ -129,11 +131,11 @@ class RunStatusProjectionAssemblerTest {
     }
 
     @Test
-    fun `stage chip은 Doctor Ops Validation 두 항목을 항상 보여준다`() {
+    fun `stage chip은 환경 점검 작업 기준 점검 두 항목을 항상 보여준다`() {
         val projection = assembler.assemble(HarnessRunViewState(), null, now)
 
-        assertTrue(projection.stages.any { it.label == "Doctor" })
-        assertTrue(projection.stages.any { it.label == "Ops Validation" })
+        assertTrue(projection.stages.any { it.label == "환경 점검" })
+        assertTrue(projection.stages.any { it.label == "작업 기준 점검" })
     }
     @Test
     fun `외부 실행 가능성은 새 실행 보류 안내로 먼저 표시한다`() {
@@ -146,5 +148,70 @@ class RunStatusProjectionAssemblerTest {
 
         assertTrue(projection.consoleLines.first().contains("외부 실행 가능성"))
         assertTrue(projection.consoleLines.first().contains("새 실행을 보류"))
+    }
+
+    @Test
+    fun `실행 중에는 인라인 feedback이 진행 중 outcome과 isRunning true를 보여준다`() {
+        val runView = HarnessRunViewState(lastCommand = HarnessCommandKind.Doctor, isRunning = true, runStartedAt = now)
+
+        val projection = assembler.assemble(runView, lockInspection = null, now = now)
+
+        assertTrue(projection.isRunning)
+        assertEquals(HarnessCommandKind.Doctor, projection.lastCommandKind)
+        assertEquals("진행 중", projection.lastOutcome?.value)
+        assertNull(projection.lastCompletedAtLabel)
+    }
+
+    @Test
+    fun `완료된 실행은 인라인 feedback에 outcome 완료 시각 요약을 함께 담는다`() {
+        val contract = HarnessDiagnosticContract(
+            contractVersion = "1.0",
+            overall = HarnessOverallStatus.Ok,
+            checks = listOf(HarnessCheckResult("check_001", HarnessCheckSeverity.Info, "ok")),
+        )
+        val completedAt = now.plusSeconds(5)
+        val runView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.Doctor,
+            isRunning = false,
+            runStartedAt = now,
+            runCompletedAt = completedAt,
+            lastResult = ProcessRunResult.Completed(0, contract, null, false, false),
+        )
+
+        val projection = assembler.assemble(runView, lockInspection = null, now = completedAt)
+
+        assertFalse(projection.isRunning)
+        assertEquals("환경 점검", projection.lastOutcome?.label)
+        assertEquals("정상", projection.lastOutcome?.value)
+        assertEquals("success", projection.lastOutcome?.tone)
+        assertEquals("모든 점검을 통과했습니다.", projection.lastSummaryLine)
+        assertTrue(projection.lastCompletedAtLabel!!.isNotBlank())
+    }
+
+    @Test
+    fun `실패한 check가 있으면 짧은 요약은 실패 원인 message를 보여준다`() {
+        val contract = HarnessDiagnosticContract(
+            contractVersion = "1.0",
+            overall = HarnessOverallStatus.Fail,
+            checks = listOf(HarnessCheckResult("check_002", HarnessCheckSeverity.Error, "필수 파일이 없습니다")),
+        )
+        val runView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.ValidateOps,
+            lastResult = ProcessRunResult.Completed(1, contract, null, false, false),
+        )
+
+        val projection = assembler.assemble(runView, lockInspection = null, now = now)
+
+        assertEquals("실패", projection.lastOutcome?.value)
+        assertEquals("필수 파일이 없습니다", projection.lastSummaryLine)
+    }
+
+    @Test
+    fun `환경 점검 작업 기준 점검만 재시도 action과 label을 갖고 다른 command는 재시도를 제공하지 않는다`() {
+        assertEquals(UiAction.RunDoctor, HarnessCommandKind.Doctor.toRetryAction())
+        assertEquals("다시 점검", HarnessCommandKind.Doctor.retryLabel())
+        assertEquals(UiAction.RunOpsValidation, HarnessCommandKind.ValidateOps.toRetryAction())
+        assertEquals("다시 검증", HarnessCommandKind.ValidateOps.retryLabel())
+        assertNull(HarnessCommandKind.Bootstrap.toRetryAction())
     }
 }

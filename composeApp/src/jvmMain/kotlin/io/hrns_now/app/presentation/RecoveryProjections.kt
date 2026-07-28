@@ -18,7 +18,7 @@ import io.hrns_now.core.result.StateReadResult
 /**
  * Recovery Center/마감 확인 화면 projection이다(Phase 5).
  *
- * stop reason·queue blocked marker·state 읽기 실패마다 발생한 일/보존된 기록/현재 허용 행동을
+ * stop reason·queue blocked marker·state 읽기 실패마다 최근 작업 기록/보존된 기록/현재 허용 행동을
  * 분리해 보여준다(`doc/claude_prompts/phase5-closure-recovery.md` §3). 어떤 값도 자동으로
  * 재시도·재실행하지 않으며, 이 함수는 표시 문구만 만든다 — CTA 활성화 여부는 여전히
  * `ActionPolicy`/`ClosurePolicy`가 계산한 [CockpitProjection.allowedActions]를 그대로 옮긴다.
@@ -59,7 +59,7 @@ fun buildRecoveryProjection(
 
     return RecoveryProjection(
         title = "복구 센터 · 마감 확인",
-        subtitle = "발생한 일 / 보존된 기록 / 현재 허용된 행동을 분리해서 보여줍니다. 자동 재시도·자동 마감은 없습니다.",
+        subtitle = "최근 작업 기록 / 보존된 기록 / 현재 허용된 행동을 분리해서 보여줍니다. 자동 재시도·자동 마감은 없습니다.",
         activeCard = activeCard,
         closureChecklistRows = closureChecklistRows,
         closureNote = closureNote,

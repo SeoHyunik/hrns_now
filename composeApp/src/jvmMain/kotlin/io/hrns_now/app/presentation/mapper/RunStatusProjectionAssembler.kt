@@ -5,6 +5,7 @@ import io.hrns_now.app.presentation.model.StatusChipModel
 import io.hrns_now.app.presentation.viewmodel.HarnessRunViewState
 import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.LockState
+import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.result.HarnessCheckSeverity
 import io.hrns_now.core.result.HarnessOverallStatus
@@ -32,8 +33,8 @@ class RunStatusProjectionAssembler {
         val failureChips = failureChips(runView)
 
         return RunStatusProjection(
-            title = "실행 현황",
-            subtitle = "Harness 실행·진단 상태입니다. 권장 행동은 Cockpit과 오늘 할 일 화면에서 시작합니다.",
+            title = "실행 기록",
+            subtitle = "Harness 실행·진단 상태입니다. 권장 행동은 작업 현황과 작업 계획 화면에서 시작합니다.",
             stages = stages,
             consoleLines = consoleLines,
             stageDetailRows = detailRows,
@@ -41,6 +42,17 @@ class RunStatusProjectionAssembler {
             actions = emptyList(),
             cancelEnabled = runView.isRunning,
             forceReleaseEnabled = lockInspection != null,
+            isRunning = runView.isRunning,
+            lastCommandKind = runView.lastCommand,
+            lastOutcome = runView.lastCommand?.let { kind ->
+                if (runView.isRunning) {
+                    StatusChipModel(kind.displayLabel(), "진행 중", "warning")
+                } else {
+                    runView.lastResult?.let { result -> StatusChipModel(kind.displayLabel(), result.outcomeLabel(), result.tone()) }
+                }
+            },
+            lastCompletedAtLabel = runView.runCompletedAt?.formatted(),
+            lastSummaryLine = runView.lastResult?.summaryLine(),
         )
     }
 
@@ -149,6 +161,30 @@ class RunStatusProjectionAssembler {
             is ProcessRunResult.StartFailed, is ProcessRunResult.TimedOut, is ProcessRunResult.Cancelled -> "error"
         }
 
+    /** 인라인 실행 feedback 카드(새 Phase 6)의 "짧은 결과 요약" 한 줄이다. */
+    private fun ProcessRunResult.summaryLine(): String =
+        when (this) {
+            is ProcessRunResult.Completed -> {
+                val checkContract = contract
+                if (checkContract == null) {
+                    "JSON 결과를 해석하지 못했습니다 (exit=$exitCode)."
+                } else {
+                    val failed = checkContract.checks.firstOrNull { it.severity is HarnessCheckSeverity.Error }
+                    val warned = checkContract.checks.firstOrNull { it.severity is HarnessCheckSeverity.Warn }
+                    when {
+                        failed != null -> failed.message
+                        warned != null -> warned.message
+                        checkContract.overall == HarnessOverallStatus.Ok -> "모든 점검을 통과했습니다."
+                        else -> "결과를 확인하세요."
+                    }
+                }
+            }
+
+            is ProcessRunResult.StartFailed -> reason
+            is ProcessRunResult.TimedOut -> "시간 초과 후 종료를 시도했습니다."
+            is ProcessRunResult.Cancelled -> "사용자 요청으로 취소했습니다."
+        }
+
     private fun HarnessCheckSeverity.displayTag(): String =
         when (this) {
             HarnessCheckSeverity.Info -> "INFO"
@@ -163,12 +199,31 @@ class RunStatusProjectionAssembler {
 
 internal fun HarnessCommandKind.displayLabel(): String =
     when (this) {
-        HarnessCommandKind.Doctor -> "Doctor"
-        HarnessCommandKind.ValidateOps -> "Ops Validation"
-        HarnessCommandKind.Bootstrap -> "오늘 준비"
+        HarnessCommandKind.Doctor -> "환경 점검"
+        HarnessCommandKind.ValidateOps -> "작업 기준 점검"
+        HarnessCommandKind.Bootstrap -> "작업 준비"
         HarnessCommandKind.Planning -> "계획 실행"
         HarnessCommandKind.Replan -> "재계획 실행"
         HarnessCommandKind.ExecutionCode -> "코드 작업 실행"
         HarnessCommandKind.ExecutionDoc -> "문서 작업 실행"
         HarnessCommandKind.ClosureValidation -> "마감 검증 실행"
+    }
+
+/**
+ * 인라인 실행 feedback 카드(새 Phase 6)의 "다시 점검/다시 검증" 재시도 버튼이 다시 호출할 typed
+ * action이다. Bootstrap/Planning류는 각자의 화면 action 그룹에서 이미 재클릭 가능하므로 별도
+ * 재시도 CTA를 중복 제공하지 않는다 — 환경 점검·작업 기준 점검만 명시적 재시도 문구를 붙인다.
+ */
+internal fun HarnessCommandKind.toRetryAction(): UiAction? =
+    when (this) {
+        HarnessCommandKind.Doctor -> UiAction.RunDoctor
+        HarnessCommandKind.ValidateOps -> UiAction.RunOpsValidation
+        else -> null
+    }
+
+internal fun HarnessCommandKind.retryLabel(): String =
+    when (this) {
+        HarnessCommandKind.Doctor -> "다시 점검"
+        HarnessCommandKind.ValidateOps -> "다시 검증"
+        else -> "다시 실행"
     }

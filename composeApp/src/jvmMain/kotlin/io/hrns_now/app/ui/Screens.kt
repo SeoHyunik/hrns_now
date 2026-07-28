@@ -35,6 +35,9 @@ import io.hrns_now.core.config.PathProbeState
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
+import io.hrns_now.app.presentation.mapper.displayLabel
+import io.hrns_now.app.presentation.mapper.retryLabel
+import io.hrns_now.app.presentation.mapper.toRetryAction
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitDiagnostics
 import io.hrns_now.app.presentation.model.CockpitProjection
@@ -85,10 +88,14 @@ fun ScreenRoute(
             selectedDayReadOnly = cockpitProjection.isReadOnlyDay,
             activeProjectSourceLabel = activeProjectSourceLabel,
             registryMessage = registryMessage,
+            activeProjectName = cockpitProjection.projectName,
+            activeProjectProfileLabel = cockpitProjection.profileLabel,
+            activeProjectIsStale = cockpitProjection.isStale,
+            runStatusProjection = runStatusProjection,
             onUiEvent = onUiEvent,
         )
         AppRoute.Cockpit -> CockpitScreen(cockpitProjection, onCockpitAction)
-        AppRoute.Strategy -> StrategyScreen(todayWorkProjection, onUiEvent)
+        AppRoute.Strategy -> StrategyScreen(todayWorkProjection, runStatusProjection, onUiEvent)
         AppRoute.Run -> RunScreen(runStatusProjection, onUiEvent)
         AppRoute.Recovery -> RecoveryScreen(recoveryProjection, onUiEvent)
     }
@@ -175,15 +182,27 @@ fun SetupScreen(
     selectedDayReadOnly: Boolean = false,
     activeProjectSourceLabel: String = "",
     registryMessage: String? = null,
+    activeProjectName: String? = null,
+    activeProjectProfileLabel: String = "",
+    activeProjectIsStale: Boolean = false,
+    runStatusProjection: RunStatusProjection? = null,
     onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
 
     ScreenContainer {
         ScreenHero(
-            eyebrow = "01 · Setup",
+            eyebrow = "01 · Project",
             title = projection.title,
             subtitle = projection.subtitle,
+        )
+
+        // 사용자가 화면을 열자마자 어느 프로젝트를 보고 있는지 알 수 있어야 한다(새 Phase 6 제품 목표 1).
+        ActiveProjectSummaryCard(
+            projectName = activeProjectName,
+            profileLabel = activeProjectProfileLabel,
+            isStale = activeProjectIsStale,
+            workspaceConfig = workspaceConfig,
         )
 
         projection.cards.forEach { card ->
@@ -232,7 +251,7 @@ fun SetupScreen(
             }
         }
 
-        ProjectRegistrySection(
+        ProjectManagementSection(
             registryProjects = registryProjects,
             activeProjectSourceLabel = activeProjectSourceLabel,
             registryMessage = registryMessage,
@@ -256,26 +275,75 @@ fun SetupScreen(
                     ),
                     color = colors.tertiaryText,
                 )
+                runStatusProjection?.let { HarnessRunFeedback(it, onUiEvent) }
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 프로젝트 Registry — 등록·전환·삭제 (Phase 1D)
+// 활성 프로젝트 요약 — 이름·상태·핵심 경로를 화면 상단에서 즉시 식별(새 Phase 6)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ProjectRegistrySection(
+private fun ActiveProjectSummaryCard(
+    projectName: String?,
+    profileLabel: String,
+    isStale: Boolean,
+    workspaceConfig: WorkspaceConfig,
+) {
+    val colors = LocalHrnsColors.current
+    SectionCard(title = "활성 프로젝트", eyebrow = "Active project") {
+        if (projectName == null) {
+            Text(
+                text = "선택된 프로젝트가 없습니다. 아래 프로젝트 관리에서 등록하거나 선택하세요.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                color = colors.tertiaryText,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = projectName,
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, letterSpacing = (-0.2).sp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.primaryText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatusChip(
+                        text = if (isStale) "오래된 정보" else "정상",
+                        tone = if (isStale) "warning" else "success",
+                    )
+                }
+                KeyValueGrid(
+                    rows = listOf(
+                        "프로필" to profileLabel,
+                        "Kit 경로" to (workspaceConfig.roots.kitRoot ?: "미설정"),
+                        "작업공간 경로" to (workspaceConfig.roots.workspaceRoot ?: "미설정"),
+                        "저장소 경로" to (workspaceConfig.roots.projectRoot ?: "미설정"),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 프로젝트 관리 — 등록·전환·삭제는 modal에서, 기본 화면은 활성 프로젝트만 보여준다(새 Phase 6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ProjectManagementSection(
     registryProjects: List<RegistryProjectItem>,
     activeProjectSourceLabel: String,
     registryMessage: String?,
     onUiEvent: (HrnsUiEvent) -> Unit,
 ) {
     val colors = LocalHrnsColors.current
+    var showManagementModal by remember { mutableStateOf(false) }
 
     SectionCard(
-        title = "프로젝트 Registry",
+        title = "프로젝트 관리",
         eyebrow = "Projects",
         trailing = {
             if (activeProjectSourceLabel.isNotBlank()) {
@@ -293,22 +361,59 @@ private fun ProjectRegistrySection(
             }
 
             if (registryProjects.isEmpty()) {
+                // 프로젝트가 전혀 없을 때만 등록 온보딩을 이 화면에 직접 보여준다 — modal이 아니다.
                 Text(
                     text = "등록된 프로젝트가 없습니다. 아래에서 새 프로젝트를 등록하세요.",
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                     color = colors.tertiaryText,
                 )
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
+                ProjectRegistrationForm(onUiEvent = onUiEvent)
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    registryProjects.forEach { project ->
-                        ProjectRow(project = project, onUiEvent = onUiEvent)
+                val active = registryProjects.firstOrNull { it.isActive }
+                if (active != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = active.label,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = (-0.1).sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.primaryText,
+                            modifier = Modifier.weight(1f),
+                        )
+                        StatusChip(text = "활성", tone = "success")
                     }
+                } else {
+                    Text(
+                        text = "활성 프로젝트가 없습니다. 아래에서 프로젝트를 선택하세요.",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                        color = colors.tertiaryText,
+                    )
                 }
+                PlaceholderActionButton(
+                    text = "프로젝트 등록",
+                    primary = true,
+                    enabled = true,
+                    onClick = { showManagementModal = true },
+                )
             }
+        }
+    }
 
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
-
-            ProjectRegistrationForm(onUiEvent = onUiEvent)
+    if (showManagementModal) {
+        ModalDialog(title = "프로젝트 관리", onDismissRequest = { showManagementModal = false }) {
+            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Text(
+                    text = "등록된 프로젝트",
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.primaryText,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    registryProjects.forEach { project -> ProjectRow(project = project, onUiEvent = onUiEvent) }
+                }
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
+                ProjectRegistrationForm(onUiEvent = onUiEvent)
+            }
         }
     }
 }
@@ -447,7 +552,7 @@ private fun ProjectRegistrationForm(onUiEvent: (HrnsUiEvent) -> Unit) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cockpit (오늘 현황)
+// Cockpit (작업 현황)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -458,7 +563,7 @@ fun CockpitScreen(
     ScreenContainer {
         ScreenHero(
             eyebrow = "02 · Today",
-            title = "오늘 현황" + (projection.projectName?.let { " · $it" } ?: ""),
+            title = "작업 현황" + (projection.projectName?.let { " · $it" } ?: ""),
             subtitle = projection.dateLabel,
             statusContent = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -483,7 +588,7 @@ fun CockpitScreen(
         projection.diagnostics?.let { diagnostics ->
             CockpitDiagnosticsCard(
                 title = "확인이 필요합니다",
-                eyebrow = "Diagnostics",
+                eyebrow = "상태 진단",
                 diagnostics = diagnostics,
             )
         }
@@ -496,7 +601,7 @@ fun CockpitScreen(
             InlineChips(chips = projection.artifactItems)
         }
 
-        SectionCard(title = "다음 행동", eyebrow = "Next action") {
+        SectionCard(title = "다음 작업", eyebrow = "Next action") {
             CockpitActionButtonGroup(cockpitActions(projection), onAction)
         }
     }
@@ -511,32 +616,32 @@ private fun CockpitDiagnosticsCard(
     SectionCard(title = title, eyebrow = eyebrow, warning = true) {
         KeyValueGrid(
             rows = listOf(
-                "발생한 일" to diagnostics.whatHappened,
-                "이전 정상 기록" to if (diagnostics.lastKnownGoodPreserved) {
+                "최근 작업 기록" to diagnostics.whatHappened,
+                "마지막 정상 상태" to if (diagnostics.lastKnownGoodPreserved) {
                     "보존됨 (아래는 마지막 정상 값입니다)"
                 } else {
                     "없음"
                 },
-                "다음 행동" to diagnostics.nextStep,
+                "다음 작업" to diagnostics.nextStep,
             ),
         )
     }
 }
 
 private fun cockpitStateRows(projection: CockpitProjection): List<Pair<String, String>> = buildList {
-    add("Profile" to projection.profileLabel)
-    add("단계 phase" to projection.phaseLabel)
-    add("상태 status" to projection.statusLabel)
-    add("큐 상태 queue" to projection.queueStatusLabel)
+    add("프로필" to projection.profileLabel)
+    add("작업 단계" to projection.phaseLabel)
+    add("작업 상태" to projection.statusLabel)
+    add("작업 대기열 상태" to projection.queueStatusLabel)
     add("현재 작업 카드" to (projection.activeCardId ?: "없음"))
-    add("현재 작업 slice" to (projection.activeSliceId ?: "없음"))
+    add("현재 작업 단위" to (projection.activeSliceId ?: "없음"))
     add("허용된 대상 파일" to (projection.authorizedTargetLabel ?: "없음"))
-    projection.stopReasonLabel?.let { add("멈춘 이유 stop reason" to it) }
+    projection.stopReasonLabel?.let { add("중단 사유" to it) }
     projection.blockedReasonLabel?.takeIf { it.isNotBlank() }?.let { add("차단 사유" to it) }
-    add("운영 검증 ops validation" to projection.opsValidationLabel)
-    add("마감 closure" to projection.closureLabel)
-    add("실행 완료 execution_completed" to projection.executionCompletedLabel)
-    add("마지막 정상 읽기" to (projection.lastSuccessfulReadAtLabel ?: "없음"))
+    add("작업 기준 점검" to projection.opsValidationLabel)
+    add("마감 상태" to projection.closureLabel)
+    add("실행 완료 여부" to projection.executionCompletedLabel)
+    add("마지막 정상 상태 읽기" to (projection.lastSuccessfulReadAtLabel ?: "없음"))
     add("마지막 읽기 시도" to (projection.lastAttemptAtLabel ?: "없음"))
 }
 
@@ -571,8 +676,19 @@ private fun KeyValueGrid(rows: List<Pair<String, String>>) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun StrategyScreen(projection: TodayWorkProjection, onUiEvent: (HrnsUiEvent) -> Unit = {}) {
+fun StrategyScreen(
+    projection: TodayWorkProjection,
+    runStatusProjection: RunStatusProjection? = null,
+    onUiEvent: (HrnsUiEvent) -> Unit = {},
+) {
     val colors = LocalHrnsColors.current
+    var showRequestModal by remember { mutableStateOf(false) }
+
+    // 저장 성공은 feedback으로 알리고 modal을 닫는다 — 다음 저장을 위해 requestSaveSucceeded는
+    // ViewModel이 다음 제출 시작 시점에 다시 false로 되돌린다.
+    LaunchedEffect(projection.requestSaveSucceeded) {
+        if (projection.requestSaveSucceeded) showRequestModal = false
+    }
 
     ScreenContainer {
         ScreenHero(
@@ -582,18 +698,39 @@ fun StrategyScreen(projection: TodayWorkProjection, onUiEvent: (HrnsUiEvent) -> 
             statusContent = { StatusChip(projection.statusChip) },
         )
 
-        projection.sections.forEach { section ->
-            ProjectionInfoCard(section)
+        // 요구사항을 바로 추가해야 하는 사용자의 주 동작이므로 계획 상세보다 먼저 둔다.
+        SectionCard(title = "요구사항 작성", eyebrow = "REQUEST_INBOX.md") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "REQUEST_INBOX.md에 새 요구사항을 기록합니다. 구조화된 계획 입력(REQUEST_STRUCTURED.md)은 별도로 다룹니다.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                    color = colors.tertiaryText,
+                )
+                projection.requestInboxNotice?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                        color = colors.accent,
+                    )
+                }
+                PlaceholderActionButton(
+                    text = "요구사항 작성",
+                    primary = true,
+                    enabled = projection.requestEditingEnabled,
+                    onClick = { showRequestModal = true },
+                )
+                if (!projection.requestEditingEnabled) {
+                    Text(
+                        text = "현재 날짜 또는 상태에서는 요구사항을 작성할 수 없습니다. 새로고침한 뒤 다시 확인하세요.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = colors.tertiaryText,
+                    )
+                }
+            }
         }
 
-        SectionCard(title = "요청 작성", eyebrow = "REQUEST_INBOX.md") {
-            RequestEntryForm(
-                saving = projection.requestSaving,
-                editingEnabled = projection.requestEditingEnabled,
-                clearDraftAfterSave = projection.requestSaveSucceeded,
-                notice = projection.requestInboxNotice,
-                onSubmit = { draft -> onUiEvent(HrnsUiEvent.RequestEntrySubmitted(draft)) },
-            )
+        projection.sections.forEach { section ->
+            ProjectionInfoCard(section)
         }
 
         SectionCard(title = "실행 작업", eyebrow = "Actions") {
@@ -607,18 +744,36 @@ fun StrategyScreen(projection: TodayWorkProjection, onUiEvent: (HrnsUiEvent) -> 
                     ),
                     color = colors.tertiaryText,
                 )
+                runStatusProjection?.let { HarnessRunFeedback(it, onUiEvent) }
             }
         }
     }
+
+    if (showRequestModal) {
+        RequestEntryModal(
+            saving = projection.requestSaving,
+            editingEnabled = projection.requestEditingEnabled,
+            clearDraftAfterSave = projection.requestSaveSucceeded,
+            notice = projection.requestInboxNotice,
+            onSubmit = { draft -> onUiEvent(HrnsUiEvent.RequestEntrySubmitted(draft)) },
+            onDismiss = { showRequestModal = false },
+        )
+    }
 }
 
+/**
+ * "요구사항 작성" modal editor다(새 Phase 6). 미저장 변경이 있는 상태에서 ESC/바깥 클릭/닫기
+ * 버튼으로 닫으려 하면 먼저 확인을 요구한다 — [RequestInboxWriterAdapter]의 atomic write/optimistic
+ * concurrency 계약은 이 화면이 바꾸지 않고 [onSubmit]으로만 위임한다.
+ */
 @Composable
-private fun RequestEntryForm(
+private fun RequestEntryModal(
     saving: Boolean,
     editingEnabled: Boolean,
     clearDraftAfterSave: Boolean,
     notice: String?,
     onSubmit: (RequestEntryDraft) -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val colors = LocalHrnsColors.current
     var title by remember { mutableStateOf("") }
@@ -628,6 +783,9 @@ private fun RequestEntryForm(
     var summary by remember { mutableStateOf("") }
     var detail by remember { mutableStateOf("") }
     var constraints by remember { mutableStateOf("") }
+    var showUnsavedConfirm by remember { mutableStateOf(false) }
+
+    val isDirty = title.isNotBlank() || summary.isNotBlank() || detail.isNotBlank() || constraints.isNotBlank()
 
     LaunchedEffect(clearDraftAfterSave) {
         if (clearDraftAfterSave) {
@@ -638,69 +796,179 @@ private fun RequestEntryForm(
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "이 file은 raw 입력 영역입니다. 구조화된 계획 입력은 REQUEST_STRUCTURED.md에서 별도로 다룹니다.",
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
-            color = colors.tertiaryText,
-        )
-        LabeledTextField(label = "제목", value = title, onValueChange = { title = it })
-        EnumOptionRow(
-            label = "유형",
-            options = RequestEntryType.entries,
-            selected = type,
-            optionLabel = { it.label },
-            onSelect = { type = it },
-        )
-        EnumOptionRow(
-            label = "출처",
-            options = RequestEntrySource.entries,
-            selected = source,
-            optionLabel = { it.label },
-            onSelect = { source = it },
-        )
-        EnumOptionRow(
-            label = "우선순위",
-            options = RequestEntryPriority.entries,
-            selected = priority,
-            optionLabel = { it.label },
-            onSelect = { priority = it },
-        )
-        LabeledTextField(label = "요약", value = summary, onValueChange = { summary = it })
-        LabeledTextField(label = "상세", value = detail, onValueChange = { detail = it }, multiline = true)
-        LabeledTextField(label = "제약", value = constraints, onValueChange = { constraints = it }, multiline = true)
+    fun attemptClose() {
+        if (isDirty) showUnsavedConfirm = true else onDismiss()
+    }
 
-        notice?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
-                color = colors.accent,
-            )
-        }
-
-        PlaceholderActionButton(
-            text = if (saving) "저장 중..." else "요청 저장",
-            primary = true,
-            enabled = editingEnabled && !saving && title.isNotBlank() && summary.isNotBlank(),
-            onClick = {
-                onSubmit(
-                    RequestEntryDraft(
-                        title = title,
-                        type = type,
-                        source = source,
-                        priority = priority,
-                        summary = summary,
-                        detail = detail,
-                        constraints = constraints,
-                    ),
+    ModalDialog(title = "요구사항 작성", onDismissRequest = ::attemptClose) {
+        if (showUnsavedConfirm) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = "저장하지 않은 변경사항이 있습니다. 닫으시겠습니까?",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                    color = colors.primaryText,
                 )
-            },
-        )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PlaceholderActionButton(
+                        text = "계속 작성",
+                        primary = true,
+                        enabled = true,
+                        onClick = { showUnsavedConfirm = false },
+                    )
+                    PlaceholderActionButton(
+                        text = "저장하지 않고 닫기",
+                        enabled = true,
+                        onClick = onDismiss,
+                    )
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "이 file은 raw 입력 영역입니다. 구조화된 계획 입력은 REQUEST_STRUCTURED.md에서 별도로 다룹니다.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                    color = colors.tertiaryText,
+                )
+                LabeledTextField(label = "제목", value = title, onValueChange = { title = it })
+                EnumOptionRow(
+                    label = "유형",
+                    options = RequestEntryType.entries,
+                    selected = type,
+                    optionLabel = { it.label },
+                    onSelect = { type = it },
+                )
+                EnumOptionRow(
+                    label = "출처",
+                    options = RequestEntrySource.entries,
+                    selected = source,
+                    optionLabel = { it.label },
+                    onSelect = { source = it },
+                )
+                EnumOptionRow(
+                    label = "우선순위",
+                    options = RequestEntryPriority.entries,
+                    selected = priority,
+                    optionLabel = { it.label },
+                    onSelect = { priority = it },
+                )
+                LabeledTextField(label = "요약", value = summary, onValueChange = { summary = it })
+                LabeledTextField(label = "상세", value = detail, onValueChange = { detail = it }, multiline = true)
+                LabeledTextField(label = "제약", value = constraints, onValueChange = { constraints = it }, multiline = true)
+
+                notice?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                        color = colors.accent,
+                    )
+                }
+
+                val blockReason = when {
+                    saving -> "저장 중입니다…"
+                    !editingEnabled -> "현재 날짜 또는 상태에서는 요구사항을 저장할 수 없습니다."
+                    title.isBlank() || summary.isBlank() -> "제목과 요약을 입력하세요."
+                    else -> null
+                }
+
+                PlaceholderActionButton(
+                    text = if (saving) "저장 중..." else "요구사항 저장",
+                    primary = true,
+                    enabled = editingEnabled && !saving && title.isNotBlank() && summary.isNotBlank(),
+                    onClick = {
+                        onSubmit(
+                            RequestEntryDraft(
+                                title = title,
+                                type = type,
+                                source = source,
+                                priority = priority,
+                                summary = summary,
+                                detail = detail,
+                                constraints = constraints,
+                            ),
+                        )
+                    },
+                )
+                blockReason?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = colors.tertiaryText,
+                    )
+                }
+            }
+        }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Run (실행 현황)
+// 실행 feedback — 환경 점검/작업 기준 점검 등의 진행 중·성공·실패 인라인 표시(새 Phase 6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 관리/작업 계획 화면 어디서든 재사용하는 인라인 실행 feedback이다. `RunStatusProjection`은
+ * 실행 하나(harness 실행은 한 번에 하나만 허용)의 최신 상태만 담으므로, 여러 action 버튼이 이
+ * 카드 하나를 공유해도 항상 실제로 진행 중이거나 마지막으로 실행된 action만 보여준다.
+ */
+@Composable
+private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit) {
+    val colors = LocalHrnsColors.current
+
+    if (runStatus.isRunning) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            InlineSpinner()
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "${runStatus.lastCommandKind?.displayLabel() ?: "실행"} 진행 중입니다…",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                color = colors.secondaryText,
+            )
+        }
+        return
+    }
+
+    val kind = runStatus.lastCommandKind ?: return
+    val outcome = runStatus.lastOutcome ?: return
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusChip(model = outcome)
+            runStatus.lastCompletedAtLabel?.let { completedAt ->
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "완료 $completedAt",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = colors.tertiaryText,
+                )
+            }
+        }
+        runStatus.lastSummaryLine?.let { summary ->
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                color = colors.secondaryText,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            kind.toRetryAction()?.let { retryAction ->
+                PlaceholderActionButton(
+                    text = kind.retryLabel(),
+                    enabled = true,
+                    onClick = { onUiEvent(HrnsUiEvent.ActionRequested(retryAction)) },
+                )
+            }
+            if (runStatus.cancelEnabled) {
+                PlaceholderActionButton(
+                    text = "실행 취소",
+                    enabled = true,
+                    onClick = { onUiEvent(HrnsUiEvent.HarnessRunCancelRequested) },
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run (실행 기록)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -714,10 +982,19 @@ fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit)
             subtitle = projection.subtitle,
         )
 
-        SectionCard(title = "역할별 진행 단계", eyebrow = "Stages") {
+        SectionCard(title = "실행 상세", eyebrow = "Details") {
+            // 기본 화면에서는 접어 둔다 — 필요할 때만 펼쳐서 보는 저수준 상세 정보다(새 Phase 6).
+            var stagesExpanded by remember { mutableStateOf(false) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                projection.stages.forEachIndexed { index, stage ->
-                    StageRow(index = index + 1, text = stage.displayText())
+                PlaceholderActionButton(
+                    text = if (stagesExpanded) "진행 단계 접기" else "진행 단계 보기",
+                    enabled = true,
+                    onClick = { stagesExpanded = !stagesExpanded },
+                )
+                if (stagesExpanded) {
+                    projection.stages.forEachIndexed { index, stage ->
+                        StageRow(index = index + 1, text = stage.displayText())
+                    }
                 }
             }
         }
@@ -871,9 +1148,9 @@ fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> U
 
         val card = projection.activeCard
         if (card != null) {
-            SectionCard(title = card.title, eyebrow = "발생한 일 · 보존된 기록 · 허용된 행동") {
+            SectionCard(title = card.title, eyebrow = "최근 작업 기록 · 보존된 기록 · 허용된 행동") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    RecoveryFact(label = "발생한 일", value = card.whatHappened)
+                    RecoveryFact(label = "최근 작업 기록", value = card.whatHappened)
                     RecoveryFact(label = "보존된 기록", value = card.preservedRecord)
                     RecoveryFact(label = "현재 허용된 행동", value = card.allowedNextAction)
                 }
@@ -924,7 +1201,7 @@ fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> U
             }
         }
 
-        SectionCard(title = "읽기 전용 진단", eyebrow = "Diagnostics") {
+        SectionCard(title = "읽기 전용 진단", eyebrow = "상태 진단") {
             KeyValueGrid(
                 rows = listOf(
                     "연속성 진단" to projection.continuityDiagnosticsLabel,

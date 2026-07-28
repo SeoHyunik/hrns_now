@@ -116,6 +116,8 @@ private fun ReadyShell(
     Column(modifier = Modifier.fillMaxSize()) {
         TopRibbon(
             projection = state.shell,
+            activeProjectName = state.cockpit.projectName,
+            activeProjectStale = state.cockpit.isStale,
             readiness = state.workspaceReadiness,
             themeMode = themeMode,
             onThemeToggle = onThemeToggle,
@@ -171,6 +173,8 @@ private fun ReadyShell(
 @Composable
 private fun TopRibbon(
     projection: ShellProjection,
+    activeProjectName: String?,
+    activeProjectStale: Boolean,
     readiness: WorkspaceReadiness,
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
@@ -185,7 +189,8 @@ private fun TopRibbon(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 브랜드
+        // 브랜드 + 활성 프로젝트 — 사용자가 화면을 열자마자 어느 프로젝트를 보고 있는지
+        // 즉시 식별할 수 있어야 한다(새 Phase 6 제품 목표 1).
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -202,11 +207,24 @@ private fun TopRibbon(
                     fontWeight = FontWeight.SemiBold,
                     color = colors.primaryText,
                 )
-                Text(
-                    text = projection.subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = colors.tertiaryText,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "프로젝트",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = colors.tertiaryText,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = activeProjectName ?: "선택 안 됨",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = when {
+                            activeProjectName == null -> colors.tertiaryText
+                            activeProjectStale -> colors.warning
+                            else -> colors.primaryText
+                        },
+                    )
+                }
             }
         }
 
@@ -378,25 +396,25 @@ private fun LeftRail(
         SidebarSectionLabel("작업 흐름")
 
         NavigationButton(
-            text = "작업공간 연결",
+            text = "프로젝트 관리",
             selected = selectedRoute == AppRoute.Setup,
             onClick = { onRouteSelected(AppRoute.Setup) },
             leadingGlyph = "01",
         )
         NavigationButton(
-            text = "오늘 현황",
+            text = "작업 현황",
             selected = selectedRoute == AppRoute.Cockpit,
             onClick = { onRouteSelected(AppRoute.Cockpit) },
             leadingGlyph = "02",
         )
         NavigationButton(
-            text = "오늘 할 일",
+            text = "작업 계획",
             selected = selectedRoute == AppRoute.Strategy,
             onClick = { onRouteSelected(AppRoute.Strategy) },
             leadingGlyph = "03",
         )
         NavigationButton(
-            text = "실행 현황",
+            text = "실행 기록",
             selected = selectedRoute == AppRoute.Run,
             onClick = { onRouteSelected(AppRoute.Run) },
             leadingGlyph = "04",

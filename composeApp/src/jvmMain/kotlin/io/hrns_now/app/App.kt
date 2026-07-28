@@ -148,7 +148,7 @@ private fun demoUiState(): HrnsUiState {
         workspaceArtifactSummary = WorkspaceArtifactSummary(
             items = listOf(
                 "요청 입력함" to "demo/REQUEST_INBOX.md",
-                "오늘 할 일 파일" to "demo/TODAY_STRATEGY.md",
+                "작업 계획 파일" to "demo/TODAY_STRATEGY.md",
                 "인수인계 파일" to "demo/DAILY_HANDOFF.md",
                 "작업 상태 파일" to "demo/WORKFLOW_STATE.json",
             ).map { (label, path) ->

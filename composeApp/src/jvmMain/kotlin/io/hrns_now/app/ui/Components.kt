@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -16,29 +17,43 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -518,6 +533,86 @@ fun LabeledTextField(
             focusedBorderColor = colors.accent,
             unfocusedBorderColor = colors.borderStrong,
         ),
+    )
+}
+
+// ─── 모달 오버레이 (새 Phase 6: 프로젝트 관리 / 요구사항 작성) ────────────────
+
+/**
+ * 화면 전체를 덮는 scrim + 중앙 카드 모달이다. 실제 OS 창을 새로 띄우지 않고 같은 Compose
+ * 트리 안에서 오버레이로 그린다 — Composable은 여전히 file I/O/PowerShell 실행을 하지 않는다
+ * (`doc/hrns_now_design_pattern.md` §19.1). ESC와 바깥 영역 클릭으로 [onDismissRequest]를
+ * 호출하며, 카드 내부 클릭은 전파되지 않아 닫히지 않는다.
+ */
+@Composable
+fun ModalDialog(
+    title: String,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val colors = LocalHrnsColors.current
+    val focusRequester = remember { FocusRequester() }
+    val scrimInteraction = remember { MutableInteractionSource() }
+    val cardInteraction = remember { MutableInteractionSource() }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                    onDismissRequest()
+                    true
+                } else {
+                    false
+                }
+            }
+            .clickable(interactionSource = scrimInteraction, indication = null, onClick = onDismissRequest),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = modifier
+                .widthIn(min = 460.dp, max = 640.dp)
+                .heightIn(max = 640.dp)
+                .shadow(elevation = 24.dp, shape = RoundedCornerShape(RadiusLg))
+                .background(colors.cardBackground, RoundedCornerShape(RadiusLg))
+                .border1(BorderStroke(1.dp, colors.chelseaBlueSoft), RoundedCornerShape(RadiusLg))
+                .clickable(interactionSource = cardInteraction, indication = null, onClick = {})
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, letterSpacing = (-0.3).sp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.primaryText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onDismissRequest) {
+                        Text("닫기", style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp))
+                    }
+                }
+                content()
+            }
+        }
+    }
+}
+
+/** 실행 중임을 나타내는 작은 원형 진행 표시다(새 Phase 6 action feedback). */
+@Composable
+fun InlineSpinner(modifier: Modifier = Modifier) {
+    val colors = LocalHrnsColors.current
+    CircularProgressIndicator(
+        modifier = modifier.size(16.dp),
+        strokeWidth = 2.dp,
+        color = colors.accent,
     )
 }
 

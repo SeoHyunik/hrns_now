@@ -13,6 +13,8 @@ data class HarnessRunViewState(
     val lastCommand: HarnessCommandKind? = null,
     val isRunning: Boolean = false,
     val runStartedAt: Instant? = null,
+    /** [lastResult]가 채워진 시각이다 — 실행 feedback의 "완료 시각" 표시에 쓰인다(새 Phase 6). */
+    val runCompletedAt: Instant? = null,
     val lastResult: ProcessRunResult? = null,
     /** 실행 보류·잠금 획득 실패처럼 process 결과가 없는 상태의 안전한 사용자 안내다. */
     val notice: String? = null,

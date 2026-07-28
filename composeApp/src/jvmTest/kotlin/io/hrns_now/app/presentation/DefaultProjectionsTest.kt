@@ -80,7 +80,7 @@ class DefaultProjectionsTest {
             allowedActions = listOf(
                 CockpitActionItem(UiAction.RunCodeSlice, "선택된 코드 작업 실행", enabled = true),
                 CockpitActionItem(UiAction.Refresh, "새로고침", enabled = true),
-                CockpitActionItem(UiAction.RunDoctor, "상태 점검 실행", enabled = false),
+                CockpitActionItem(UiAction.RunDoctor, "환경 점검", enabled = false),
             ),
         )
 
@@ -118,6 +118,16 @@ class DefaultProjectionsTest {
         val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
 
         assertEquals("내용" to "아직 없습니다.", projection.sections.first().rows.single())
+    }
+
+    @Test
+    fun `작업 계획의 전략과 대기열 제목은 설명 괄호 없이 한국어 표시명만 사용한다`() {
+        val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
+
+        val projection = buildTodayWorkProjection(cockpit, strategyText = "전략", requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
+
+        assertEquals("개발 전략", projection.sections[0].title)
+        assertEquals("작업 대기열", projection.sections[1].title)
     }
 
     @Test

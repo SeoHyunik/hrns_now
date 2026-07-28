@@ -66,6 +66,10 @@ compose.desktop {
                 shortcut = true
                 menu = true
                 console = false
+                // 기본값(true)과 동일하지만, 설치 위치를 사용자가 확인·변경할 수 있어야 한다는
+                // 새 Phase 6 UI/UX 설치 품질 요구를 명시적으로 고정한다(WindowsPlatformSettings
+                // 기본 WiX 마법사가 제공하는 "설치 폴더 선택" 단계를 그대로 유지).
+                dirChooser = true
                 iconFile.set(project.file("src/jvmMain/resources/hrns-now.ico"))
             }
         }

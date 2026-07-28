@@ -1,5 +1,6 @@
 package io.hrns_now.app.presentation.model
 
+import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.UiAction
 
 /**
@@ -64,7 +65,7 @@ data class TodayWorkProjection(
     val requestSaveSucceeded: Boolean = false,
 )
 
-/** stop reason/blocked marker 하나의 3분리 표시다: 발생한 일 / 보존된 기록 / 현재 허용 행동. */
+/** stop reason/blocked marker 하나의 3분리 표시다: 최근 작업 기록 / 보존된 기록 / 현재 허용 행동. */
 data class RecoveryCardModel(
     val title: String,
     val whatHappened: String,
@@ -113,4 +114,14 @@ data class RunStatusProjection(
     val cancelEnabled: Boolean = false,
     /** 현재 lock을 강제 해제할 수 있는 상태인가(Phase 3). */
     val forceReleaseEnabled: Boolean = false,
+    /**
+     * 환경 점검/작업 기준 점검을 화면 어디서나(프로젝트 관리·작업 계획) 인라인으로 보여주기 위한
+     * 최근 실행 요약이다(새 Phase 6 UI/UX). raw stdout/session은 담지 않고 이미 typed/label 처리된
+     * 값만 담는다 — [io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler]가 조립한다.
+     */
+    val isRunning: Boolean = false,
+    val lastCommandKind: HarnessCommandKind? = null,
+    val lastOutcome: StatusChipModel? = null,
+    val lastCompletedAtLabel: String? = null,
+    val lastSummaryLine: String? = null,
 )

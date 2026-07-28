@@ -196,7 +196,7 @@ class RecoveryProjectionsTest {
             CockpitActionItem(UiAction.Refresh, "새로고침", enabled = true),
             CockpitActionItem(UiAction.RunReplan, "재계획 실행", enabled = true),
             CockpitActionItem(UiAction.RunClosureValidation, "마감 검증 실행", enabled = false),
-            CockpitActionItem(UiAction.EditRequest, "요청 작성", enabled = true),
+            CockpitActionItem(UiAction.EditRequest, "요구사항 작성", enabled = true),
         )
         val projection = buildRecoveryProjection(cockpit(allowed), success(healthyState()), ClosureDecision.Allowed, "없음")
 
