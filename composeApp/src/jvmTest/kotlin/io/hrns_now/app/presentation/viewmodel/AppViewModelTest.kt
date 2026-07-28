@@ -39,6 +39,8 @@ import io.hrns_now.core.domain.model.RequestEntryPriority
 import io.hrns_now.core.domain.model.RequestEntrySource
 import io.hrns_now.core.domain.model.RequestEntryType
 import io.hrns_now.core.domain.model.RootPathCheck
+import io.hrns_now.core.domain.model.RuntimeResolution
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.domain.model.SchemaVersion
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkflowPhase
@@ -56,6 +58,7 @@ import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.port.RequestSaveResult
+import io.hrns_now.core.port.RuntimeSourceResolverPort
 import io.hrns_now.core.port.RequestWriterPort
 import io.hrns_now.core.domain.model.RepositoryStatus
 import io.hrns_now.core.port.GitStatusPort
@@ -142,7 +145,7 @@ class AppViewModelTest {
     private fun harnessProject(id: String, workspaceRoot: String): HarnessProject = HarnessProject(
         id = ProjectId(id),
         displayName = "project-$id",
-        kitRoot = Path.of("S:\\kit-$id"),
+        runtimeSource = RuntimeSource.ExternalKit(Path.of("S:\\kit-$id")),
         projectWorkspaceRoot = Path.of(workspaceRoot),
         repositoryRoot = Path.of("S:\\repo-$id"),
         profileId = "테스트",
@@ -150,6 +153,20 @@ class AppViewModelTest {
         lastDiagnosticsSummary = null,
         lastRunAt = null,
     )
+
+    /**
+     * `ExternalKit`은 그대로, `InternalDeveloperSdk`는 고정된 fixture 경로로 항상 `Resolved`를
+     * 반환하는 테스트 전용 resolver다 — 기존 `project.kitRoot` 직접 참조 테스트를 그대로 보존한다.
+     */
+    private fun identityRuntimeSourceResolver(
+        internalRoot: Path = Path.of("S:\\internal-sdk-default"),
+    ): RuntimeSourceResolverPort = RuntimeSourceResolverPort { source ->
+        val root = when (source) {
+            RuntimeSource.InternalDeveloperSdk -> internalRoot
+            is RuntimeSource.ExternalKit -> source.root
+        }
+        RuntimeResolution.Resolved(source, root)
+    }
 
     private fun workflowState(projectName: String): WorkflowState = WorkflowState(
         schemaVersion = SchemaVersion(1, 0, "1.0"),
@@ -379,6 +396,7 @@ class AppViewModelTest {
         availableDates: List<LocalDate> = emptyList(),
         boundaryResolver: (String?) -> RootPathCheck = { RootPathCheck.Invalid(PathIssue.NotProvided) },
         compatibilityPort: KitVersionManifestPort = KitVersionManifestPort { KitVersionReadResult.Missing },
+        runtimeSourceResolver: RuntimeSourceResolverPort = identityRuntimeSourceResolver(),
         harnessRunner: HarnessRunnerPort = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
         processLock: ProcessLockPort = FakeProcessLockPort(clock = { fixedInstant }),
         requestWriter: RequestWriterPort = FakeRequestWriterPort(),
@@ -391,6 +409,7 @@ class AppViewModelTest {
         loadProjects = LoadProjectsUseCase(registry),
         registerProject = RegisterProjectUseCase(
             pathResolver = boundaryResolver,
+            runtimeSourceResolver = runtimeSourceResolver::resolve,
             registry = registry,
         ),
         selectProject = SelectProjectUseCase(registry),
@@ -398,6 +417,7 @@ class AppViewModelTest {
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = boundaryResolver,
         compatibilityPort = compatibilityPort,
+        runtimeSourceResolver = runtimeSourceResolver,
         processLock = processLock,
         harnessRunner = harnessRunner,
         executeHarnessAction = ExecuteHarnessActionUseCase(
@@ -538,6 +558,10 @@ class AppViewModelTest {
             loadProjects = LoadProjectsUseCase(registry),
             registerProject = RegisterProjectUseCase(
                 pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                runtimeSourceResolver = { source ->
+                    recordThread()
+                    RuntimeResolution.Missing(source)
+                },
                 registry = registry,
             ),
             selectProject = SelectProjectUseCase(registry),
@@ -550,6 +574,10 @@ class AppViewModelTest {
             compatibilityPort = {
                 recordThread()
                 KitVersionReadResult.Missing
+            },
+            runtimeSourceResolver = RuntimeSourceResolverPort { source ->
+                recordThread()
+                RuntimeResolution.Missing(source)
             },
             harnessRunner = HarnessRunnerPort { _, _, _ ->
                 recordThread()
@@ -647,6 +675,7 @@ class AppViewModelTest {
             loadProjects = LoadProjectsUseCase(registry),
             registerProject = RegisterProjectUseCase(
                 pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                runtimeSourceResolver = identityRuntimeSourceResolver()::resolve,
                 registry = registry,
             ),
             selectProject = SelectProjectUseCase(registry),
@@ -654,6 +683,7 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            runtimeSourceResolver = identityRuntimeSourceResolver(),
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
             executeHarnessAction = ExecuteHarnessActionUseCase(
@@ -793,6 +823,7 @@ class AppViewModelTest {
             loadProjects = LoadProjectsUseCase(registry),
             registerProject = RegisterProjectUseCase(
                 pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                runtimeSourceResolver = identityRuntimeSourceResolver()::resolve,
                 registry = registry,
             ),
             selectProject = SelectProjectUseCase(registry),
@@ -800,6 +831,7 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = compatibilityPort,
+            runtimeSourceResolver = identityRuntimeSourceResolver(),
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
             executeHarnessAction = ExecuteHarnessActionUseCase(
@@ -896,6 +928,7 @@ class AppViewModelTest {
             loadProjects = LoadProjectsUseCase(registry),
             registerProject = RegisterProjectUseCase(
                 pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                runtimeSourceResolver = identityRuntimeSourceResolver()::resolve,
                 registry = registry,
             ),
             selectProject = SelectProjectUseCase(registry),
@@ -903,6 +936,7 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            runtimeSourceResolver = identityRuntimeSourceResolver(),
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
             executeHarnessAction = ExecuteHarnessActionUseCase(
@@ -976,6 +1010,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "신규 프로젝트",
+                    useInternalDeveloperSdk = false,
                     kitRootRaw = "S:\\kit-new",
                     projectWorkspaceRootRaw = "S:\\workspace-new",
                     repositoryRootRaw = "S:\\repo-new",
@@ -990,6 +1025,103 @@ class AppViewModelTest {
         assertTrue(ready.registryProjects.single().isActive)
         assertEquals("S:\\workspace-new", ready.workspaceConfig.roots.workspaceRoot)
         assertTrue(ready.registryMessage?.contains("Doctor·호환성 확인 후") == true)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `useInternalDeveloperSdk가 true고 SDK가 Missing이면 Registry에 저장하지 않고 사유를 보여준다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            raw?.let(Path::of)?.let { path -> RootPathCheck.Valid(path, path) } ?: RootPathCheck.Invalid(PathIssue.NotProvided)
+        }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+            runtimeSourceResolver = RuntimeSourceResolverPort { source -> RuntimeResolution.Missing(source) },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "내장 SDK 프로젝트",
+                    useInternalDeveloperSdk = true,
+                    kitRootRaw = null,
+                    projectWorkspaceRootRaw = "S:\\workspace-internal",
+                    repositoryRootRaw = "S:\\repo-internal",
+                    profileId = "기본",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(ready.registryProjects.isEmpty())
+        assertTrue(ready.registryMessage?.contains("등록할 수 없습니다") == true)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `useInternalDeveloperSdk가 true고 SDK가 Resolved면 InternalDeveloperSdk source로 등록된다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            raw?.let(Path::of)?.let { path -> RootPathCheck.Valid(path, path) } ?: RootPathCheck.Invalid(PathIssue.NotProvided)
+        }
+        val internalRoot = Path.of("S:\\internal-sdk")
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { _, _, _ -> successfulDoctorResult() },
+            runtimeSourceResolver = RuntimeSourceResolverPort { source -> RuntimeResolution.Resolved(source, internalRoot) },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "내장 SDK 프로젝트",
+                    useInternalDeveloperSdk = true,
+                    kitRootRaw = null,
+                    projectWorkspaceRootRaw = "S:\\workspace-internal",
+                    repositoryRootRaw = "S:\\repo-internal",
+                    profileId = "기본",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals(1, ready.registryProjects.size)
+        assertEquals("개발용 내장 SDK", ready.cockpit.runtimeSourceLabel)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `활성 프로젝트의 runtime source가 Missing이면 compatibility가 아니라 runtimeSourceDiagnostics로 원인을 보여준다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("internal", "S:\\project-internal")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            runtimeSourceResolver = RuntimeSourceResolverPort { source -> RuntimeResolution.Missing(source) },
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(requireNotNull(ready.cockpit.runtimeSourceDiagnostics).whatHappened.isNotBlank())
+        assertEquals(null, ready.cockpit.compatibilityDiagnostics)
         viewModel.dispose()
     }
 
@@ -1016,7 +1148,14 @@ class AppViewModelTest {
 
         viewModel.onEvent(
             HrnsUiEvent.ProjectRegistrationRequested(
-                RegisterProjectCandidate("실패 프로젝트", "S:\\kit-fail", "S:\\workspace-fail", "S:\\repo-fail", "기본"),
+                RegisterProjectCandidate(
+                    displayName = "실패 프로젝트",
+                    useInternalDeveloperSdk = false,
+                    kitRootRaw = "S:\\kit-fail",
+                    projectWorkspaceRootRaw = "S:\\workspace-fail",
+                    repositoryRootRaw = "S:\\repo-fail",
+                    profileId = "기본",
+                ),
             ),
         )
         runCurrent()
@@ -1175,6 +1314,7 @@ class AppViewModelTest {
             loadProjects = LoadProjectsUseCase(registry),
             registerProject = RegisterProjectUseCase(
                 pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                runtimeSourceResolver = identityRuntimeSourceResolver()::resolve,
                 registry = registry,
             ),
             selectProject = SelectProjectUseCase(registry),
@@ -1182,6 +1322,7 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            runtimeSourceResolver = identityRuntimeSourceResolver(),
             harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
             processLock = FakeProcessLockPort(clock = { fixedInstant }),
             executeHarnessAction = ExecuteHarnessActionUseCase(
@@ -1594,6 +1735,7 @@ class AppViewModelTest {
             loadProjects = LoadProjectsUseCase(registry),
             registerProject = RegisterProjectUseCase(
                 pathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
+                runtimeSourceResolver = identityRuntimeSourceResolver()::resolve,
                 registry = registry,
             ),
             selectProject = SelectProjectUseCase(registry),
@@ -1601,6 +1743,7 @@ class AppViewModelTest {
             deleteProject = DeleteProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
+            runtimeSourceResolver = identityRuntimeSourceResolver(),
             harnessRunner = runner,
             processLock = FakeProcessLockPort(),
             executeHarnessAction = ExecuteHarnessActionUseCase(

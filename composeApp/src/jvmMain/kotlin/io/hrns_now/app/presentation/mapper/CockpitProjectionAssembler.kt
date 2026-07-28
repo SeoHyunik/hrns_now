@@ -10,6 +10,9 @@ import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.BoundaryStatus
 import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
 import io.hrns_now.core.domain.model.ProcessRunStatus
+import io.hrns_now.core.domain.model.RuntimeIssue
+import io.hrns_now.core.domain.model.RuntimeResolution
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkflowState
@@ -41,6 +44,7 @@ class CockpitProjectionAssembler(
         lastSuccessfulReadAtLabel: String?,
         lastAttemptAtLabel: String?,
         harnessRunInProgress: Boolean = false,
+        runtimeResolution: RuntimeResolution? = null,
     ): CockpitProjection {
         val (displayState, isStale) = resolveDisplayWorkflowState(stateRead)
         val activeSliceKind = displayState?.executionWrapper?.toActiveSliceKind()
@@ -80,9 +84,49 @@ class CockpitProjectionAssembler(
             primaryAction = recommended.primary?.let { actionItem(it, harnessRunInProgress) },
             allowedActions = recommended.allowed.map { actionItem(it, harnessRunInProgress) },
             diagnostics = diagnosticsFor(stateRead, recommended.blockedReason),
-            compatibilityDiagnostics = diagnosticsForCompatibility(compatibilityDetail, recommended.blockedReason),
+            compatibilityDiagnostics = if (runtimeResolution is RuntimeResolution.Missing || runtimeResolution is RuntimeResolution.Invalid) {
+                null
+            } else {
+                diagnosticsForCompatibility(compatibilityDetail, recommended.blockedReason)
+            },
+            runtimeSourceLabel = runtimeSourceLabel(runtimeResolution?.source),
+            runtimeSourceDiagnostics = diagnosticsForRuntime(runtimeResolution, recommended.blockedReason),
         )
     }
+
+    /** `source == null`은 활성 프로젝트가 없어 이 resolver 자체를 거치지 않은 legacy 환경변수 경로다. */
+    private fun runtimeSourceLabel(source: RuntimeSource?): String =
+        when (source) {
+            null -> "외부 설정(환경변수)"
+            RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
+            is RuntimeSource.ExternalKit -> "외부 Harness Kit"
+        }
+
+    /**
+     * runtime source가 [RuntimeResolution.Resolved]가 아닐 때만 채운다 — compatibility 진단과
+     * 근거가 다른 별개의 fail-closed 원인이다(새 Phase 7, `doc/hrns_now_design_pattern.md` §20.1).
+     */
+    private fun diagnosticsForRuntime(runtimeResolution: RuntimeResolution?, ctaGuidance: String?): CockpitDiagnostics? =
+        when (runtimeResolution) {
+            null, is RuntimeResolution.Resolved -> null
+            is RuntimeResolution.Missing -> CockpitDiagnostics(
+                whatHappened = when (runtimeResolution.source) {
+                    RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK(.local\\harness-kit)를 찾을 수 없습니다."
+                    is RuntimeSource.ExternalKit -> "지정한 외부 Harness Kit 경로를 찾을 수 없습니다."
+                },
+                lastKnownGoodPreserved = false,
+                nextStep = ctaGuidance ?: "SDK를 준비하거나 고급 설정에서 외부 Harness Kit 경로를 확인하세요.",
+            )
+            is RuntimeResolution.Invalid -> CockpitDiagnostics(
+                whatHappened = when (runtimeResolution.reason) {
+                    RuntimeIssue.NotDirectory -> "runtime 경로가 디렉터리가 아닙니다."
+                    RuntimeIssue.NotReadable -> "runtime 경로를 읽을 수 없습니다."
+                    RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
+                },
+                lastKnownGoodPreserved = false,
+                nextStep = ctaGuidance ?: "runtime 경로 내용을 확인하거나 고급 설정에서 외부 Harness Kit 경로를 다시 선택하세요.",
+            )
+        }
 
     private fun artifactChips(state: WorkflowState): List<StatusChipModel> =
         listOf(

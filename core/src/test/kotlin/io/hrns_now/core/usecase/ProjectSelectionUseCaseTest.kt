@@ -2,6 +2,7 @@ package io.hrns_now.core.usecase
 
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
@@ -18,7 +19,7 @@ class ProjectSelectionUseCaseTest {
     private fun project(): HarnessProject = HarnessProject(
         id = ProjectId("project-a"),
         displayName = "프로젝트 A",
-        kitRoot = Path.of("S:\\kit"),
+        runtimeSource = RuntimeSource.ExternalKit(Path.of("S:\\kit")),
         projectWorkspaceRoot = Path.of("S:\\workspace"),
         repositoryRoot = Path.of("S:\\repo"),
         profileId = "기본",
@@ -75,7 +76,7 @@ class ProjectSelectionUseCaseTest {
 
         assertEquals(RegistrySaveResult.Success, result)
         assertEquals(date, registry.savedProject?.lastSelectedDate)
-        assertEquals(project.kitRoot, registry.savedProject?.kitRoot)
+        assertEquals(project.runtimeSource, registry.savedProject?.runtimeSource)
     }
 
     @Test

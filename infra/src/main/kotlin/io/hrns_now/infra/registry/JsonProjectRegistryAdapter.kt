@@ -2,6 +2,7 @@ package io.hrns_now.infra.registry
 
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
@@ -305,10 +306,21 @@ class JsonProjectRegistryAdapter(
         }
     }
 
+    /**
+     * `InternalDeveloperSdk`는 절대 경로를 domain에 갖고 있지 않으므로(§20.1) 이 검사에서
+     * 제외한다 — repository-relative 개발 SDK 경로가 `%APPDATA%\hrns-now` 근처에 있을 일은
+     * 실질적으로 없고, 필요한 real root 비교는 `ExternalKit`처럼 실제 절대 경로가 있을 때만
+     * 의미가 있다.
+     */
     private fun isRegistryInsideProject(project: HarnessProject): Boolean {
         val registryLexical = registryPath.toAbsolutePath().normalize()
         val registryRealCandidate = realPathCandidate(registryLexical)
-        return listOf(project.kitRoot, project.projectWorkspaceRoot, project.repositoryRoot).any { root ->
+        val projectRoots = listOfNotNull(
+            (project.runtimeSource as? RuntimeSource.ExternalKit)?.root,
+            project.projectWorkspaceRoot,
+            project.repositoryRoot,
+        )
+        return projectRoots.any { root ->
             val rootLexical = root.toAbsolutePath().normalize()
             val lexicalOverlap = registryLexical == rootLexical || registryLexical.startsWith(rootLexical)
             val rootReal = try {

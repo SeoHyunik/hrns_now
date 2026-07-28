@@ -12,6 +12,7 @@ import io.hrns_now.core.domain.model.LockReleaseResult
 import io.hrns_now.core.domain.model.ProcessCancellationToken
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceDay
@@ -36,7 +37,7 @@ class ExecuteHarnessActionUseCaseTest {
     private val project = HarnessProject(
         id = ProjectId("sample"),
         displayName = "sample",
-        kitRoot = Path.of("C:/kit"),
+        runtimeSource = RuntimeSource.ExternalKit(Path.of("C:/kit")),
         projectWorkspaceRoot = Path.of("C:/workspace"),
         repositoryRoot = Path.of("C:/repo"),
         profileId = "corp-default",
@@ -130,6 +131,7 @@ class ExecuteHarnessActionUseCaseTest {
 
     private fun doctorContext() = HarnessExecutionContext(
         project = project,
+        resolvedKitRoot = Path.of("C:/kit"),
         day = day,
         actionContext = ActionContext(
             projectConnected = true,

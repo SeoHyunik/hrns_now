@@ -5,6 +5,7 @@ import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceRoots
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
@@ -20,7 +21,7 @@ class ResolveActiveProjectUseCaseTest {
     private fun project(id: String, displayName: String = "project-$id"): HarnessProject = HarnessProject(
         id = ProjectId(id),
         displayName = displayName,
-        kitRoot = Path.of("S:\\kit-$id"),
+        runtimeSource = RuntimeSource.ExternalKit(Path.of("S:\\kit-$id")),
         projectWorkspaceRoot = Path.of("S:\\workspace-$id"),
         repositoryRoot = Path.of("S:\\repo-$id"),
         profileId = "기본",

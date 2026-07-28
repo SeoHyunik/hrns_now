@@ -12,7 +12,13 @@ import java.time.LocalDate
 data class HarnessProject(
     val id: ProjectId,
     val displayName: String,
-    val kitRoot: Path,
+    /**
+     * 이 프로젝트의 Harness runtime을 어디서 가져오는지에 대한 typed 선택이다(새 Phase 7,
+     * `doc/hrns_now_design_pattern.md` §20.1). 실제 파일 시스템 root가 필요한 곳(command 실행,
+     * compatibility, boundary 검사)은 이 값을 직접 쓰지 않고 [io.hrns_now.core.port.RuntimeSourceResolverPort]가
+     * 만든 `RuntimeResolution.Resolved.root`만 전달받는다.
+     */
+    val runtimeSource: RuntimeSource,
     val projectWorkspaceRoot: Path,
     val repositoryRoot: Path,
     val profileId: String,

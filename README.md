@@ -49,7 +49,7 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 | Phase 4 | 완료 | 요청 작성, Planning·Replan, code/doc 실행 흐름 |
 | Phase 5 | `PASS_WITH_FIXES` | Closure 정책, 복구 센터, Git 오염 확인, 진단 projection |
 | 새 Phase 6 | `BLOCKED` | 자동 검증·MSI 재패키징은 통과했으나 새 native UI 수동 QA 증빙이 남음 |
-| 새 Phase 7 | 진행 예정 | Git-ignore 개발용 내장 Harness SDK source, typed runtime 선택·해석, explicit external override |
+| 새 Phase 7 | `PASS_WITH_FIXES` | Git-ignore 개발용 내장 Harness SDK source, typed runtime 선택·해석, explicit external override. 실제 SDK·native UI 운영 QA는 남음 |
 | 보류 기존 Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
 | 보류 기존 Phase 6B | **BLOCKED** | 승인된 Harness Runtime 릴리스 artifact가 없어 통합 구현을 시작할 수 없음 |
 | 보류 기존 Phase 7E | 미착수 | opt-in 실험·고급 진단 기능 |
@@ -406,13 +406,15 @@ Program Files에는 Registry, workspace, Harness 로그, 사용자 작업 파일
 
 ## 로드맵
 
-### 현재 작업: 새 Phase 7 내장 개발용 Harness SDK source
+### 새 Phase 7 결과: 내장 개발용 Harness SDK source
 
 - Git-ignore `.local\harness-kit` 사용자 제공 개발 SDK를 기본 runtime source로 해석
 - typed runtime source와 safe Registry migration
 - 표준 프로젝트 등록에서 Kit root 직접 입력 제거
 - advanced external Kit override와 missing SDK fail-closed UX
 - repository·workspace·runtime root 경계와 기존 compatibility/command 계약 보존
+
+소스·Registry·fail-closed 동작과 전체 자동 테스트는 통과했습니다. 사용자가 실제 `.local\harness-kit` SDK를 제공한 환경에서의 등록→Doctor→State 조회, 그리고 native UI 육안 QA는 다음 운영 점검에서 확인합니다. 이 결과는 보류 Gate를 통과 처리하지 않습니다.
 
 ### 보류 과제
 

@@ -91,6 +91,8 @@ fun ScreenRoute(
             activeProjectName = cockpitProjection.projectName,
             activeProjectProfileLabel = cockpitProjection.profileLabel,
             activeProjectIsStale = cockpitProjection.isStale,
+            activeProjectRuntimeSourceLabel = cockpitProjection.runtimeSourceLabel,
+            activeProjectRuntimeDiagnostics = cockpitProjection.runtimeSourceDiagnostics,
             runStatusProjection = runStatusProjection,
             onUiEvent = onUiEvent,
         )
@@ -185,6 +187,8 @@ fun SetupScreen(
     activeProjectName: String? = null,
     activeProjectProfileLabel: String = "",
     activeProjectIsStale: Boolean = false,
+    activeProjectRuntimeSourceLabel: String = "",
+    activeProjectRuntimeDiagnostics: CockpitDiagnostics? = null,
     runStatusProjection: RunStatusProjection? = null,
     onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
@@ -202,6 +206,8 @@ fun SetupScreen(
             projectName = activeProjectName,
             profileLabel = activeProjectProfileLabel,
             isStale = activeProjectIsStale,
+            runtimeSourceLabel = activeProjectRuntimeSourceLabel,
+            runtimeSourceDiagnostics = activeProjectRuntimeDiagnostics,
             workspaceConfig = workspaceConfig,
         )
 
@@ -290,6 +296,8 @@ private fun ActiveProjectSummaryCard(
     projectName: String?,
     profileLabel: String,
     isStale: Boolean,
+    runtimeSourceLabel: String,
+    runtimeSourceDiagnostics: CockpitDiagnostics?,
     workspaceConfig: WorkspaceConfig,
 ) {
     val colors = LocalHrnsColors.current
@@ -315,10 +323,30 @@ private fun ActiveProjectSummaryCard(
                         tone = if (isStale) "warning" else "success",
                     )
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Runtime source",
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                        color = colors.tertiaryText,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatusChip(
+                        text = if (runtimeSourceDiagnostics != null) "$runtimeSourceLabel · 문제 있음" else runtimeSourceLabel,
+                        tone = if (runtimeSourceDiagnostics != null) "danger" else "success",
+                        showDot = false,
+                    )
+                }
+                runtimeSourceDiagnostics?.let { diagnostics ->
+                    Text(
+                        text = "${diagnostics.whatHappened} ${diagnostics.nextStep}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                        color = colors.danger,
+                    )
+                }
                 KeyValueGrid(
                     rows = listOf(
                         "프로필" to profileLabel,
-                        "Kit 경로" to (workspaceConfig.roots.kitRoot ?: "미설정"),
                         "작업공간 경로" to (workspaceConfig.roots.workspaceRoot ?: "미설정"),
                         "저장소 경로" to (workspaceConfig.roots.projectRoot ?: "미설정"),
                     ),
@@ -479,6 +507,8 @@ private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) ->
                 fontWeight = FontWeight.SemiBold,
                 color = LocalHrnsColors.current.primaryText,
             )
+            Spacer(Modifier.width(8.dp))
+            StatusChip(text = project.runtimeSourceLabel, tone = "muted", showDot = false)
             if (project.isActive) {
                 Spacer(Modifier.width(8.dp))
                 StatusChip(text = "활성", tone = "success")
@@ -498,23 +528,36 @@ private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) ->
     }
 }
 
+/**
+ * 표준 등록 흐름은 Kit 경로를 입력받지 않는다 — 기본은 `개발용 내장 SDK`이고, `고급 설정`을
+ * 명시적으로 펼쳤을 때만 `외부 Harness Kit 사용` 토글과 경로 입력이 나타난다(새 Phase 7).
+ * runtime source 선택 자체가 typed `RegisterProjectCandidate.useInternalDeveloperSdk`로만
+ * 전달되며, 이 화면은 파일 존재 확인이나 경로 조립을 하지 않는다.
+ */
 @Composable
 private fun ProjectRegistrationForm(onUiEvent: (HrnsUiEvent) -> Unit) {
     var displayName by remember { mutableStateOf("") }
-    var kitRoot by remember { mutableStateOf("") }
     var workspaceRoot by remember { mutableStateOf("") }
     var repositoryRoot by remember { mutableStateOf("") }
     var profileId by remember { mutableStateOf("기본") }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var useExternalKit by remember { mutableStateOf(false) }
+    var kitRoot by remember { mutableStateOf("") }
+    val colors = LocalHrnsColors.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             text = "새 프로젝트 등록",
             style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
             fontWeight = FontWeight.SemiBold,
-            color = LocalHrnsColors.current.primaryText,
+            color = colors.primaryText,
+        )
+        Text(
+            text = "기본값은 개발용 내장 SDK(.local\\harness-kit)입니다. Kit 경로를 직접 입력할 필요가 없습니다.",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+            color = colors.tertiaryText,
         )
         LabeledTextField(label = "표시명", value = displayName, onValueChange = { displayName = it })
-        LabeledTextField(label = "Kit root", value = kitRoot, onValueChange = { kitRoot = it }, monospace = true)
         LabeledTextField(
             label = "Workspace root",
             value = workspaceRoot,
@@ -530,16 +573,39 @@ private fun ProjectRegistrationForm(onUiEvent: (HrnsUiEvent) -> Unit) {
         LabeledTextField(label = "Profile", value = profileId, onValueChange = { profileId = it })
 
         PlaceholderActionButton(
+            text = if (showAdvanced) "고급 설정 숨기기" else "고급 설정",
+            enabled = true,
+            onClick = { showAdvanced = !showAdvanced },
+        )
+        if (showAdvanced) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = useExternalKit, onCheckedChange = { useExternalKit = it })
+                    Text(
+                        text = "외부 Harness Kit 사용",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                        color = colors.primaryText,
+                    )
+                }
+                if (useExternalKit) {
+                    LabeledTextField(label = "Kit root", value = kitRoot, onValueChange = { kitRoot = it }, monospace = true)
+                }
+            }
+        }
+
+        PlaceholderActionButton(
             text = "진단 후 등록",
             primary = true,
-            enabled = displayName.isNotBlank() && kitRoot.isNotBlank() && workspaceRoot.isNotBlank() &&
-                repositoryRoot.isNotBlank() && profileId.isNotBlank(),
+            enabled = displayName.isNotBlank() && workspaceRoot.isNotBlank() &&
+                repositoryRoot.isNotBlank() && profileId.isNotBlank() &&
+                (!useExternalKit || kitRoot.isNotBlank()),
             onClick = {
                 onUiEvent(
                     HrnsUiEvent.ProjectRegistrationRequested(
                         RegisterProjectCandidate(
                             displayName = displayName,
-                            kitRootRaw = kitRoot,
+                            useInternalDeveloperSdk = !useExternalKit,
+                            kitRootRaw = if (useExternalKit) kitRoot else null,
                             projectWorkspaceRootRaw = workspaceRoot,
                             repositoryRootRaw = repositoryRoot,
                             profileId = profileId,
@@ -576,6 +642,14 @@ fun CockpitScreen(
                 }
             },
         )
+
+        projection.runtimeSourceDiagnostics?.let { diagnostics ->
+            CockpitDiagnosticsCard(
+                title = "Runtime source 확인 (${projection.runtimeSourceLabel})",
+                eyebrow = "Runtime source",
+                diagnostics = diagnostics,
+            )
+        }
 
         projection.compatibilityDiagnostics?.let { diagnostics ->
             CockpitDiagnosticsCard(

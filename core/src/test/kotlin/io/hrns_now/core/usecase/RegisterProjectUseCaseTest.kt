@@ -5,6 +5,9 @@ import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.PathIssue
 import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.RootPathCheck
+import io.hrns_now.core.domain.model.RuntimeIssue
+import io.hrns_now.core.domain.model.RuntimeResolution
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.port.ProjectRegistryPort
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
@@ -37,11 +40,13 @@ class RegisterProjectUseCaseTest {
     }
 
     private fun candidate(
+        useInternalDeveloperSdk: Boolean = false,
         kitRoot: String? = "/kit",
         workspaceRoot: String? = "/workspace",
         repositoryRoot: String? = "/repo",
     ) = RegisterProjectCandidate(
         displayName = "테스트 프로젝트",
+        useInternalDeveloperSdk = useInternalDeveloperSdk,
         kitRootRaw = kitRoot,
         projectWorkspaceRootRaw = workspaceRoot,
         repositoryRootRaw = repositoryRoot,
@@ -57,11 +62,22 @@ class RegisterProjectUseCaseTest {
         }
     }
 
+    /** runtime source를 항상 그대로 해석해 주는 테스트 전용 resolver다 — boundary/save 로직 테스트용. */
+    private fun alwaysResolvedRuntimeResolver(internalRoot: Path = Path.of("/internal-sdk")): (RuntimeSource) -> RuntimeResolution =
+        { source ->
+            val root = when (source) {
+                RuntimeSource.InternalDeveloperSdk -> internalRoot
+                is RuntimeSource.ExternalKit -> source.root
+            }
+            RuntimeResolution.Resolved(source, root)
+        }
+
     @Test
     fun `경계가 유효하면 등록하고 save를 호출한다`() = runTest {
         val registry = SpyRegistryPort()
         val useCase = RegisterProjectUseCase(
             pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
             registry = registry,
             idFactory = { ProjectId("fixed-id") },
         )
@@ -72,6 +88,68 @@ class RegisterProjectUseCaseTest {
         assertEquals(1, registry.saveCallCount)
         assertEquals(ProjectId("fixed-id"), registered.project.id)
         assertEquals(registry.lastSaved, registered.project)
+        assertIs<RuntimeSource.ExternalKit>(registered.project.runtimeSource)
+    }
+
+    @Test
+    fun `useInternalDeveloperSdk가 true면 ExternalKit 경로 없이도 InternalDeveloperSdk로 등록한다`() = runTest {
+        val registry = SpyRegistryPort()
+        val useCase = RegisterProjectUseCase(
+            pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
+            registry = registry,
+            idFactory = { ProjectId("fixed-id") },
+        )
+
+        val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
+
+        val registered = assertIs<RegisterProjectResult.Registered>(result)
+        assertEquals(RuntimeSource.InternalDeveloperSdk, registered.project.runtimeSource)
+    }
+
+    @Test
+    fun `내장 SDK가 Missing이면 save를 호출하지 않고 InvalidCandidate를 반환한다`() = runTest {
+        val registry = SpyRegistryPort()
+        val useCase = RegisterProjectUseCase(
+            pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = { source -> RuntimeResolution.Missing(source) },
+            registry = registry,
+        )
+
+        val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
+
+        assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        assertEquals(0, registry.saveCallCount)
+    }
+
+    @Test
+    fun `내장 SDK가 필요 entrypoint 없이 Invalid면 save를 호출하지 않고 InvalidCandidate를 반환한다`() = runTest {
+        val registry = SpyRegistryPort()
+        val useCase = RegisterProjectUseCase(
+            pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = { source -> RuntimeResolution.Invalid(source, RuntimeIssue.MissingEntrypoint) },
+            registry = registry,
+        )
+
+        val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
+
+        assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        assertEquals(0, registry.saveCallCount)
+    }
+
+    @Test
+    fun `외부 Kit 경로가 Missing이면 boundary 검사 전에 InvalidCandidate로 거부한다`() = runTest {
+        val registry = SpyRegistryPort()
+        val useCase = RegisterProjectUseCase(
+            pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = { source -> RuntimeResolution.Missing(source) },
+            registry = registry,
+        )
+
+        val result = useCase(candidate(useInternalDeveloperSdk = false, kitRoot = "/missing-kit"))
+
+        assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        assertEquals(0, registry.saveCallCount)
     }
 
     @Test
@@ -80,6 +158,7 @@ class RegisterProjectUseCaseTest {
         // workspace가 repository 내부 -> 경계 위반
         val useCase = RegisterProjectUseCase(
             pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
             registry = registry,
         )
 
@@ -92,14 +171,36 @@ class RegisterProjectUseCaseTest {
     }
 
     @Test
-    fun `root 경로가 없으면 save를 호출하지 않고 BoundaryRejected를 반환한다`() = runTest {
+    fun `외부 Kit 경로를 비워두면 resolver 호출 전에 InvalidCandidate로 거부한다`() = runTest {
         val registry = SpyRegistryPort()
+        var resolveCount = 0
         val useCase = RegisterProjectUseCase(
             pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = { source ->
+                resolveCount += 1
+                alwaysResolvedRuntimeResolver()(source)
+            },
             registry = registry,
         )
 
         val result = useCase(candidate(kitRoot = null))
+
+        val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        assertTrue(invalid.message.isNotBlank())
+        assertEquals(0, resolveCount)
+        assertEquals(0, registry.saveCallCount)
+    }
+
+    @Test
+    fun `root 경로가 없으면 save를 호출하지 않고 BoundaryRejected를 반환한다`() = runTest {
+        val registry = SpyRegistryPort()
+        val useCase = RegisterProjectUseCase(
+            pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
+            registry = registry,
+        )
+
+        val result = useCase(candidate(workspaceRoot = null))
 
         val rejected = assertIs<RegisterProjectResult.BoundaryRejected>(result)
         assertFalse(rejected.boundary.status == BoundaryStatus.Valid)
@@ -111,6 +212,7 @@ class RegisterProjectUseCaseTest {
         val registry = SpyRegistryPort(saveResult = RegistrySaveResult.Failed("disk full"))
         val useCase = RegisterProjectUseCase(
             pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
             registry = registry,
         )
 
@@ -129,6 +231,7 @@ class RegisterProjectUseCaseTest {
                 resolveCount += 1
                 RootPathCheck.Valid(Path.of("/unused"), Path.of("/unused"))
             },
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
             registry = registry,
         )
 

@@ -2,6 +2,7 @@ package io.hrns_now.infra.registry
 
 import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.ProjectId
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
 import java.io.IOException
@@ -36,7 +37,7 @@ class JsonProjectRegistryAdapterTest {
     ): HarnessProject = HarnessProject(
         id = ProjectId(id),
         displayName = displayName,
-        kitRoot = Path.of("S:\\kit-$id"),
+        runtimeSource = RuntimeSource.ExternalKit(Path.of("S:\\kit-$id")),
         projectWorkspaceRoot = workspaceRoot,
         repositoryRoot = Path.of("S:\\repo-$id"),
         profileId = "기본",
@@ -175,6 +176,106 @@ class JsonProjectRegistryAdapterTest {
 
         val adapter = JsonProjectRegistryAdapter(path)
         val result = assertIs<RegistryLoadResult.Success>(adapter.findAll())
+        assertEquals("a", result.projects.single().id.value)
+    }
+
+    @Test
+    fun `runtime_source_type이 없는 legacy entry는 kit_root를 ExternalKit으로 읽기 시점에 해석한다`() = runTest {
+        val path = tempRegistryPath()
+        Files.writeString(
+            path,
+            """
+            {
+              "schema_version": "1.0",
+              "projects": [
+                {"id": "legacy", "display_name": "레거시 프로젝트", "kit_root": "S:\\legacy-kit", "project_workspace_root": "S:\\w", "repository_root": "S:\\r", "profile_id": "기본"}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val adapter = JsonProjectRegistryAdapter(path)
+        val result = assertIs<RegistryLoadResult.Success>(adapter.findAll())
+
+        val project = result.projects.single()
+        val runtimeSource = assertIs<RuntimeSource.ExternalKit>(project.runtimeSource)
+        assertEquals(Path.of("S:\\legacy-kit"), runtimeSource.root)
+    }
+
+    @Test
+    fun `InternalDeveloperSdk는 절대 경로 없이 선택만 저장하고 다시 읽으면 그대로 복원된다`() = runTest {
+        val path = tempRegistryPath()
+        val adapter = JsonProjectRegistryAdapter(path)
+        val internalProject = project("internal").let {
+            HarnessProject(
+                id = it.id,
+                displayName = it.displayName,
+                runtimeSource = RuntimeSource.InternalDeveloperSdk,
+                projectWorkspaceRoot = it.projectWorkspaceRoot,
+                repositoryRoot = it.repositoryRoot,
+                profileId = it.profileId,
+                lastSelectedDate = it.lastSelectedDate,
+                lastDiagnosticsSummary = it.lastDiagnosticsSummary,
+                lastRunAt = it.lastRunAt,
+            )
+        }
+
+        assertEquals(RegistrySaveResult.Success, adapter.save(internalProject))
+
+        val text = Files.readString(path)
+        assertTrue(text.contains("internal_developer_sdk"))
+        // kit_root는 ExternalKit일 때만 값을 갖는 필드다. InternalDeveloperSdk는 null을 주므로
+        // (encodeDefaults=false 기본값이라 아예 생략되거나 명시적 null로만 나타난다) 실제 경로
+        // 문자열이 그 field 값으로 채워지는 일이 없다 — round-trip 결과로 이를 확인한다(§20.1).
+        val kitRootLine = text.lineSequence().firstOrNull { it.contains("\"kit_root\"") }
+        assertTrue(kitRootLine == null || kitRootLine.contains("null"), "kit_root에 값이 있으면 안 된다: $kitRootLine")
+
+        val loaded = assertIs<RegistryLoadResult.Success>(adapter.findAll())
+        assertEquals(RuntimeSource.InternalDeveloperSdk, loaded.projects.single().runtimeSource)
+    }
+
+    @Test
+    fun `InternalDeveloperSdk entry에 kit root가 함께 있으면 조용히 버리지 않고 손상으로 격리한다`() = runTest {
+        val path = tempRegistryPath()
+        Files.writeString(
+            path,
+            """
+            {
+              "schema_version": "1.0",
+              "projects": [
+                {"id": "valid", "display_name": "정상", "kit_root": "S:\\external-kit", "project_workspace_root": "S:\\w", "repository_root": "S:\\r", "profile_id": "기본"},
+                {"id": "invalid", "display_name": "혼합 source", "runtime_source_type": "internal_developer_sdk", "kit_root": "S:\\must-not-be-dropped", "project_workspace_root": "S:\\w2", "repository_root": "S:\\r2", "profile_id": "기본"}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val adapter = JsonProjectRegistryAdapter(path)
+        val result = assertIs<RegistryLoadResult.RecoveredFromCorruption>(adapter.findAll())
+
+        assertEquals(listOf("valid"), result.projects.map { it.id.value })
+    }
+
+    @Test
+    fun `runtime_source_type이 unknown이면 해당 entry만 손상으로 격리한다`() = runTest {
+        val path = tempRegistryPath()
+        Files.writeString(
+            path,
+            """
+            {
+              "schema_version": "1.0",
+              "projects": [
+                {"id": "a", "display_name": "정상", "kit_root": "S:\\k", "project_workspace_root": "S:\\w", "repository_root": "S:\\r", "profile_id": "기본"},
+                {"id": "b", "display_name": "알 수 없는 source", "runtime_source_type": "some_future_source", "project_workspace_root": "S:\\w2", "repository_root": "S:\\r2", "profile_id": "기본"}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val adapter = JsonProjectRegistryAdapter(path)
+        val result = assertIs<RegistryLoadResult.RecoveredFromCorruption>(adapter.findAll())
+
+        assertEquals(1, result.projects.size)
         assertEquals("a", result.projects.single().id.value)
     }
 

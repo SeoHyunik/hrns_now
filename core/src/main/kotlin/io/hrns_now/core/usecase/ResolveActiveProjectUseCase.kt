@@ -87,13 +87,18 @@ class ResolveActiveProjectUseCase(
  * Registry에 저장된 프로젝트를 [LoadCockpitUseCase]가 바로 쓸 수 있는 [WorkspaceConfig]로
  * 변환한다. PowerShell/Claude 명령 경로는 Registry 범위 밖이라(Phase 1D 미포함) 아직 옮기지
  * 않는다 — 여전히 환경변수로만 구성된다.
+ *
+ * `roots.kitRoot`는 여기서 채우지 않는다(항상 `null`) — `runtimeSource`는 typed 선택일 뿐
+ * 아직 해석된 파일 시스템 경로가 아니기 때문이다(새 Phase 7,
+ * `doc/hrns_now_design_pattern.md` §20.1). 호출자(`AppViewModel`)가
+ * `RuntimeSourceResolverPort`로 해석한 뒤에만 이 값을 채운다.
  */
 fun HarnessProject.toWorkspaceConfig(): WorkspaceConfig =
     WorkspaceConfig(
         workspaceName = displayName,
         profileName = profileId,
         roots = WorkspaceRoots(
-            kitRoot = kitRoot.toString(),
+            kitRoot = null,
             workspaceRoot = projectWorkspaceRoot.toString(),
             projectRoot = repositoryRoot.toString(),
         ),

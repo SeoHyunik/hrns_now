@@ -74,9 +74,9 @@
 사용자 QA를 통해 현재 최우선 과제를 설치/Runtime 배포가 아니라 **사용 중인 HRNS-NOW 화면의 이해 가능성·피드백·용어·프로젝트 흐름**으로 재정의했다.
 
 ```text
-완료: Phase 0A~5
+완료: Phase 0A~5, 새 Phase 7(G7-SDK, PASS_WITH_FIXES)
 Phase 6: UI/UX QA 개선 (G6-UX, 수동 UI QA 증빙 대기)
-현재: 새 Phase 7 — 내장 개발용 Harness SDK runtime source (G7-SDK)
+다음 신규 Phase: 사용자 UI/운영 QA 결과를 받은 뒤 별도 정의
 보류: 기존 Phase 6A(G6A), 기존 Phase 6B(G6B), 기존 Phase 7E(실험 기능)
 ```
 
@@ -382,7 +382,7 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 **종료 기준 (G6-UX)**: 활성 프로젝트와 단일 다음 작업이 즉시 식별되고, action 실행 상태와 결과가 명확하며, 용어가 일관되고, 요구사항 modal의 저장·오류·닫기 흐름이 검증된다. UI는 State/Harness 파일을 직접 쓰지 않고, 기존 core/infra 계약 회귀 없이 `./gradlew check`와 수동 QA가 PASS한다.
 
-## Phase 7 — 내장 개발용 Harness SDK runtime source (현재)
+## Phase 7 — 내장 개발용 Harness SDK runtime source (PASS_WITH_FIXES)
 
 **목표**: 사용자가 일반 프로젝트 등록에서 외부 Harness Kit 경로를 직접 찾지 않도록, HRNS-NOW source checkout 안의 사용자 제공 개발 SDK를 기본 runtime source로 사용한다. 이 Phase의 SDK는 배포 artifact가 아닌 로컬 개발 의존성이며, 프로젝트 repository·Harness workspace는 계속 외부 root로 유지한다.
 
@@ -406,6 +406,8 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 **테스트**: typed runtime source 선택·legacy Registry migration·내장 SDK missing fail-closed·external explicit override·환경변수의 비묵시적 fallback·한글/공백 경로·root 상호 포함 차단·command/compatibility가 resolved root 하나를 쓰는지·표준 UI에서 Kit 입력이 숨겨지는지.
 
 **종료 기준 (G7-SDK)**: 사용자가 제공한 `.local\harness-kit`이 있을 때 새 프로젝트는 Kit 경로 입력 없이 안전하게 등록·Doctor/State 조회를 준비할 수 있고, 없거나 불완전하면 원인을 표시하고 모든 실행이 잠긴다. 기존 external Registry entry는 손실 없이 유지되고 external override는 명시적이다. `core`/`infra`/`composeApp` 테스트와 `./gradlew check`가 PASS하며 Git, MSI, Harness 개발 트리에 SDK가 포함되지 않는다.
+
+**Codex 판정 (2026-07-28)**: `PASS_WITH_FIXES`. source checkout 식별과 Registry 모순 입력의 fail-closed 보정을 포함해 module/full test는 PASS했다. 실제 사용자가 제공한 SDK로 수행하는 등록→Doctor→State 조회와 native UI 육안 QA는 운영 검증으로 남으며, G6-UX/G6A/G6B/기존 Phase 7E의 Gate를 바꾸지 않는다.
 
 ## [보류 배포 과제] 기존 Phase 6 — Windows 패키징·배포 (6A/6B Gate)
 

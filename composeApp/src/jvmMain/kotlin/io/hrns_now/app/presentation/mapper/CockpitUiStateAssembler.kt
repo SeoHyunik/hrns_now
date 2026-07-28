@@ -16,6 +16,8 @@ import io.hrns_now.core.domain.model.HarnessProject
 import io.hrns_now.core.domain.model.ProcessRunStatus
 import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.RecoveryDiagnostics
+import io.hrns_now.core.domain.model.RuntimeResolution
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.policy.ClosureDecision
 import io.hrns_now.core.usecase.ActiveProjectSource
@@ -47,6 +49,7 @@ class CockpitUiStateAssembler(
         lockSummaryLabel: String,
         closureDecision: ClosureDecision,
         recoveryDiagnostics: RecoveryDiagnostics,
+        runtimeResolution: RuntimeResolution? = null,
     ): HrnsUiState.Ready {
         val actionPolicyCockpit = cockpitAssembler.assemble(
             projectConnected = loaded.projectConnected,
@@ -59,6 +62,7 @@ class CockpitUiStateAssembler(
             lastSuccessfulReadAtLabel = lastSuccessfulReadAtLabel,
             lastAttemptAtLabel = lastAttemptAtLabel,
             harnessRunInProgress = harnessRunInProgress,
+            runtimeResolution = runtimeResolution,
         )
         val closureValidationEnabledByActionPolicy = actionPolicyCockpit.allowedActions
             .firstOrNull { it.action == UiAction.RunClosureValidation }
@@ -98,6 +102,10 @@ class CockpitUiStateAssembler(
                     id = project.id,
                     label = project.displayName,
                     isActive = project.id == activeProjectId,
+                    runtimeSourceLabel = when (project.runtimeSource) {
+                        RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
+                        is RuntimeSource.ExternalKit -> "외부 Harness Kit"
+                    },
                 )
             },
             workspaceDays = availableDates.map { date ->

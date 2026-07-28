@@ -17,11 +17,17 @@ import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.WorkflowStatePort
 import io.hrns_now.core.result.ProcessRunResult
 import io.hrns_now.core.result.StateReadResult
+import java.nio.file.Path
 import java.time.Duration
 
-/** 실행 직전의 순수 policy 입력과 command 경계에 필요한 project/day를 묶은 값이다. */
+/**
+ * 실행 직전의 순수 policy 입력과 command 경계에 필요한 project/day를 묶은 값이다. [resolvedKitRoot]는
+ * `project.runtimeSource`를 이미 `RuntimeResolution.Resolved`로 해석한 결과다(새 Phase 7) —
+ * command mapper/encoder는 `runtimeSource` 자체나 internal/external 분기를 알지 못하고 이 값만 쓴다.
+ */
 data class HarnessExecutionContext(
     val project: HarnessProject,
+    val resolvedKitRoot: Path,
     val day: WorkspaceDay,
     val actionContext: ActionContext,
 )
@@ -54,7 +60,7 @@ class ExecuteHarnessActionUseCase(
             )
         }
 
-        val command = commandMapper.map(action, context.project, context.day)
+        val command = commandMapper.map(action, context.project, context.resolvedKitRoot, context.day)
             ?: return ExecuteHarnessActionOutcome.UnsupportedAction(action)
         val lockResult = processLock.acquire(context.project.id, context.day.date, command.kind)
         val acquired = lockResult as? LockAcquireResult.Acquired
@@ -86,33 +92,37 @@ sealed interface ExecuteHarnessActionOutcome {
     data class UnsupportedAction(val action: UiAction) : ExecuteHarnessActionOutcome
 }
 
-/** typed UI action과 harness-kit의 실제 `run-cycle.ps1` contract를 연결한다. */
+/**
+ * typed UI action과 harness-kit의 실제 `run-cycle.ps1` contract를 연결한다. `resolvedKitRoot`는
+ * 호출자가 이미 `RuntimeSourceResolverPort`로 해석해 둔 값이다 — 이 mapper는 `project.runtimeSource`나
+ * internal/external 구분을 알지 못한다(`doc/hrns_now_design_pattern.md` §20.1).
+ */
 class HarnessCommandMapper {
-    fun map(action: UiAction, project: HarnessProject, day: WorkspaceDay): HarnessCommand? =
+    fun map(action: UiAction, project: HarnessProject, resolvedKitRoot: Path, day: WorkspaceDay): HarnessCommand? =
         when (action) {
             UiAction.RunDoctor -> HarnessCommand.Doctor(
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
                 date = day.date,
             )
             UiAction.RunOpsValidation -> HarnessCommand.ValidateOps(
                 workspaceRoot = project.projectWorkspaceRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
             )
             UiAction.BootstrapDay -> HarnessCommand.BootstrapDay(
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
             )
             UiAction.RunPlanning -> HarnessCommand.RunPlanning(
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
                 reason = PlanningReason.InitialPlan,
@@ -120,7 +130,7 @@ class HarnessCommandMapper {
             UiAction.RunReplan -> HarnessCommand.RunReplan(
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
                 reason = ReplanReason.HumanRequestedReplan,
@@ -128,7 +138,7 @@ class HarnessCommandMapper {
             UiAction.RunCodeSlice -> HarnessCommand.RunExecution(
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
                 wrapper = ExecutionWrapper.Code,
@@ -136,7 +146,7 @@ class HarnessCommandMapper {
             UiAction.RunDocSlice -> HarnessCommand.RunExecution(
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
                 wrapper = ExecutionWrapper.Doc,
@@ -144,7 +154,7 @@ class HarnessCommandMapper {
             UiAction.RunClosureValidation -> HarnessCommand.ValidateClosure(
                 workspaceRoot = project.projectWorkspaceRoot,
                 projectRoot = project.repositoryRoot,
-                kitRoot = project.kitRoot,
+                kitRoot = resolvedKitRoot,
                 profile = project.profileId,
                 date = day.date,
             )

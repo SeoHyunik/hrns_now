@@ -12,6 +12,8 @@ data class RegistryProjectItem(
     val id: ProjectId,
     val label: String,
     val isActive: Boolean,
+    /** "개발용 내장 SDK" 또는 "외부 Harness Kit" — 기존 external project도 명확히 구분한다(새 Phase 7). */
+    val runtimeSourceLabel: String = "외부 Harness Kit",
 )
 
 /** Workspace 탐색에서 확인된 유효한 yyyy-MM-dd 디렉터리 한 행이다. */

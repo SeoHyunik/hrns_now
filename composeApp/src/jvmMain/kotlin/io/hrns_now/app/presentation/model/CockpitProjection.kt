@@ -54,7 +54,13 @@ data class CockpitProjection(
     /**
      * Harness `kit-version.json` 호환성 판정이 [io.hrns_now.core.domain.model.CompatibilityStatus.Supported]가
      * 아닐 때만 채워지는 안전한 설명이다(Phase 2). `whatHappened`/`nextStep`은 버전 값처럼 이미
-     * 정형화된 문구만 담으며, raw 파일 원문이나 예외 메시지를 담지 않는다.
+     * 정형화된 문구만 담으며, raw 파일 원문이나 예외 메시지를 담지 않는다. [runtimeSourceDiagnostics]가
+     * 채워져 있으면(=runtime 자체가 해석되지 않음) 이 field는 표시하지 않는다 — 둘은 근거가
+     * 다른 별개의 fail-closed 원인이다(새 Phase 7, `doc/hrns_now_design_pattern.md` §20.1).
      */
     val compatibilityDiagnostics: CockpitDiagnostics?,
+    /** "개발용 내장 SDK" 또는 "외부 Harness Kit" 같은 typed runtime source 표시 라벨이다(새 Phase 7). */
+    val runtimeSourceLabel: String = "외부 Harness Kit",
+    /** runtime source가 Missing/Invalid일 때만 채워지는 안전한 설명이다(새 Phase 7). */
+    val runtimeSourceDiagnostics: CockpitDiagnostics? = null,
 )

@@ -53,6 +53,7 @@ import io.hrns_now.infra.lock.LocalProcessLockAdapter
 import io.hrns_now.infra.process.PowerShellHarnessAdapter
 import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
+import io.hrns_now.infra.runtime.DeveloperSdkRuntimeResolver
 import io.hrns_now.infra.git.CommandLineGitStatusAdapter
 import io.hrns_now.infra.recovery.WorkspaceRecoveryDiagnosticsAdapter
 import io.hrns_now.infra.request.RequestInboxWriterAdapter
@@ -204,6 +205,10 @@ private fun createProductionViewModel(): AppViewModel {
     )
     val registry = JsonProjectRegistryAdapter(registryPath = resolveRegistryPath())
     val realPathGateway = RealPathGateway()
+    // 새 Phase 7: HRNS-NOW source checkout 상대 `.local/harness-kit` 개발용 SDK와 명시적 외부
+    // Kit을 모두 이 하나의 resolver로 해석한다 — internal/external 분기는 여기 한 곳에만 있다
+    // (`doc/hrns_now_design_pattern.md` §20.1).
+    val runtimeSourceResolver = DeveloperSdkRuntimeResolver()
     return AppViewModel(
         loadCockpit = loadCockpit,
         changeProbe = WorkflowStateChangeProbe()::lastModifiedOrNull,
@@ -214,6 +219,7 @@ private fun createProductionViewModel(): AppViewModel {
         loadProjects = LoadProjectsUseCase(registry),
         registerProject = RegisterProjectUseCase(
             pathResolver = realPathGateway::resolve,
+            runtimeSourceResolver = runtimeSourceResolver::resolve,
             registry = registry,
         ),
         selectProject = SelectProjectUseCase(registry),
@@ -221,6 +227,7 @@ private fun createProductionViewModel(): AppViewModel {
         deleteProject = DeleteProjectUseCase(registry),
         boundaryPathResolver = realPathGateway::resolve,
         compatibilityPort = JsonKitVersionManifestAdapter(),
+        runtimeSourceResolver = runtimeSourceResolver,
         processLock = processLock,
         harnessRunner = harnessRunner,
         executeHarnessAction = ExecuteHarnessActionUseCase(

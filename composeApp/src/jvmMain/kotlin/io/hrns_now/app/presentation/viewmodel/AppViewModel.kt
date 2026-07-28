@@ -29,6 +29,7 @@ import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.RepositoryStatus
 import io.hrns_now.core.domain.model.RecoveryDiagnostics
 import io.hrns_now.core.domain.model.RootPathCheck
+import io.hrns_now.core.domain.model.RuntimeResolution
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.model.SelectedDayKind
@@ -47,6 +48,7 @@ import io.hrns_now.core.port.HarnessRunnerPort
 import io.hrns_now.core.port.KitVersionManifestPort
 import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
+import io.hrns_now.core.port.RuntimeSourceResolverPort
 import io.hrns_now.core.port.TodayStrategyReaderPort
 import io.hrns_now.core.usecase.ExecuteHarnessActionOutcome
 import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
@@ -111,6 +113,7 @@ class AppViewModel(
     private val deleteProject: DeleteProjectUseCase,
     private val boundaryPathResolver: (String?) -> RootPathCheck,
     private val compatibilityPort: KitVersionManifestPort,
+    private val runtimeSourceResolver: RuntimeSourceResolverPort,
     private val processLock: ProcessLockPort,
     /** 프로젝트 등록 전 Doctor gate는 아직 selected ActionContext가 없으므로 별도 진단 경로로 남긴다. */
     private val harnessRunner: HarnessRunnerPort,
@@ -248,9 +251,10 @@ class AppViewModel(
             }
         }
         val project = prepared.project
+        val resolvedKitRoot = prepared.resolvedKitRoot
         val date = clock().atZone(ZoneId.systemDefault()).toLocalDate()
         val command = HarnessCommand.Doctor(
-            kitRoot = project.kitRoot,
+            kitRoot = resolvedKitRoot,
             workspaceRoot = project.projectWorkspaceRoot,
             projectRoot = project.repositoryRoot,
             date = date,
@@ -296,7 +300,7 @@ class AppViewModel(
         refreshRunProjectionOnly()
 
         val compatibility = withContext(ioDispatcher) {
-            compatibilityPolicy.evaluate(compatibilityPort.readManifest(project.kitRoot))
+            compatibilityPolicy.evaluate(compatibilityPort.readManifest(resolvedKitRoot))
         }
         if (!doctorAllowsRegistration(result)) {
             registryMessage = "환경 점검을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 기록에서 결과를 확인하세요."
@@ -455,7 +459,20 @@ class AppViewModel(
             loadContextGeneration += 1
             contextGeneration = loadContextGeneration
         }
-        val workspaceConfig = requireNotNull(currentWorkspaceConfig)
+        val rawWorkspaceConfig = requireNotNull(currentWorkspaceConfig)
+
+        // 활성 프로젝트가 있을 때만 typed runtime source를 해석한다(새 Phase 7). 미선택/환경변수
+        // fallback 경로(`activeProject == null`)는 이 resolver를 아예 거치지 않고 기존 legacy
+        // `HRNS_KIT_ROOT` 동작을 그대로 유지한다.
+        val runtimeResolution = activeProject?.let { project ->
+            withContext(ioDispatcher) { runtimeSourceResolver.resolve(project.runtimeSource) }
+        }
+        val resolvedKitRoot = (runtimeResolution as? RuntimeResolution.Resolved)?.root
+        val workspaceConfig = if (runtimeResolution != null) {
+            rawWorkspaceConfig.copy(roots = rawWorkspaceConfig.roots.copy(kitRoot = resolvedKitRoot?.toString()))
+        } else {
+            rawWorkspaceConfig
+        }
 
         val dayResolution = if (forceRead || selectedDay == null) {
             withContext(ioDispatcher) { loadCockpit.resolveDays(workspaceConfig, preferredDate) }
@@ -472,7 +489,7 @@ class AppViewModel(
         } else {
             null
         }
-        val compatibilityDetail = withContext(ioDispatcher) { evaluateCompatibility(workspaceConfig) }
+        val compatibilityDetail = withContext(ioDispatcher) { evaluateCompatibility(workspaceConfig, runtimeResolution) }
         val mtimeChanged = currentMtime != lastPolledMtime
         val stateChangedAfterInitialObservation =
             lastPolledMtime != null && currentMtime != null && mtimeChanged
@@ -531,8 +548,12 @@ class AppViewModel(
             lastSuccessfulReadAt = now
         }
 
+        // resolvedKitRoot가 없으면(runtime source Missing/Invalid) 실행 context 자체를 만들지
+        // 않는다 — command mapper는 resolved root 없이는 절대 호출되지 않는다(§20.1). 이 상태의
+        // fail-closed 이유는 `compatibilityDetail`(MissingManifest로 강제)과 새 Phase 7
+        // `runtimeSourceDiagnostics`가 화면에 표시한다.
         latestExecutionContext = activeProject
-            ?.takeIf { loaded.projectConnected }
+            ?.takeIf { loaded.projectConnected && resolvedKitRoot != null }
             ?.let { project ->
                 val activeSliceKind = (loaded.stateRead as? StateReadResult.Success)
                     ?.state
@@ -540,6 +561,7 @@ class AppViewModel(
                     ?.toActiveSliceKind()
                 HarnessExecutionContext(
                     project = project,
+                    resolvedKitRoot = requireNotNull(resolvedKitRoot),
                     day = daySelection.workspaceDay,
                     actionContext = ActionContext(
                         projectConnected = loaded.projectConnected,
@@ -579,6 +601,7 @@ class AppViewModel(
             lockSummaryLabel = lockSummaryLabel(lockInspection, now),
             closureDecision = closureDecision,
             recoveryDiagnostics = recoveryDiagnostics,
+            runtimeResolution = runtimeResolution,
         )
     }
 
@@ -611,14 +634,27 @@ class AppViewModel(
     }
 
     /**
-     * 선택된 프로젝트의 Kit root에서 `kit-version.json`을 읽고 판정한다(Phase 2). Kit root가
-     * 아직 설정되지 않았거나 경로를 해석할 수 없으면 manifest가 없는 것과 동일하게 처리한다 —
-     * `evaluateBoundary`와 마찬가지로 이 함수 전체가 [ioDispatcher] 안에서 호출된다.
+     * 활성 프로젝트가 있으면(새 Phase 7) `runtimeResolution`이 이미 `RuntimeSourceResolverPort`로
+     * 판정한 root만 쓴다 — `Missing`/`Invalid`는 compatibility를 아예 시도하지 않고
+     * `MissingManifest`로 대체한다(별개의 fail-closed 원인, `runtimeSourceDiagnostics`가 화면에서
+     * 실제 이유를 보여준다). 활성 프로젝트가 없으면(환경변수 fallback/미선택) 기존처럼
+     * `workspaceConfig.roots.kitRoot` 원문을 그대로 읽는다 — `HRNS_KIT_ROOT` 등 legacy 경로는
+     * 이 새 resolver로 바뀌지 않는다. `evaluateBoundary`와 마찬가지로 이 함수 전체가
+     * [ioDispatcher] 안에서 호출된다.
      */
-    private fun evaluateCompatibility(workspaceConfig: WorkspaceConfig): HarnessCompatibilityDetail {
-        val kitRoot = parseKitRoot(workspaceConfig.roots.kitRoot)
-            ?: return compatibilityPolicy.evaluate(KitVersionReadResult.Missing)
-        return compatibilityPolicy.evaluate(compatibilityPort.readManifest(kitRoot))
+    private fun evaluateCompatibility(
+        workspaceConfig: WorkspaceConfig,
+        runtimeResolution: RuntimeResolution?,
+    ): HarnessCompatibilityDetail {
+        if (runtimeResolution == null) {
+            val kitRoot = parseKitRoot(workspaceConfig.roots.kitRoot)
+                ?: return compatibilityPolicy.evaluate(KitVersionReadResult.Missing)
+            return compatibilityPolicy.evaluate(compatibilityPort.readManifest(kitRoot))
+        }
+        return when (runtimeResolution) {
+            is RuntimeResolution.Resolved -> compatibilityPolicy.evaluate(compatibilityPort.readManifest(runtimeResolution.root))
+            else -> HarnessCompatibilityDetail.MissingManifest
+        }
     }
 
     private fun parseKitRoot(raw: String?): Path? {
