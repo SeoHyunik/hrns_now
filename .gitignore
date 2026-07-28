@@ -23,3 +23,6 @@ node_modules/
 run-check.out
 run-check.err
 run-check.*
+
+# 사용자 제공 Harness 개발 SDK checkout — HRNS-NOW source/Git/MSI에 포함하지 않는다.
+.local/harness-kit/

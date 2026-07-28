@@ -924,11 +924,35 @@ Process runner, ViewModel, Lock manager, Polling coordinator, Registry adapter�
 | 6 | UX 상태 모델, MVVM, 단방향 UI event·StateFlow, presentation mapper | 활성 프로젝트·단일 다음 작업·실행 feedback·modal editor를 presentation에 둔다. Composable은 file I/O/Process 실행/정책 판단을 하지 않는다. |
 | 보류 6A | Composition Root, external runtime configuration | 기존 외부 Kit MSI 과제다. MSI는 외부 Kit root를 기존 Registry/환경변수/사용자 선택 순서로 주입한다. 화면에서 Program Files·AppData 경로를 조립하지 않는다. |
 | 보류 6B | Runtime distribution adapter, typed runtime installation configuration | Harness 승인 release artifact·manifest/checksum이 생긴 뒤에만 도입한다. 개발 트리를 adapter처럼 취급하거나 UI가 checksum 신뢰를 과장하지 않는다. |
-| 보류 7 | Plugin-like optional adapter, feature isolation | 기존 실험 기능 과제다. |
+| 7 | Runtime Source, Resolver, Registry migration, Composition Root | `.local\harness-kit` 사용자 제공 개발 SDK와 explicit external override를 typed 값으로 구분한다. 배포 Runtime staging은 하지 않는다. |
+| 보류 7E | Plugin-like optional adapter, feature isolation | 기존 실험 기능 과제다. |
 
 계획서는 이 순서를 Gate 단위로 고정하며, State Reader·CTA 정책·Cockpit·Registry 완료 후에만 Process adapter와 실제 실행을 붙인다.
 
-보류 6A/6B의 runtime source 선택은 composition root의 작은 typed configuration으로 한정한다. `KitVersionManifestPort`/`CompatibilityPolicy`의 방향은 유지한다: infra adapter가 manifest를 읽고, core policy가 호환성을 판정하며, UI는 manifest·경로·PowerShell 인자를 직접 조합하지 않는다. workspace 자동 생성은 Registry, BoundaryPolicy, Harness bootstrap을 하나의 God service에 합치지 않고 각각의 use case/port 경계를 유지한다. 새 Phase 6 UI/UX QA에서는 이 runtime 배포 경계를 구현하거나 완화하지 않고, presentation state와 사용자 feedback만 개선한다.
+보류 6A/6B의 runtime source 선택은 composition root의 작은 typed configuration으로 한정한다. `KitVersionManifestPort`/`CompatibilityPolicy`의 방향은 유지한다: infra adapter가 manifest를 읽고, core policy가 호환성을 판정하며, UI는 manifest·경로·PowerShell 인자를 직접 조합하지 않는다. workspace 자동 생성은 Registry, BoundaryPolicy, Harness bootstrap을 하나의 God service에 합치지 않고 각각의 use case/port 경계를 유지한다.
+
+### 20.1 Phase 7 — 개발용 내장 SDK source 규범
+
+Phase 7의 `.local\harness-kit`은 **사용자가 제공하는 Git-ignore 개발 checkout**일 뿐, bundle·release artifact·신뢰 root가 아니다. HRNS-NOW는 이 디렉터리를 생성·복사·수정·Git stage·MSI staging하지 않는다. 배포 포함은 보류 6B의 Harness 승인 artifact Gate 뒤에만 가능하다.
+
+```kotlin
+sealed interface RuntimeSource {
+    data object InternalDeveloperSdk : RuntimeSource
+    data class ExternalKit(val root: Path) : RuntimeSource
+}
+
+sealed interface RuntimeResolution {
+    data class Resolved(val source: RuntimeSource, val root: Path) : RuntimeResolution
+    data class Missing(val source: RuntimeSource) : RuntimeResolution
+    data class Invalid(val source: RuntimeSource, val reason: RuntimeIssue) : RuntimeResolution
+}
+```
+
+- Registry는 `InternalDeveloperSdk`이라는 선택만 저장한다. repository-relative SDK의 절대 경로를 저장해 source checkout 이동을 깨뜨리지 않는다.
+- 기존 `kit_root` Registry entry는 migration 시 `ExternalKit`으로 해석한다. 과거 설정을 내장 SDK로 조용히 바꾸거나 environment variable이 명시적 선택을 덮어쓰면 안 된다.
+- composition root 또는 infra resolver만 repository-relative SDK root를 계산한다. Composable·ViewModel·domain policy가 path 문자열·Program Files·PowerShell 인자를 조립하지 않는다.
+- command encoder, `KitVersionManifestPort`, compatibility, boundary validation은 동일한 `Resolved.root`만 받는다. `if (internal)`, `if (external)` 분기를 각 command에 퍼뜨리지 않는다.
+- missing/invalid resolution은 compatibility와 별개의 fail-closed 진단 결과다. mock fallback·`D:\\harness-kit` 하드코딩·자동 복사로 숨기지 않는다.
 
 ---
 

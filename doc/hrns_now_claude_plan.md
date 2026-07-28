@@ -75,11 +75,14 @@
 
 ```text
 완료: Phase 0A~5
-현재: 새 Phase 6 — UI/UX QA 개선 (G6-UX)
-보류: 기존 Phase 6A(G6A), 기존 Phase 6B(G6B), 기존 Phase 7
+Phase 6: UI/UX QA 개선 (G6-UX, 수동 UI QA 증빙 대기)
+현재: 새 Phase 7 — 내장 개발용 Harness SDK runtime source (G7-SDK)
+보류: 기존 Phase 6A(G6A), 기존 Phase 6B(G6B), 기존 Phase 7E(실험 기능)
 ```
 
-기존 Phase 6A/6B와 Phase 7은 삭제·완료 처리·축소하지 않는다. 각각 clean Windows MSI smoke, 승인 Harness Runtime artifact, 실험 기능의 미해결 보류 과제로 유지한다. 새 Phase 6의 구현·통과가 이 보류 과제의 Gate를 통과시킨다는 뜻은 아니며, 보류 과제 재개는 별도 사용자 승인과 Codex 독립 검증을 요구한다.
+G6-UX는 자동 검증·release MSI 재패키징은 통과했으나 새 native UI의 육안 QA 증빙이 남아 있어 아직 PASS가 아니다. 제품 소유자는 이 Gate를 통과 처리하지 않은 채 2026-07-28에 Phase 7의 SDK source 작업을 병행하도록 명시 승인했다.
+
+기존 Phase 6A/6B와 기존 Phase 7E는 삭제·완료 처리·축소하지 않는다. 각각 clean Windows MSI smoke, 승인 Harness Runtime artifact, opt-in 실험 기능의 미해결 보류 과제로 유지한다. 새 Phase 7의 구현·통과가 이 보류 과제의 Gate를 통과시킨다는 뜻은 아니며, 보류 과제 재개는 별도 사용자 승인과 Codex 독립 검증을 요구한다.
 
 # 1. 현재 소스 기준 재평가 (요약)
 
@@ -364,7 +367,7 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 **종료 기준**: 모든 stop 상태에서 다음 행동이 이해 가능, closure 조건 미충족 시 종료 차단.
 
-## Phase 6 — UI/UX QA 개선 (현재)
+## Phase 6 — UI/UX QA 개선 (수동 QA 증빙 대기)
 
 이 Phase는 실제 사용 화면을 QA하여 확인된 혼란·불편을 해소하는 제품 개선 Phase다. Harness 계약, `WORKFLOW_STATE.json` 소유권, typed command/lock/State reread 순서, 기존 CTA 권한은 바꾸지 않는다.
 
@@ -378,6 +381,31 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 6. Windows installer는 현재 MSI/JPackage/WiX 계약 안에서 이름·아이콘·안내·설치 흐름의 최소 품질을 개선한다. custom bootstrapper, code signing, update, bundled Harness Runtime은 이 Phase 범위가 아니다.
 
 **종료 기준 (G6-UX)**: 활성 프로젝트와 단일 다음 작업이 즉시 식별되고, action 실행 상태와 결과가 명확하며, 용어가 일관되고, 요구사항 modal의 저장·오류·닫기 흐름이 검증된다. UI는 State/Harness 파일을 직접 쓰지 않고, 기존 core/infra 계약 회귀 없이 `./gradlew check`와 수동 QA가 PASS한다.
+
+## Phase 7 — 내장 개발용 Harness SDK runtime source (현재)
+
+**목표**: 사용자가 일반 프로젝트 등록에서 외부 Harness Kit 경로를 직접 찾지 않도록, HRNS-NOW source checkout 안의 사용자 제공 개발 SDK를 기본 runtime source로 사용한다. 이 Phase의 SDK는 배포 artifact가 아닌 로컬 개발 의존성이며, 프로젝트 repository·Harness workspace는 계속 외부 root로 유지한다.
+
+**작업**:
+
+1. HRNS-NOW repository-relative `.local\harness-kit\`을 canonical **개발용 내장 SDK checkout** 위치로 정의하고 `.gitignore`로 제외한다. 앱·Claude·빌드가 `D:\harness-kit`을 자동 복사·junction 생성·zip backup 생성·수정하지 않는다. SDK checkout은 사용자가 별도로 제공한다.
+2. raw `kitRoot: Path`만으로 프로젝트마다 runtime을 표현하던 모델을 typed runtime source로 정리한다. 새 프로젝트의 기본은 `InternalDeveloperSdk`, 외부 path는 명시적인 advanced override만 사용한다. Registry에는 내장 SDK의 절대 경로를 저장하지 않는다.
+3. composition root와 small resolver/port가 `InternalDeveloperSdk → repository-relative local SDK root`, `ExternalKit → registered path`를 해석한다. 실행·호환성·경계 검사는 **해석된 root** 하나만 사용하며 UI가 Program Files·SDK path·PowerShell 인자를 조립하지 않는다.
+4. 기존 Registry의 `kit_root`만 가진 entry는 안전하게 `ExternalKit`으로 migration한다. 내장 SDK 선택을 환경변수나 과거 external path가 묵시적으로 덮어쓰지 않으며, missing/malformed SDK는 demo fallback 없이 fail-closed로 진단·실행 잠금한다.
+5. 표준 프로젝트 관리 화면에서는 Kit root 입력을 제거하고 선택된 runtime source/가용성/호환성만 표시한다. `외부 Harness Kit 사용`은 advanced modal에서 명시 선택했을 때만 path 입력을 보인다.
+6. Runtime root·target repository·workspace의 normalized/real path 양방향 BoundaryPolicy를 유지한다. SDK/runtime에서 logs, lock, Registry, workspace, daily 4-file을 만들거나 저장하지 않는다.
+
+**금지**:
+
+- `.local\harness-kit` 또는 `D:\harness-kit` 개발 트리를 Git·MSI·release distributable에 포함하거나, 이를 승인된 Runtime artifact라고 주장하는 행위
+- Harness script/template/manifest/checksum을 HRNS-NOW가 창작·수정하거나, `D:\harness-kit`을 자동 복사·수정하는 행위
+- 기존 G6A/G6B clean Windows·approved Runtime artifact Gate를 PASS 처리하는 행위
+- workspace/repository를 HRNS-NOW repository 또는 SDK root 아래에 생성·등록하는 행위
+- UI에서 `WORKFLOW_STATE.json`/daily 4-file을 직접 생성·수정하거나, external source 실패를 mock으로 대체하는 행위
+
+**테스트**: typed runtime source 선택·legacy Registry migration·내장 SDK missing fail-closed·external explicit override·환경변수의 비묵시적 fallback·한글/공백 경로·root 상호 포함 차단·command/compatibility가 resolved root 하나를 쓰는지·표준 UI에서 Kit 입력이 숨겨지는지.
+
+**종료 기준 (G7-SDK)**: 사용자가 제공한 `.local\harness-kit`이 있을 때 새 프로젝트는 Kit 경로 입력 없이 안전하게 등록·Doctor/State 조회를 준비할 수 있고, 없거나 불완전하면 원인을 표시하고 모든 실행이 잠긴다. 기존 external Registry entry는 손실 없이 유지되고 external override는 명시적이다. `core`/`infra`/`composeApp` 테스트와 `./gradlew check`가 PASS하며 Git, MSI, Harness 개발 트리에 SDK가 포함되지 않는다.
 
 ## [보류 배포 과제] 기존 Phase 6 — Windows 패키징·배포 (6A/6B Gate)
 
@@ -406,7 +434,7 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 **6B 종료 기준 (G6B)**: 승인 artifact가 없으면 packaging이 fail-closed로 중단되고, 승인 artifact로만 MSI가 재현 가능하다. clean Windows에서 Kit 경로 수동 지정 없이 project workspace 생성 → doctor → 표준 cycle이 PASS하며 제거·재설치 뒤 사용자 데이터 보존과 재연결이 검증된다.
 
-## [보류 제품 과제] 기존 Phase 7 — 실험 기능 (opt-in, 메인 흐름과 완전 분리)
+## [보류 제품 과제] 기존 Phase 7E — 실험 기능 (opt-in, 메인 흐름과 완전 분리)
 
 Secondary LLM capability 뷰어 / candidate·audit 뷰어(비권위 라벨 필수) / live Ollama 명시적 opt-in(capability gate 결과 표시, CPU-only는 진단 안내) / legacy compatibility 뷰 / smoke suite runner / raw State 뷰어 / 고급 로그 필터.
 
