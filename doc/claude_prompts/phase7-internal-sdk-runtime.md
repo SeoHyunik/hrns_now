@@ -6,11 +6,13 @@
 
 저장소는 `S:\dev\project\hrns_now`, branch는 `harness-dev`다. 모든 Git commit은 Codex만 수행한다. `git add`, `commit`, `amend`, `rebase`, `reset`, `stash`, `clean`, `push`를 수행하지 않는다. 완료 보고서는 `doc/phase_reports/phase7-internal-sdk-report.md`에 **UTF-8 without BOM**으로 작성한다.
 
-현재 HEAD에는 다음 Codex 커밋이 있다.
+작업 시작 기준 HEAD에는 다음 Phase 7 정의 커밋이 있다.
 
 ```text
-b8ee279 fix: Phase 6 UI UX 피드백과 용어 개선
+34f57dc docs: Phase 7 내장 개발 SDK 작업 정의
 ```
+
+이 커밋은 Phase 6 UI/UX 보정 커밋 `b8ee279 fix: Phase 6 UI UX 피드백과 용어 개선`을 포함한 후속 커밋이다.
 
 새 Phase 6(G6-UX)는 자동 검증과 MSI 재패키징은 통과했지만 native 창의 수동 QA 증빙이 남아 `BLOCKED`다. 제품 소유자는 이를 PASS로 바꾸지 않은 채, 2026-07-28에 이 Phase 7을 병행하도록 명시 승인했다. 이 예외를 보고서에 기록하되 G6-UX/G6A/G6B 또는 보류 기존 Phase 7E의 PASS를 주장하지 않는다.
 
