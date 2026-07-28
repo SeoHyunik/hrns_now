@@ -69,6 +69,18 @@
 
 ---
 
+## 0.5 Phase 순서 재정의 — UI/UX QA (2026-07-28)
+
+사용자 QA를 통해 현재 최우선 과제를 설치/Runtime 배포가 아니라 **사용 중인 HRNS-NOW 화면의 이해 가능성·피드백·용어·프로젝트 흐름**으로 재정의했다.
+
+```text
+완료: Phase 0A~5
+현재: 새 Phase 6 — UI/UX QA 개선 (G6-UX)
+보류: 기존 Phase 6A(G6A), 기존 Phase 6B(G6B), 기존 Phase 7
+```
+
+기존 Phase 6A/6B와 Phase 7은 삭제·완료 처리·축소하지 않는다. 각각 clean Windows MSI smoke, 승인 Harness Runtime artifact, 실험 기능의 미해결 보류 과제로 유지한다. 새 Phase 6의 구현·통과가 이 보류 과제의 Gate를 통과시킨다는 뜻은 아니며, 보류 과제 재개는 별도 사용자 승인과 Codex 독립 검증을 요구한다.
+
 # 1. 현재 소스 기준 재평가 (요약)
 
 ## 1.1 유지할 자산
@@ -352,7 +364,22 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 **종료 기준**: 모든 stop 상태에서 다음 행동이 이해 가능, closure 조건 미충족 시 종료 차단.
 
-## Phase 6 — Windows 패키징·배포 (6A/6B Gate)
+## Phase 6 — UI/UX QA 개선 (현재)
+
+이 Phase는 실제 사용 화면을 QA하여 확인된 혼란·불편을 해소하는 제품 개선 Phase다. Harness 계약, `WORKFLOW_STATE.json` 소유권, typed command/lock/State reread 순서, 기존 CTA 권한은 바꾸지 않는다.
+
+**작업**:
+
+1. 활성 프로젝트를 상단에서 명확히 식별하고, 프로젝트 등록·전환·수정은 `프로젝트 관리` modal로 분리한다. 프로젝트가 없을 때만 온보딩 등록 화면을 보인다.
+2. `환경 점검`을 포함한 실행 action에 running/success/failure/cancel 또는 retry의 명확한 feedback을 제공한다. success는 결과 badge와 완료 시각을 보이되 외부 State가 달라질 수 있으므로 버튼을 영구 비활성화하지 않는다.
+3. 화면 정보 구조와 한국어 용어를 정리한다: 작업 현황, 다음 작업, 상태 진단, 최근 작업 기록, 마지막 정상 상태, 작업 계획, 개발 전략, 작업 대기열, 요구사항 작성, 실행 기록, 환경 점검, 작업 기준 점검, 작업 준비.
+4. `요구사항 작성`을 상단 CTA와 modal editor로 제공한다. 저장 비활성 조건·필수 입력 오류·미저장 닫기 확인·저장 완료 feedback을 명확히 하며 기존 Request optimistic concurrency 계약을 유지한다.
+5. 중복되는 역할별 진행 단계 등 기술 정보는 기본 화면에서 제거하거나 상세 영역으로 접는다. action label은 여전히 action ID가 아니며 정책은 typed `UiAction`으로만 판단한다.
+6. Windows installer는 현재 MSI/JPackage/WiX 계약 안에서 이름·아이콘·안내·설치 흐름의 최소 품질을 개선한다. custom bootstrapper, code signing, update, bundled Harness Runtime은 이 Phase 범위가 아니다.
+
+**종료 기준 (G6-UX)**: 활성 프로젝트와 단일 다음 작업이 즉시 식별되고, action 실행 상태와 결과가 명확하며, 용어가 일관되고, 요구사항 modal의 저장·오류·닫기 흐름이 검증된다. UI는 State/Harness 파일을 직접 쓰지 않고, 기존 core/infra 계약 회귀 없이 `./gradlew check`와 수동 QA가 PASS한다.
+
+## [보류 배포 과제] 기존 Phase 6 — Windows 패키징·배포 (6A/6B Gate)
 
 ### Phase 6A — 외부 Kit MSI MVP
 
@@ -379,7 +406,7 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 
 **6B 종료 기준 (G6B)**: 승인 artifact가 없으면 packaging이 fail-closed로 중단되고, 승인 artifact로만 MSI가 재현 가능하다. clean Windows에서 Kit 경로 수동 지정 없이 project workspace 생성 → doctor → 표준 cycle이 PASS하며 제거·재설치 뒤 사용자 데이터 보존과 재연결이 검증된다.
 
-## Phase 7 — 실험 기능 (opt-in, 메인 흐름과 완전 분리)
+## [보류 제품 과제] 기존 Phase 7 — 실험 기능 (opt-in, 메인 흐름과 완전 분리)
 
 Secondary LLM capability 뷰어 / candidate·audit 뷰어(비권위 라벨 필수) / live Ollama 명시적 opt-in(capability gate 결과 표시, CPU-only는 진단 안내) / legacy compatibility 뷰 / smoke suite runner / raw State 뷰어 / 고급 로그 필터.
 
@@ -429,8 +456,9 @@ Phase 4 착수 시 실행 종료 시퀀스와 lock 상호작용에서 문제가 
 | G3 | Process adapter, cancel 무잔존, secret masking, lock 체계 |
 | G4 | bootstrap, request 안전 저장, Planning, execution dispatch, 종료 시퀀스 |
 | G5 | Closure policy, Recovery Center, 잘못된 완료 차단 |
-| G6A | 외부 Kit MSI, JRE, clean Windows install/uninstall 보존 smoke, 경로 이식성 |
-| G6B | 승인된 Harness Runtime artifact의 staging·manifest/checksum·secret-scan·Runtime smoke, 번들 MSI 재현성·재설치 복원 |
+| G6-UX | 활성 프로젝트·단일 다음 작업·실행 feedback·일관된 용어·요구사항 modal·기존 계약 회귀 없음 |
+| 보류 G6A | 외부 Kit MSI, JRE, clean Windows install/uninstall 보존 smoke, 경로 이식성 |
+| 보류 G6B | 승인된 Harness Runtime artifact의 staging·manifest/checksum·secret-scan·Runtime smoke, 번들 MSI 재현성·재설치 복원 |
 
 ---
 
@@ -569,8 +597,9 @@ UI 소유 파일은 harness workspace 밖에 둔다: Registry `%APPDATA%\hrns-no
 계약 재정렬(0A) → 테스트·CI(0B) → State Reader(1A) → CTA Policy(1B)
 → Live Cockpit(1C) → Registry(1D) → [병행] Harness JSON Contract(2, Fable)
 → 진단 Process Adapter + Lock(3, 코어 Fable) → 표준 일일 실행(4)
-→ Closure·Recovery(5) → 외부 Kit MSI(6A) → 승인 Runtime 통합(6B, 조건부)
-→ 실험 기능(7) → Post-MVP 배포 확장(D1~D4)
+→ Closure·Recovery(5) → UI/UX QA 개선(새 6, G6-UX)
+→ [보류] 외부 Kit MSI(기존 6A) → 승인 Runtime 통합(기존 6B, 조건부)
+→ [보류] 실험 기능(기존 7) → Post-MVP 배포 확장(D1~D4)
 ```
 
 > **최초 제품 목표(고정): 사용자가 프로젝트를 선택하면, HRNS-NOW는 현재 Harness 상태를 정확히 읽고 지금 허용된 단 하나의 다음 행동만 안전하게 안내하고 실행한다.**

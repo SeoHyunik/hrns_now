@@ -38,7 +38,7 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 
 ## 현재 개발 상태
 
-**기준일: 2026-07-27**
+**기준일: 2026-07-28**
 
 | 단계 | 상태 | 주요 결과 |
 |---|---|---|
@@ -48,11 +48,12 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 | Phase 3 | 완료 | typed PowerShell 실행 어댑터, 프로세스 잠금, 온보딩 |
 | Phase 4 | 완료 | 요청 작성, Planning·Replan, code/doc 실행 흐름 |
 | Phase 5 | `PASS_WITH_FIXES` | Closure 정책, 복구 센터, Git 오염 확인, 진단 projection |
-| Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
-| Phase 6B | 미착수 | 승인된 Harness Runtime 릴리스 artifact 통합 |
-| Phase 7 | 미착수 | opt-in 실험·고급 진단 기능 |
+| 새 Phase 6 | 진행 예정 | 사용자 QA 기반 프로젝트 흐름·실행 feedback·용어·요구사항 modal·installer 최소 품질 개선 |
+| 보류 기존 Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
+| 보류 기존 Phase 6B | **BLOCKED** | 승인된 Harness Runtime 릴리스 artifact가 없어 통합 구현을 시작할 수 없음 |
+| 보류 기존 Phase 7 | 미착수 | opt-in 실험·고급 진단 기능 |
 
-### Phase 6A가 아직 완료가 아닌 이유
+### 보류 기존 Phase 6A가 아직 완료가 아닌 이유
 
 현재 소스 기준으로 다음 검증은 통과했습니다.
 
@@ -341,7 +342,7 @@ composeApp → core ← infra
 
 ## Windows MSI 패키징
 
-현재 Phase 6A는 Windows MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
+보류 기존 Phase 6A는 Windows MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
 
 ### Debug MSI
 
@@ -402,20 +403,19 @@ Program Files에는 Registry, workspace, Harness 로그, 사용자 작업 파일
 
 ## 로드맵
 
-### 다음 허용 작업: Phase 6A Gate 보완
+### 다음 허용 작업: 새 Phase 6 UI/UX QA 개선
 
-- clean Windows VM 또는 독립 계정 준비
-- release MSI 설치·실행
-- 외부 Kit과 프로젝트 등록
-- Doctor·State 조회
-- 표준 daily cycle 수행
-- uninstall 후 사용자 데이터 보존 확인
-- 결과를 근거와 함께 Phase 6 보고서에 반영
+- 활성 프로젝트를 강조하는 프로젝트 관리 modal
+- 환경 점검의 실행 중·성공·실패 feedback
+- 작업 현황/작업 계획/실행 기록 중심의 자연스러운 한국어 용어
+- 요구사항 작성 modal과 저장·충돌·미저장 닫기 UX
+- 현재 MSI/JPackage 범위 안의 installer 최소 품질 개선
 
-### 이후 단계
+### 보류 과제
 
-- **Phase 6B** — Harness 저장소가 승인한 재현 가능한 Runtime artifact만 MSI에 통합
-- **Phase 7** — 메인 CTA와 분리된 opt-in 실험·고급 진단 기능
+- **기존 Phase 6A** — clean Windows release MSI 통합 smoke
+- **기존 Phase 6B** — Harness 저장소가 승인한 재현 가능한 Runtime artifact만 MSI에 통합
+- **기존 Phase 7** — 메인 CTA와 분리된 opt-in 실험·고급 진단 기능
 - **Post-MVP** — 코드 서명, 업데이트·롤백, 라이선스, portable data mode
 
-`G6A`가 통과하기 전에는 Phase 6B 또는 Phase 7을 시작하지 않습니다.
+새 Phase 6의 완료는 보류 G6A/G6B나 기존 Phase 7을 완료 처리하지 않습니다. 보류 과제 재개는 별도 사용자 승인과 Codex 독립 검증이 필요합니다.
