@@ -38,7 +38,7 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 
 ## 현재 개발 상태
 
-**기준일: 2026-07-28**
+**기준일: 2026-07-27**
 
 | 단계 | 상태 | 주요 결과 |
 |---|---|---|
@@ -48,13 +48,11 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 | Phase 3 | 완료 | typed PowerShell 실행 어댑터, 프로세스 잠금, 온보딩 |
 | Phase 4 | 완료 | 요청 작성, Planning·Replan, code/doc 실행 흐름 |
 | Phase 5 | `PASS_WITH_FIXES` | Closure 정책, 복구 센터, Git 오염 확인, 진단 projection |
-| 새 Phase 6 | `BLOCKED` | 자동 검증·MSI 재패키징은 통과했으나 새 native UI 수동 QA 증빙이 남음 |
-| 새 Phase 7 | `PASS_WITH_FIXES` | Git-ignore 개발용 내장 Harness SDK source, typed runtime 선택·해석, explicit external override. 실제 SDK·native UI 운영 QA는 남음 |
-| 보류 기존 Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
-| 보류 기존 Phase 6B | **BLOCKED** | 승인된 Harness Runtime 릴리스 artifact가 없어 통합 구현을 시작할 수 없음 |
-| 보류 기존 Phase 7E | 미착수 | opt-in 실험·고급 진단 기능 |
+| Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
+| Phase 6B | 미착수 | 승인된 Harness Runtime 릴리스 artifact 통합 |
+| Phase 7 | 미착수 | opt-in 실험·고급 진단 기능 |
 
-### 보류 기존 Phase 6A가 아직 완료가 아닌 이유
+### Phase 6A가 아직 완료가 아닌 이유
 
 현재 소스 기준으로 다음 검증은 통과했습니다.
 
@@ -89,9 +87,9 @@ clean Windows 환경
 
 ### 1. 프로젝트 온보딩과 Registry
 
-프로젝트별로 다음 경로와 Profile을 등록하고 전환할 수 있습니다. 새 Phase 7이 끝나면 표준 등록은 HRNS-NOW source checkout 안의 사용자 제공 개발 SDK를 기본으로 사용하며, 외부 Kit 경로는 고급 override에서만 선택합니다.
+프로젝트별로 다음 경로와 Profile을 등록하고 전환할 수 있습니다.
 
-- Harness runtime source(현재는 외부 Kit root, Phase 7부터 개발용 내장 SDK 기본)
+- Harness Kit root
 - 프로젝트 workspace root
 - Git repository root
 - Harness profile
@@ -99,13 +97,11 @@ clean Windows 환경
 
 등록 전에 경로의 상호 포함, junction·symlink를 고려한 실경계, Harness 호환성을 검사합니다.
 
-현재 구현의 Registry 해석 순서는 다음과 같습니다.
+Registry 해석 순서는 다음과 같습니다.
 
 ```text
 사용자 Registry → 환경변수 fallback → 사용자 직접 선택
 ```
-
-새 Phase 7이 완료되면 기본 runtime source는 저장소 상대 `.local\harness-kit` 개발 SDK가 되며, 기존 Registry `kit_root`과 환경변수 경로는 명시적 외부 Kit 선택으로만 해석합니다. 이는 개발 환경 편의를 위한 경계이며, MSI에 Harness Runtime을 포함한다는 뜻은 아닙니다.
 
 Registry 기본 위치:
 
@@ -320,7 +316,7 @@ composeApp → core ← infra
 
 - Windows 10/11
 - JDK 17
-- 사용자 제공 개발 SDK(`.local\harness-kit`) 또는 명시적 외부 Harness Kit
+- 접근 가능한 외부 Harness Kit
 - Gradle Wrapper 실행이 가능한 환경
 
 ### 애플리케이션 실행
@@ -345,7 +341,7 @@ composeApp → core ← infra
 
 ## Windows MSI 패키징
 
-보류 기존 Phase 6A는 Windows MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
+현재 Phase 6A는 Windows MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
 
 ### Debug MSI
 
@@ -406,21 +402,20 @@ Program Files에는 Registry, workspace, Harness 로그, 사용자 작업 파일
 
 ## 로드맵
 
-### 새 Phase 7 결과: 내장 개발용 Harness SDK source
+### 다음 허용 작업: Phase 6A Gate 보완
 
-- Git-ignore `.local\harness-kit` 사용자 제공 개발 SDK를 기본 runtime source로 해석
-- typed runtime source와 safe Registry migration
-- 표준 프로젝트 등록에서 Kit root 직접 입력 제거
-- advanced external Kit override와 missing SDK fail-closed UX
-- repository·workspace·runtime root 경계와 기존 compatibility/command 계약 보존
+- clean Windows VM 또는 독립 계정 준비
+- release MSI 설치·실행
+- 외부 Kit과 프로젝트 등록
+- Doctor·State 조회
+- 표준 daily cycle 수행
+- uninstall 후 사용자 데이터 보존 확인
+- 결과를 근거와 함께 Phase 6 보고서에 반영
 
-소스·Registry·fail-closed 동작과 전체 자동 테스트는 통과했습니다. 사용자가 실제 `.local\harness-kit` SDK를 제공한 환경에서의 등록→Doctor→State 조회, 그리고 native UI 육안 QA는 다음 운영 점검에서 확인합니다. 이 결과는 보류 Gate를 통과 처리하지 않습니다.
+### 이후 단계
 
-### 보류 과제
-
-- **기존 Phase 6A** — clean Windows release MSI 통합 smoke
-- **기존 Phase 6B** — Harness 저장소가 승인한 재현 가능한 Runtime artifact만 MSI에 통합
-- **기존 Phase 7E** — 메인 CTA와 분리된 opt-in 실험·고급 진단 기능
+- **Phase 6B** — Harness 저장소가 승인한 재현 가능한 Runtime artifact만 MSI에 통합
+- **Phase 7** — 메인 CTA와 분리된 opt-in 실험·고급 진단 기능
 - **Post-MVP** — 코드 서명, 업데이트·롤백, 라이선스, portable data mode
 
-새 Phase 7의 완료는 보류 G6A/G6B나 기존 Phase 7E를 완료 처리하지 않습니다. 보류 과제 재개는 별도 사용자 승인과 Codex 독립 검증이 필요합니다.
+`G6A`가 통과하기 전에는 Phase 6B 또는 Phase 7을 시작하지 않습니다.
