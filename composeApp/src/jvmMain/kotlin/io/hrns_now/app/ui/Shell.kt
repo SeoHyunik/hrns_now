@@ -513,16 +513,9 @@ private fun NotificationToastHost(
 
 @Composable
 private fun BrandMark() {
-    val colors = LocalHrnsColors.current
     Box(
         modifier = Modifier
-            .size(56.dp)
-            .shadow(
-                elevation = 6.dp,
-                shape = CircleShape,
-                ambientColor = colors.chelseaGlow,
-                spotColor = colors.chelseaGlow,
-            ),
+            .size(48.dp),
         contentAlignment = Alignment.Center,
     ) {
         Image(
