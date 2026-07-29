@@ -620,7 +620,10 @@ fun ModalDialog(
                         onClick = onDismissRequest,
                         modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
                     ) {
-                        Text("닫기", style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp))
+                        Text(
+                            chromeStrings(LocalAppLocale.current).dismiss,
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+                        )
                     }
                 }
                 content()

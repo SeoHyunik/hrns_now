@@ -117,12 +117,13 @@ fun HrnsShell(
 @Composable
 private fun LoadingShell() {
     val colors = LocalHrnsColors.current
+    val strings = chromeStrings(LocalAppLocale.current)
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "실데이터를 불러오는 중입니다…",
+            text = strings.loadingNotice,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.secondaryText,
         )
@@ -535,6 +536,7 @@ private fun BrandMark() {
 @Composable
 private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeStrings) {
     val colors = LocalHrnsColors.current
+    val locale = LocalAppLocale.current
     val items = listOf(
         strings.readinessWorkspace to readiness.workspaceLabel,
         strings.readinessEngine to readiness.engineLabel,
@@ -582,7 +584,7 @@ private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeString
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = value,
+                    text = localizeInfraLabel(value, locale),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.5.sp,
                         letterSpacing = 0.1.sp,
@@ -600,9 +602,9 @@ private fun readinessDotColor(value: String): Color {
     val c = LocalHrnsColors.current
     val v = value.trim()
     return when {
-        v.contains("확인됨") || v.contains("준비") || v == "OK" -> c.success
-        v.contains("없음") || v.contains("미설정") || v.contains("미선택") -> c.warning
-        v.contains("불가") || v.contains("실패") || v.contains("불일치") -> c.danger
+        v.contains("확인됨") || v.contains("준비") || v.contains("Confirmed") || v.contains("Ready") || v == "OK" -> c.success
+        v.contains("없음") || v.contains("미설정") || v.contains("미선택") || v.contains("Missing") || v.contains("Not configured") || v.contains("Not selected") -> c.warning
+        v.contains("불가") || v.contains("실패") || v.contains("불일치") || v.contains("Not readable") || v.contains("Failed") || v.contains("Wrong type") -> c.danger
         else -> c.tertiaryText
     }
 }
@@ -744,6 +746,7 @@ private fun InspectorPanel(
 ) {
     val scrollState = rememberScrollState()
     val colors = LocalHrnsColors.current
+    val strings = chromeStrings(LocalAppLocale.current)
 
     Column(
         modifier = modifier
@@ -763,7 +766,7 @@ private fun InspectorPanel(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "기준 파일",
+                text = strings.inspectorHeading,
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontSize = 22.sp,
                     letterSpacing = (-0.5).sp,
@@ -772,7 +775,7 @@ private fun InspectorPanel(
                 color = colors.primaryText,
             )
             Text(
-                text = "워크스페이스 안에서 추적 중인 항목들",
+                text = strings.inspectorSubtitle,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                 color = colors.tertiaryText,
             )
@@ -780,8 +783,9 @@ private fun InspectorPanel(
 
         // 새 Phase 8 §5.2: compact technical panel은 하나의 영문 표기 규칙(STATUS/ENVIRONMENT/
         // ARTIFACTS)으로 통일한다 — 이전에는 "아티팩트"(한글)/"Meta"(영문 약어)/"Read-only"가
-        // 서로 다른 언어·모호한 제목으로 섞여 있었다. 카드 안 설명은 자연스러운 한국어 문장으로 둔다.
-        SectionCard(title = "ARTIFACTS", eyebrow = "기준 파일") {
+        // 서로 다른 언어·모호한 제목으로 섞여 있었다 — 이 세 패널 제목은 Phase 8 보완에서도 그대로
+        // 영문으로 고정한다(의도적 예외, phase8-completion-report.md §5 참고).
+        SectionCard(title = "ARTIFACTS", eyebrow = strings.artifactsEyebrow) {
             // legacy fallback 파일(WORKDAY_STATE.json 등)은 기본 화면에서 숨긴다 (계약 2.2).
             val visibleItems = artifactSummary.items.filter { it.requirement != ArtifactRequirement.Legacy }
             Column {
@@ -803,7 +807,7 @@ private fun InspectorPanel(
             }
         }
 
-        SectionCard(title = "ENVIRONMENT", eyebrow = "환경") {
+        SectionCard(title = "ENVIRONMENT", eyebrow = strings.environmentEyebrow) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = projection.subtitle,
@@ -852,13 +856,14 @@ private fun InspectorPanel(
 @Composable
 private fun ArtifactRow(item: ArtifactProbeResult) {
     val colors = LocalHrnsColors.current
+    val locale = LocalAppLocale.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = item.label,
+                text = localizeInfraLabel(item.label, locale),
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = 14.sp,
                     letterSpacing = (-0.1).sp,
@@ -868,7 +873,7 @@ private fun ArtifactRow(item: ArtifactProbeResult) {
                 modifier = Modifier.weight(1f),
             )
             StatusChip(
-                text = item.state.koreanLabel(),
+                text = item.state.localizedLabel(locale),
                 tone = item.state.tone(),
             )
         }
@@ -883,14 +888,24 @@ private fun ArtifactRow(item: ArtifactProbeResult) {
     }
 }
 
-private fun ArtifactProbeState.koreanLabel(): String =
-    when (this) {
-        ArtifactProbeState.WorkspaceNotConfigured -> "미선택"
-        ArtifactProbeState.Exists -> "확인됨"
-        ArtifactProbeState.Missing -> "없음"
-        ArtifactProbeState.NotReadable -> "읽기 불가"
-        ArtifactProbeState.WrongType -> "유형 불일치"
-        ArtifactProbeState.Unknown -> "확인 필요"
+private fun ArtifactProbeState.localizedLabel(locale: AppLocale): String =
+    when (locale) {
+        AppLocale.Korean -> when (this) {
+            ArtifactProbeState.WorkspaceNotConfigured -> "미선택"
+            ArtifactProbeState.Exists -> "확인됨"
+            ArtifactProbeState.Missing -> "없음"
+            ArtifactProbeState.NotReadable -> "읽기 불가"
+            ArtifactProbeState.WrongType -> "유형 불일치"
+            ArtifactProbeState.Unknown -> "확인 필요"
+        }
+        AppLocale.English -> when (this) {
+            ArtifactProbeState.WorkspaceNotConfigured -> "Not selected"
+            ArtifactProbeState.Exists -> "Confirmed"
+            ArtifactProbeState.Missing -> "Missing"
+            ArtifactProbeState.NotReadable -> "Not readable"
+            ArtifactProbeState.WrongType -> "Wrong type"
+            ArtifactProbeState.Unknown -> "Needs review"
+        }
     }
 
 private fun ArtifactProbeState.tone(): String =

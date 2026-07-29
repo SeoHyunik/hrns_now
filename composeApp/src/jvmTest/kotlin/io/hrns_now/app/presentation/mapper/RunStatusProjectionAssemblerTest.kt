@@ -1,6 +1,7 @@
 package io.hrns_now.app.presentation.mapper
 
 import io.hrns_now.app.presentation.viewmodel.HarnessRunViewState
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.LockPayload
 import io.hrns_now.core.domain.model.LockState
@@ -213,5 +214,30 @@ class RunStatusProjectionAssemblerTest {
         assertEquals(UiAction.RunOpsValidation, HarnessCommandKind.ValidateOps.toRetryAction())
         assertEquals("다시 검증", HarnessCommandKind.ValidateOps.retryLabel())
         assertNull(HarnessCommandKind.Bootstrap.toRetryAction())
+    }
+
+    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 실행 기록 화면에도 실제로 적용되는지 확인한다. */
+    @Test
+    fun `English locale은 제목과 stage label과 outcome을 영어로 투영한다`() {
+        val contract = HarnessDiagnosticContract(
+            contractVersion = "1.0",
+            overall = HarnessOverallStatus.Ok,
+            checks = listOf(HarnessCheckResult("check_001", HarnessCheckSeverity.Info, "ok")),
+        )
+        val runView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.Doctor,
+            isRunning = false,
+            runStartedAt = now,
+            lastResult = ProcessRunResult.Completed(0, contract, null, false, false),
+        )
+
+        val projection = assembler.assemble(runView, lockInspection = null, now = now, locale = AppLocale.English)
+
+        assertEquals("Run history", projection.title)
+        assertTrue(projection.stages.any { it.label == "Check connection" })
+        assertEquals("Check connection", projection.lastOutcome?.label)
+        assertEquals("OK", projection.lastOutcome?.value)
+        assertEquals("All checks passed.", projection.lastSummaryLine)
+        assertEquals("Check again", HarnessCommandKind.Doctor.retryLabel(AppLocale.English))
     }
 }

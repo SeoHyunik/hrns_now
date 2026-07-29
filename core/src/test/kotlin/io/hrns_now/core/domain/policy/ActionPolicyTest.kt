@@ -4,6 +4,7 @@ import io.hrns_now.core.domain.model.ActionContext
 import io.hrns_now.core.domain.model.ActiveSliceKind
 import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
+import io.hrns_now.core.domain.model.BlockedReasonKey
 import io.hrns_now.core.domain.model.BoundaryStatus
 import io.hrns_now.core.domain.model.ClosureState
 import io.hrns_now.core.domain.model.CompatibilityStatus
@@ -19,6 +20,7 @@ import io.hrns_now.core.domain.model.SchemaVersion
 import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.StopReason
 import io.hrns_now.core.domain.model.UiAction
+import io.hrns_now.core.domain.model.UnknownDomainKind
 import io.hrns_now.core.domain.model.WorkflowPhase
 import io.hrns_now.core.domain.model.WorkflowQueue
 import io.hrns_now.core.domain.model.WorkflowState
@@ -31,6 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -350,26 +353,29 @@ class ActionPolicyTest {
     @Test
     fun `알 수 없는 queue 차단 사유와 domain 값은 fail-closed한다`() {
         val contexts = listOf(
-            successContext(healthyState(queueBlockedReason = QueueBlockedReason.Other("new-secret-reason"))),
-            successContext(healthyState(phase = WorkflowPhase.Unknown("new-secret-phase"))),
-            successContext(healthyState(status = WorkflowStatus.Unknown("new-secret-status"))),
-            successContext(healthyState(queueStatus = QueueStatus.Unknown("new-secret-queue"))),
-            successContext(healthyState(executionWrapper = ExecutionWrapperState.Unknown("new-secret-wrapper"))),
-            successContext(healthyState(stopReason = StopReason.Unknown("new-secret-stop"))),
-            successContext(healthyState(artifactReadiness = ArtifactReadinessState.Unknown("new-secret-artifact"))),
-            successContext(healthyState(), activeSliceKind = ActiveSliceKind.Unknown("new-secret-slice")),
+            successContext(healthyState(queueBlockedReason = QueueBlockedReason.Other("new-secret-reason"))) to UnknownDomainKind.QueueBlockedReason,
+            successContext(healthyState(phase = WorkflowPhase.Unknown("new-secret-phase"))) to UnknownDomainKind.Phase,
+            successContext(healthyState(status = WorkflowStatus.Unknown("new-secret-status"))) to UnknownDomainKind.Status,
+            successContext(healthyState(queueStatus = QueueStatus.Unknown("new-secret-queue"))) to UnknownDomainKind.QueueStatus,
+            successContext(healthyState(executionWrapper = ExecutionWrapperState.Unknown("new-secret-wrapper"))) to UnknownDomainKind.ExecutionWrapper,
+            successContext(healthyState(stopReason = StopReason.Unknown("new-secret-stop"))) to UnknownDomainKind.StopReason,
+            successContext(healthyState(artifactReadiness = ArtifactReadinessState.Unknown("new-secret-artifact"))) to UnknownDomainKind.ArtifactReadiness,
+            successContext(healthyState(), activeSliceKind = ActiveSliceKind.Unknown("new-secret-slice")) to UnknownDomainKind.ActiveSliceKind,
         )
 
-        contexts.forEachIndexed { index, context ->
+        contexts.forEachIndexed { index, (context, expectedKind) ->
             val result = policy.recommend(context)
             assertEquals(UiAction.OpenRecoveryCenter, result.primary, "unknown #$index")
             assertEquals(recovery, result.allowed, "unknown #$index")
-            assertFalse(result.blockedReason.orEmpty().contains("new-secret"), "unknown raw leaked #$index")
+            // reasonKey는 typed enum이므로 raw 원문("new-secret-...")을 담을 수 없다 — 타입 자체가
+            // 보안 보장이다(Phase 8 보완 §1, 이전에는 String.contains로 이를 검증했다).
+            val reasonKey = assertIs<BlockedReasonKey.UnknownDomainValue>(result.reasonKey, "unknown #$index")
+            assertEquals(expectedKind, reasonKey.kind, "unknown #$index")
         }
     }
 
     @Test
-    fun `파서 오류와 미지원 schema 원문은 사용자 blockedReason에 노출하지 않는다`() {
+    fun `파서 오류와 미지원 schema는 typed StateInvalid reasonKey만 낸다`() {
         val reads = listOf<StateReadResult>(
             StateReadResult.Malformed("raw-session-id=secret", null),
             StateReadResult.EncodingError("token=secret", null),
@@ -378,8 +384,8 @@ class ActionPolicyTest {
 
         reads.forEach { read ->
             val result = policy.recommend(successContext(healthyState()).copy(stateRead = read))
-            val reason = assertNotNull(result.blockedReason)
-            assertFalse(reason.contains("secret"))
+            // typed key이므로 read의 raw 원문("secret")을 담을 수 없다 — 타입 자체가 보안 보장이다.
+            assertIs<BlockedReasonKey.StateInvalid>(assertNotNull(result.reasonKey))
             assertEquals(UiAction.OpenRecoveryCenter, result.primary)
         }
     }
@@ -396,7 +402,7 @@ class ActionPolicyTest {
         val eligible = policy.recommend(successContext(healthyState()).copy(stateRead = missing))
         assertEquals(UiAction.BootstrapDay, eligible.primary)
         assertEquals(setOf(UiAction.BootstrapDay, UiAction.Refresh), eligible.allowed)
-        assertEquals(null, eligible.blockedReason)
+        assertEquals(null, eligible.reasonKey)
     }
 
     @Test
@@ -482,7 +488,7 @@ class ActionPolicyTest {
             RecommendedActions(
                 primary = UiAction.RunPlanning,
                 allowed = setOf(UiAction.Refresh),
-                blockedReason = null,
+                reasonKey = null,
             )
         }
     }

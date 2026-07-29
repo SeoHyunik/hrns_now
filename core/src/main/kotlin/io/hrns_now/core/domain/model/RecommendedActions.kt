@@ -14,7 +14,8 @@ package io.hrns_now.core.domain.model
 data class RecommendedActions(
     val primary: UiAction?,
     val allowed: Set<UiAction>,
-    val blockedReason: String?,
+    /** 문구가 아니라 typed key다 — presentation이 locale별 문구로 투영한다(Phase 8 보완 §1). */
+    val reasonKey: BlockedReasonKey?,
 ) {
     init {
         require(primary == null || primary in allowed) {

@@ -169,13 +169,19 @@ class LocalProcessLockAdapter(
         val pid = currentPid()
         val payload = LockPayload(projectId, date, pid, commandKind, now, now)
         val bytes = json.encodeToString(LockPayloadDto.serializer(), payload.toDto()).toByteArray(StandardCharsets.UTF_8)
+        val parent = path.parent
+        Files.createDirectories(parent)
+        val candidate = Files.createTempFile(parent, "lock", ".tmp")
         return try {
-            Files.newByteChannel(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { channel ->
+            Files.newByteChannel(candidate, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE).use { channel ->
                 channel.write(java.nio.ByteBuffer.wrap(bytes))
             }
+            Files.move(candidate, path)
             LockAcquireResult.Acquired(LockHandle(projectId, date, pid, now))
         } catch (_: FileAlreadyExistsException) {
             null
+        } finally {
+            Files.deleteIfExists(candidate)
         }
     }
 

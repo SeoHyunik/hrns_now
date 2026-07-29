@@ -2,6 +2,7 @@ package io.hrns_now.app.presentation
 
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.ClosureState
@@ -18,6 +19,7 @@ import io.hrns_now.core.domain.model.WorkflowPhase
 import io.hrns_now.core.domain.model.WorkflowQueue
 import io.hrns_now.core.domain.model.WorkflowState
 import io.hrns_now.core.domain.model.WorkflowStatus
+import io.hrns_now.core.domain.policy.ClosureBlockReasonKey
 import io.hrns_now.core.domain.policy.ClosureDecision
 import io.hrns_now.core.result.StateReadResult
 import java.time.Instant
@@ -172,7 +174,7 @@ class RecoveryProjectionsTest {
         val projection = buildRecoveryProjection(
             cockpit(),
             success(healthyState()),
-            ClosureDecision.Blocked(listOf("이유 A", "이유 B")),
+            ClosureDecision.Blocked(listOf(ClosureBlockReasonKey.OpsValidationFailed, ClosureBlockReasonKey.LockHeldByOtherRun)),
             "없음",
         )
         assertEquals(2, projection.closureChecklistRows.size)
@@ -180,14 +182,15 @@ class RecoveryProjectionsTest {
     }
 
     @Test
-    fun `RequiresExplicitIncompleteHandoff는 항목을 그대로 노출한다`() {
+    fun `RequiresExplicitIncompleteHandoff는 항목에 안내 접두어를 붙여 노출한다`() {
         val projection = buildRecoveryProjection(
             cockpit(),
             success(healthyState()),
-            ClosureDecision.RequiresExplicitIncompleteHandoff(listOf("커밋되지 않은 변경: src/Foo.kt")),
+            ClosureDecision.RequiresExplicitIncompleteHandoff(listOf("src/Foo.kt")),
             "없음",
         )
-        assertEquals(listOf("커밋되지 않은 변경: src/Foo.kt"), projection.incompleteHandoffItems)
+        assertEquals(1, projection.incompleteHandoffItems.size)
+        assertTrue(projection.incompleteHandoffItems.single().contains("src/Foo.kt"))
     }
 
     @Test
@@ -201,5 +204,36 @@ class RecoveryProjectionsTest {
         val projection = buildRecoveryProjection(cockpit(allowed), success(healthyState()), ClosureDecision.Allowed, "없음")
 
         assertEquals(setOf(UiAction.Refresh, UiAction.RunReplan, UiAction.RunClosureValidation), projection.actions.map { it.action }.toSet())
+    }
+
+    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 복구 센터 화면 본문에도 실제로 적용되는지 확인한다. */
+    @Test
+    fun `English locale은 제목과 usage_limit_blocked 카드를 영어로 투영한다`() {
+        val projection = buildRecoveryProjection(
+            cockpit(),
+            success(healthyState(stopReason = StopReason.UsageLimitBlocked)),
+            ClosureDecision.Allowed,
+            "None",
+            locale = AppLocale.English,
+        )
+
+        assertEquals("Recovery center · Closure check", projection.title)
+        val card = requireNotNull(projection.activeCard)
+        assertTrue(card.whatHappened.contains("Claude usage limits"))
+        assertTrue(card.allowedNextAction.contains("manually"))
+    }
+
+    @Test
+    fun `English locale의 Blocked closure decision도 typed reason을 영어 문구로 투영한다`() {
+        val projection = buildRecoveryProjection(
+            cockpit(),
+            success(healthyState()),
+            ClosureDecision.Blocked(listOf(ClosureBlockReasonKey.LockHeldByOtherRun)),
+            "None",
+            locale = AppLocale.English,
+        )
+
+        assertEquals(1, projection.closureChecklistRows.size)
+        assertTrue(projection.closureChecklistRows.single().value.contains("lock"))
     }
 }

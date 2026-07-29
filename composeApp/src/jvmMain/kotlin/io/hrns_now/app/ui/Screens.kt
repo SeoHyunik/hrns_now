@@ -204,6 +204,7 @@ fun SetupScreen(
     onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
+    val strings = appStrings(LocalAppLocale.current)
 
     ScreenContainer {
         ScreenHero(
@@ -220,13 +221,14 @@ fun SetupScreen(
             runtimeSourceLabel = activeProjectRuntimeSourceLabel,
             runtimeSourceDiagnostics = activeProjectRuntimeDiagnostics,
             workspaceConfig = workspaceConfig,
+            strings = strings,
         )
 
         projection.cards.forEach { card ->
             ProjectionInfoCard(card)
         }
 
-        SectionCard(title = "경로 점검", eyebrow = "Path probe") {
+        SectionCard(title = strings.setup.pathCheckTitle, eyebrow = "Path probe") {
             Column {
                 val rows = listOf(
                     workspaceProbeSummary.kitRoot,
@@ -250,7 +252,7 @@ fun SetupScreen(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "화면 언어",
+                        text = strings.setup.screenLanguageLabel,
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontSize = 14.sp,
                             letterSpacing = (-0.1).sp,
@@ -274,6 +276,7 @@ fun SetupScreen(
             registryMessage = registryMessage,
             registrationFeedback = registrationFeedback,
             onUiEvent = onUiEvent,
+            strings = strings,
         )
 
         WorkspaceDaySection(
@@ -281,9 +284,10 @@ fun SetupScreen(
             selectedDayReadOnly = selectedDayReadOnly,
             todayDate = todayDate,
             onUiEvent = onUiEvent,
+            strings = strings,
         )
 
-        SectionCard(title = "실행 작업", eyebrow = "Actions") {
+        SectionCard(title = strings.actionsSectionTitle, eyebrow = "Actions") {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 ActionButtonGroup(projection.actions, onAction = { action -> onUiEvent(HrnsUiEvent.ActionRequested(action)) })
                 Text(
@@ -294,7 +298,7 @@ fun SetupScreen(
                     ),
                     color = colors.tertiaryText,
                 )
-                runStatusProjection?.let { HarnessRunFeedback(it, onUiEvent) }
+                runStatusProjection?.let { HarnessRunFeedback(it, onUiEvent, strings) }
             }
         }
     }
@@ -312,12 +316,13 @@ private fun ActiveProjectSummaryCard(
     runtimeSourceLabel: String,
     runtimeSourceDiagnostics: CockpitDiagnostics?,
     workspaceConfig: WorkspaceConfig,
+    strings: AppStrings,
 ) {
     val colors = LocalHrnsColors.current
-    SectionCard(title = "활성 프로젝트", eyebrow = "Active project") {
+    SectionCard(title = strings.setup.activeProjectTitle, eyebrow = "Active project") {
         if (projectName == null) {
             Text(
-                text = "선택된 프로젝트가 없습니다. 아래 프로젝트 관리에서 등록하거나 선택하세요.",
+                text = strings.setup.noActiveProjectNotice,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                 color = colors.tertiaryText,
             )
@@ -332,20 +337,24 @@ private fun ActiveProjectSummaryCard(
                         modifier = Modifier.weight(1f),
                     )
                     StatusChip(
-                        text = if (isStale) "오래된 정보" else "정상",
+                        text = if (isStale) strings.setup.staleLabel else strings.setup.okLabel,
                         tone = if (isStale) "warning" else "success",
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Runtime source",
+                        text = strings.setup.runtimeSourceRowLabel,
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
                         color = colors.tertiaryText,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f),
                     )
                     StatusChip(
-                        text = if (runtimeSourceDiagnostics != null) "$runtimeSourceLabel · 문제 있음" else runtimeSourceLabel,
+                        text = if (runtimeSourceDiagnostics != null) {
+                            "$runtimeSourceLabel · ${strings.setup.runtimeSourceProblemSuffix}"
+                        } else {
+                            runtimeSourceLabel
+                        },
                         tone = if (runtimeSourceDiagnostics != null) "danger" else "success",
                         showDot = false,
                     )
@@ -359,9 +368,9 @@ private fun ActiveProjectSummaryCard(
                 }
                 KeyValueGrid(
                     rows = listOf(
-                        "프로필" to profileLabel,
-                        "작업공간 경로" to (workspaceConfig.roots.workspaceRoot ?: "미설정"),
-                        "저장소 경로" to (workspaceConfig.roots.projectRoot ?: "미설정"),
+                        strings.setup.profileLabel to profileLabel,
+                        strings.setup.workspaceRootLabel to (workspaceConfig.roots.workspaceRoot ?: strings.setup.notConfiguredLabel),
+                        strings.setup.repositoryRootLabel to (workspaceConfig.roots.projectRoot ?: strings.setup.notConfiguredLabel),
                     ),
                 )
             }
@@ -380,6 +389,7 @@ private fun ProjectManagementSection(
     registryMessage: String?,
     registrationFeedback: RegistrationFeedback,
     onUiEvent: (HrnsUiEvent) -> Unit,
+    strings: AppStrings,
 ) {
     val colors = LocalHrnsColors.current
     var showManagementModal by remember { mutableStateOf(false) }
@@ -396,11 +406,11 @@ private fun ProjectManagementSection(
     }
 
     SectionCard(
-        title = "프로젝트 관리",
+        title = strings.setup.projectManagementTitle,
         eyebrow = "Projects",
         trailing = {
             if (activeProjectSourceLabel.isNotBlank()) {
-                StatusChip(text = "선택 근거: $activeProjectSourceLabel", tone = "accent", showDot = false)
+                StatusChip(text = "${strings.setup.selectionBasisPrefix} $activeProjectSourceLabel", tone = "accent", showDot = false)
             }
         },
     ) {
@@ -416,12 +426,12 @@ private fun ProjectManagementSection(
             if (registryProjects.isEmpty()) {
                 // 프로젝트가 전혀 없을 때만 등록 온보딩을 이 화면에 직접 보여준다 — modal이 아니다.
                 Text(
-                    text = "등록된 프로젝트가 없습니다. 아래에서 새 프로젝트를 등록하세요.",
+                    text = strings.setup.noProjectsNotice,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                     color = colors.tertiaryText,
                 )
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
-                ProjectRegistrationForm(onUiEvent = onUiEvent, registrationFeedback = registrationFeedback)
+                ProjectRegistrationForm(onUiEvent = onUiEvent, registrationFeedback = registrationFeedback, strings = strings)
             } else {
                 val active = registryProjects.firstOrNull { it.isActive }
                 if (active != null) {
@@ -433,17 +443,17 @@ private fun ProjectManagementSection(
                             color = colors.primaryText,
                             modifier = Modifier.weight(1f),
                         )
-                        StatusChip(text = "활성", tone = "success")
+                        StatusChip(text = strings.setup.activeLabel, tone = "success")
                     }
                 } else {
                     Text(
-                        text = "활성 프로젝트가 없습니다. 아래에서 프로젝트를 선택하세요.",
+                        text = strings.setup.noActiveProjectSelectNotice,
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                         color = colors.tertiaryText,
                     )
                 }
                 PlaceholderActionButton(
-                    text = "프로젝트 등록",
+                    text = strings.setup.registerProjectButton,
                     primary = true,
                     enabled = true,
                     onClick = { showManagementModal = true },
@@ -453,19 +463,19 @@ private fun ProjectManagementSection(
     }
 
     if (showManagementModal) {
-        ModalDialog(title = "프로젝트 관리", onDismissRequest = ::dismissManagementModal) {
+        ModalDialog(title = strings.setup.projectManagementTitle, onDismissRequest = ::dismissManagementModal) {
             Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Text(
-                    text = "등록된 프로젝트",
+                    text = strings.setup.registeredProjectsHeading,
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
                     fontWeight = FontWeight.SemiBold,
                     color = colors.primaryText,
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    registryProjects.forEach { project -> ProjectRow(project = project, onUiEvent = onUiEvent) }
+                    registryProjects.forEach { project -> ProjectRow(project = project, onUiEvent = onUiEvent, strings = strings) }
                 }
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
-                ProjectRegistrationForm(onUiEvent = onUiEvent, registrationFeedback = registrationFeedback)
+                ProjectRegistrationForm(onUiEvent = onUiEvent, registrationFeedback = registrationFeedback, strings = strings)
             }
         }
     }
@@ -475,8 +485,10 @@ private const val WORKSPACE_DAY_PAGE_SIZE = 5
 
 /**
  * 날짜를 한 번에 [WORKSPACE_DAY_PAGE_SIZE]개씩만 보여주고 이전/다음으로 탐색한다(새 Phase 8 §6).
- * 오늘 날짜가 아직 daily directory 목록에 없어도 "오늘 작업 시작"으로 항상 선택할 수 있다 —
- * 이 Composable은 폴더나 4-file을 직접 만들지 않고 typed event만 올려 보낸다.
+ * 오늘 날짜가 아직 daily directory 목록에 없어도 이 버튼으로 항상 선택할 수 있다 — 이 Composable은
+ * 폴더나 4-file을 직접 만들지 않고 typed event만 올려 보낸다. 새 Phase 8 보완 §2.1: 버튼 문구는
+ * "날짜 선택"임을 분명히 하고, 실제 Bootstrap 실행처럼 보이지 않게 한다 — 그 CTA는 작업 계획
+ * 화면 요구사항 카드에만 있다.
  */
 @Composable
 private fun WorkspaceDaySection(
@@ -484,6 +496,7 @@ private fun WorkspaceDaySection(
     selectedDayReadOnly: Boolean,
     todayDate: LocalDate,
     onUiEvent: (HrnsUiEvent) -> Unit,
+    strings: AppStrings,
 ) {
     val colors = LocalHrnsColors.current
     val selectedIndex = workspaceDays.indexOfFirst { it.isSelected }
@@ -495,26 +508,26 @@ private fun WorkspaceDaySection(
     val pageItems = workspaceDays.drop(clampedPage * WORKSPACE_DAY_PAGE_SIZE).take(WORKSPACE_DAY_PAGE_SIZE)
     val todayListed = workspaceDays.any { it.date == todayDate }
 
-    SectionCard(title = "작업 날짜", eyebrow = "Workspace days") {
+    SectionCard(title = strings.setup.workspaceDaysTitle, eyebrow = "Workspace days") {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (!todayListed) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "오늘 · $todayDate",
+                            text = "${strings.setup.todayPrefix} $todayDate",
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = (-0.1).sp),
                             fontWeight = FontWeight.SemiBold,
                             color = colors.primaryText,
                         )
                         Text(
-                            text = "아직 오늘 작업을 시작하지 않았습니다.",
+                            text = strings.setup.todayNotStartedNotice,
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                             color = colors.tertiaryText,
                         )
                     }
                     PlaceholderActionButton(
-                        text = "오늘 작업 시작",
-                        primary = true,
+                        text = strings.setup.selectTodayDateButton,
+                        primary = false,
                         enabled = true,
                         onClick = { onUiEvent(HrnsUiEvent.WorkspaceDaySelected(todayDate)) },
                     )
@@ -524,7 +537,7 @@ private fun WorkspaceDaySection(
 
             if (workspaceDays.isEmpty()) {
                 Text(
-                    text = "유효한 yyyy-MM-dd 날짜 폴더가 없습니다.",
+                    text = strings.setup.noValidDayFoldersNotice,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                     color = colors.tertiaryText,
                 )
@@ -545,15 +558,15 @@ private fun WorkspaceDaySection(
                                 modifier = Modifier.weight(1f),
                             )
                             if (day.isSelected && selectedDayReadOnly) {
-                                StatusChip(text = "읽기 전용", tone = "muted")
+                                StatusChip(text = strings.setup.readOnlyChip, tone = "muted")
                                 Spacer(Modifier.width(8.dp))
                             }
                             if (day.isSelected) {
                                 // 흐린 disabled 버튼 대신 고대비 chip으로 현재 선택을 명확히 표시한다(새 Phase 8 §6).
-                                StatusChip(text = "선택됨", tone = "accent")
+                                StatusChip(text = strings.setup.selectedChip, tone = "accent")
                             } else {
                                 PlaceholderActionButton(
-                                    text = "열기",
+                                    text = strings.setup.openButton,
                                     enabled = true,
                                     onClick = { onUiEvent(HrnsUiEvent.WorkspaceDaySelected(day.date)) },
                                 )
@@ -568,7 +581,7 @@ private fun WorkspaceDaySection(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         PlaceholderActionButton(
-                            text = "이전",
+                            text = strings.setup.previousButton,
                             enabled = clampedPage > 0,
                             onClick = { page = clampedPage - 1 },
                         )
@@ -578,7 +591,7 @@ private fun WorkspaceDaySection(
                             color = colors.tertiaryText,
                         )
                         PlaceholderActionButton(
-                            text = "다음",
+                            text = strings.setup.nextButton,
                             enabled = clampedPage < pageCount - 1,
                             onClick = { page = clampedPage + 1 },
                         )
@@ -589,7 +602,7 @@ private fun WorkspaceDaySection(
     }
 }
 @Composable
-private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) -> Unit) {
+private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) -> Unit, strings: AppStrings) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
@@ -608,17 +621,17 @@ private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) ->
             StatusChip(text = project.runtimeSourceLabel, tone = "muted", showDot = false)
             if (project.isActive) {
                 Spacer(Modifier.width(8.dp))
-                StatusChip(text = "활성", tone = "success")
+                StatusChip(text = strings.setup.activeLabel, tone = "success")
             }
         }
         PlaceholderActionButton(
-            text = "선택",
+            text = strings.setup.selectButton,
             enabled = !project.isActive,
             onClick = { onUiEvent(HrnsUiEvent.ProjectSelected(project.id)) },
         )
         Spacer(Modifier.width(8.dp))
         PlaceholderActionButton(
-            text = "삭제",
+            text = strings.setup.deleteButton,
             enabled = true,
             onClick = { onUiEvent(HrnsUiEvent.ProjectDeletionRequested(project.id)) },
         )
@@ -635,6 +648,7 @@ private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) ->
 private fun ProjectRegistrationForm(
     onUiEvent: (HrnsUiEvent) -> Unit,
     registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
+    strings: AppStrings,
 ) {
     var displayName by remember { mutableStateOf("") }
     var workspaceRoot by remember { mutableStateOf("") }
@@ -654,17 +668,17 @@ private fun ProjectRegistrationForm(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "새 프로젝트 등록",
+            text = strings.setup.registrationFormTitle,
             style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
             fontWeight = FontWeight.SemiBold,
             color = colors.primaryText,
         )
         Text(
-            text = "기본값은 개발용 내장 SDK(.local\\harness-kit)입니다. Kit 경로를 직접 입력할 필요가 없습니다.",
+            text = strings.setup.registrationFormHint,
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
             color = colors.tertiaryText,
         )
-        LabeledTextField(label = "표시명", value = displayName, onValueChange = { displayName = it })
+        LabeledTextField(label = strings.setup.displayNameLabel, value = displayName, onValueChange = { displayName = it })
         LabeledTextField(
             label = "Workspace root",
             value = workspaceRoot,
@@ -680,7 +694,7 @@ private fun ProjectRegistrationForm(
         LabeledTextField(label = "Profile", value = profileId, onValueChange = { profileId = it })
 
         PlaceholderActionButton(
-            text = if (showAdvanced) "고급 설정 숨기기" else "고급 설정",
+            text = if (showAdvanced) strings.setup.hideAdvancedButton else strings.setup.showAdvancedButton,
             enabled = true,
             onClick = { showAdvanced = !showAdvanced },
         )
@@ -689,7 +703,7 @@ private fun ProjectRegistrationForm(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = useExternalKit, onCheckedChange = { useExternalKit = it })
                     Text(
-                        text = "외부 Harness Kit 사용",
+                        text = strings.setup.useExternalKitLabel,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                         color = colors.primaryText,
                     )
@@ -701,7 +715,7 @@ private fun ProjectRegistrationForm(
         }
 
         PlaceholderActionButton(
-            text = if (registrationFeedback is RegistrationFeedback.Running) "진단 중…" else "진단 후 등록",
+            text = if (registrationFeedback is RegistrationFeedback.Running) strings.setup.diagnosingButton else strings.setup.diagnoseAndRegisterButton,
             primary = true,
             enabled = registrationFeedback !is RegistrationFeedback.Running &&
                 displayName.isNotBlank() && workspaceRoot.isNotBlank() &&
@@ -723,7 +737,7 @@ private fun ProjectRegistrationForm(
             },
         )
 
-        RegistrationFeedbackRow(registrationFeedback)
+        RegistrationFeedbackRow(registrationFeedback, strings)
     }
 }
 
@@ -732,7 +746,7 @@ private fun ProjectRegistrationForm(
  * 사용자가 놓치는 일이 없어야 한다는 QA 요구를 그대로 반영한다.
  */
 @Composable
-private fun RegistrationFeedbackRow(feedback: RegistrationFeedback) {
+private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: AppStrings) {
     val colors = LocalHrnsColors.current
     when (feedback) {
         RegistrationFeedback.Idle -> Unit
@@ -741,17 +755,17 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback) {
             InlineSpinner()
             Spacer(Modifier.width(10.dp))
             Text(
-                text = "연결 점검과 호환성을 확인하는 중입니다…",
+                text = strings.setup.registrationRunningNotice,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 color = colors.secondaryText,
             )
         }
 
         is RegistrationFeedback.Success -> Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusChip(text = "등록 완료", tone = "success")
+            StatusChip(text = strings.setup.registrationCompleteChip, tone = "success")
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "'${feedback.projectName}' 프로젝트를 등록했습니다.",
+                text = "${strings.setup.registeredNoticePrefix}${feedback.projectName}${strings.setup.registeredNoticeSuffix}",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 color = colors.primaryText,
             )
@@ -759,7 +773,7 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback) {
 
         is RegistrationFeedback.Failure -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusChip(text = "등록 실패", tone = "danger")
+                StatusChip(text = strings.setup.registrationFailedChip, tone = "danger")
             }
             Text(
                 text = feedback.whatHappened,
@@ -784,18 +798,19 @@ fun CockpitScreen(
     projection: CockpitProjection,
     onAction: (UiAction) -> Unit,
 ) {
+    val strings = appStrings(LocalAppLocale.current)
     ScreenContainer {
         ScreenHero(
             eyebrow = "02 · Today",
-            title = "작업 현황" + (projection.projectName?.let { " · $it" } ?: ""),
+            title = strings.cockpit.titlePrefix + (projection.projectName?.let { " · $it" } ?: ""),
             subtitle = projection.dateLabel,
             statusContent = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (projection.isStale) {
-                        StatusChip(text = "오래된 정보", tone = "warning")
+                        StatusChip(text = strings.cockpit.staleChip, tone = "warning")
                     }
                     if (projection.isReadOnlyDay) {
-                        StatusChip(text = "읽기 전용", tone = "muted")
+                        StatusChip(text = strings.cockpit.readOnlyChip, tone = "muted")
                     }
                 }
             },
@@ -803,38 +818,50 @@ fun CockpitScreen(
 
         projection.runtimeSourceDiagnostics?.let { diagnostics ->
             CockpitDiagnosticsCard(
-                title = "Runtime source 확인 (${projection.runtimeSourceLabel})",
+                title = "${strings.cockpit.runtimeSourceCheckTitlePrefix} (${projection.runtimeSourceLabel})",
                 eyebrow = "Runtime source",
                 diagnostics = diagnostics,
+                strings = strings,
             )
         }
 
         projection.compatibilityDiagnostics?.let { diagnostics ->
             CockpitDiagnosticsCard(
-                title = "Harness 호환성 확인",
+                title = strings.cockpit.compatibilityCheckTitle,
                 eyebrow = "Compatibility",
                 diagnostics = diagnostics,
+                strings = strings,
             )
         }
 
         projection.diagnostics?.let { diagnostics ->
             CockpitDiagnosticsCard(
-                title = "확인이 필요합니다",
-                eyebrow = "상태 진단",
+                title = strings.cockpit.needsReviewTitle,
+                eyebrow = strings.cockpit.diagnosticsEyebrow,
                 diagnostics = diagnostics,
+                strings = strings,
             )
         }
 
-        SectionCard(title = "현재 상태", eyebrow = "State") {
-            KeyValueGrid(rows = cockpitStateRows(projection))
+        SectionCard(title = strings.cockpit.stateTitle, eyebrow = "State") {
+            KeyValueGrid(rows = cockpitStateRows(projection, strings))
         }
 
-        SectionCard(title = "기준 파일", eyebrow = "Artifacts") {
+        SectionCard(title = strings.cockpit.artifactsTitle, eyebrow = "Artifacts") {
             InlineChips(chips = projection.artifactItems)
         }
 
-        SectionCard(title = "다음 작업", eyebrow = "Next action") {
-            CockpitActionButtonGroup(cockpitActions(projection), onAction)
+        SectionCard(title = strings.cockpit.nextActionTitle, eyebrow = "Next action") {
+            // 새 Phase 8 보완 §2.1: BootstrapDay 실행 CTA는 작업 계획 화면에만 둔다 — 여기서는
+            // 같은 typed action을 다시 실행하지 않고, 순수 navigation(ReviewPlan)으로 대체한다.
+            val actions = cockpitActions(projection).map { item ->
+                if (item.action == UiAction.BootstrapDay) {
+                    item.copy(action = UiAction.ReviewPlan, label = strings.cockpit.goToPlanButton)
+                } else {
+                    item
+                }
+            }
+            CockpitActionButtonGroup(actions, onAction)
         }
     }
 }
@@ -844,37 +871,39 @@ private fun CockpitDiagnosticsCard(
     title: String,
     eyebrow: String,
     diagnostics: CockpitDiagnostics,
+    strings: AppStrings,
 ) {
     SectionCard(title = title, eyebrow = eyebrow, warning = true) {
         KeyValueGrid(
             rows = listOf(
-                "최근 작업 기록" to diagnostics.whatHappened,
-                "마지막 정상 상태" to if (diagnostics.lastKnownGoodPreserved) {
-                    "보존됨 (아래는 마지막 정상 값입니다)"
+                strings.cockpit.whatHappenedLabel to diagnostics.whatHappened,
+                strings.cockpit.lastKnownGoodLabel to if (diagnostics.lastKnownGoodPreserved) {
+                    strings.cockpit.lastKnownGoodPreservedValue
                 } else {
-                    "없음"
+                    strings.cockpit.noneValue
                 },
-                "다음 작업" to diagnostics.nextStep,
+                strings.cockpit.nextStepLabel to diagnostics.nextStep,
             ),
         )
     }
 }
 
-private fun cockpitStateRows(projection: CockpitProjection): List<Pair<String, String>> = buildList {
-    add("프로필" to projection.profileLabel)
-    add("작업 단계" to projection.phaseLabel)
-    add("작업 상태" to projection.statusLabel)
-    add("작업 대기열 상태" to projection.queueStatusLabel)
-    add("현재 작업 카드" to (projection.activeCardId ?: "없음"))
-    add("현재 작업 단위" to (projection.activeSliceId ?: "없음"))
-    add("허용된 대상 파일" to (projection.authorizedTargetLabel ?: "없음"))
-    projection.stopReasonLabel?.let { add("중단 사유" to it) }
-    projection.blockedReasonLabel?.takeIf { it.isNotBlank() }?.let { add("차단 사유" to it) }
-    add("작업 기준 점검" to projection.opsValidationLabel)
-    add("마감 상태" to projection.closureLabel)
-    add("실행 완료 여부" to projection.executionCompletedLabel)
-    add("마지막 정상 상태 읽기" to (projection.lastSuccessfulReadAtLabel ?: "없음"))
-    add("마지막 읽기 시도" to (projection.lastAttemptAtLabel ?: "없음"))
+private fun cockpitStateRows(projection: CockpitProjection, strings: AppStrings): List<Pair<String, String>> = buildList {
+    val s = strings.cockpit
+    add(s.profileLabel to projection.profileLabel)
+    add(s.phaseLabel to projection.phaseLabel)
+    add(s.statusLabel to projection.statusLabel)
+    add(s.queueStatusLabel to projection.queueStatusLabel)
+    add(s.activeCardLabel to (projection.activeCardId ?: s.noneValue))
+    add(s.activeSliceLabel to (projection.activeSliceId ?: s.noneValue))
+    add(s.authorizedTargetLabel to (projection.authorizedTargetLabel ?: s.noneValue))
+    projection.stopReasonLabel?.let { add(s.stopReasonLabel to it) }
+    projection.blockedReasonLabel?.takeIf { it.isNotBlank() }?.let { add(s.blockedReasonLabel to it) }
+    add(s.opsValidationLabel to projection.opsValidationLabel)
+    add(s.closureLabel to projection.closureLabel)
+    add(s.executionCompletedLabel to projection.executionCompletedLabel)
+    add(s.lastSuccessfulReadLabel to (projection.lastSuccessfulReadAtLabel ?: s.noneValue))
+    add(s.lastAttemptLabel to (projection.lastAttemptAtLabel ?: s.noneValue))
 }
 
 /** typed action identity와 정책이 정한 enabled 상태를 보존하고 primary 하나만 앞에 둔다. */
@@ -914,6 +943,7 @@ fun StrategyScreen(
     onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
+    val strings = appStrings(LocalAppLocale.current)
     var showRequestModal by remember { mutableStateOf(false) }
 
     // 저장 성공은 feedback으로 알리고 modal을 닫는다 — 다음 저장을 위해 requestSaveSucceeded는
@@ -930,45 +960,66 @@ fun StrategyScreen(
             statusContent = { StatusChip(projection.statusChip) },
         )
 
-        // 요구사항을 바로 추가해야 하는 사용자의 주 동작이므로 계획 상세보다 먼저 둔다.
-        // 파일명(REQUEST_INBOX.md)보다 입력 목적을 먼저 설명한다(새 Phase 8 §3).
-        SectionCard(title = "요구사항 작성", eyebrow = "Request") {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "오늘 해결할 문제, 기대 결과, 제약 조건을 적어 주세요. (저장 위치: REQUEST_INBOX.md · 구조화된 계획 입력은 REQUEST_STRUCTURED.md에서 별도로 다룹니다.)",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                    color = colors.tertiaryText,
-                )
-                projection.requestInboxNotice?.let {
+        // 새 Phase 8 보완 §2.1: 실제 Bootstrap 실행 CTA는 이 카드 한 곳에만 둔다. Missing state가
+        // BootstrapDay-eligible이면 비활성 "요구사항 작성" 대신 설명과 활성 "오늘 작업 시작"을
+        // 보여주고, 그렇지 않으면 기존 요구사항 작성 흐름을 그대로 보여준다.
+        val bootstrapAction = projection.bootstrapAction
+        if (projection.bootstrapEligible && bootstrapAction != null) {
+            SectionCard(title = strings.strategy.startWorkTitle, eyebrow = "Request") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
-                        color = colors.accent,
+                        text = strings.strategy.startWorkExplanation,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                        color = colors.secondaryText,
+                    )
+                    PlaceholderActionButton(
+                        action = bootstrapAction,
+                        primary = true,
+                        onClick = { onUiEvent(HrnsUiEvent.ActionRequested(UiAction.BootstrapDay)) },
                     )
                 }
-                PlaceholderActionButton(
-                    text = "요구사항 작성",
-                    primary = true,
-                    enabled = projection.requestEditingEnabled,
-                    onClick = { showRequestModal = true },
-                )
-                if (!projection.requestEditingEnabled) {
+            }
+        } else {
+            // 요구사항을 바로 추가해야 하는 사용자의 주 동작이므로 계획 상세보다 먼저 둔다.
+            // 파일명(REQUEST_INBOX.md)보다 입력 목적을 먼저 설명한다(새 Phase 8 §3).
+            SectionCard(title = strings.strategy.requestSectionTitle, eyebrow = "Request") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "현재 날짜 또는 상태에서는 요구사항을 작성할 수 없습니다. 새로고침한 뒤 다시 확인하세요.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        text = strings.strategy.requestSectionHint,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
                         color = colors.tertiaryText,
                     )
+                    projection.requestInboxNotice?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                            color = colors.accent,
+                        )
+                    }
+                    PlaceholderActionButton(
+                        text = strings.strategy.writeRequestButton,
+                        primary = true,
+                        enabled = projection.requestEditingEnabled,
+                        onClick = { showRequestModal = true },
+                    )
+                    if (!projection.requestEditingEnabled) {
+                        Text(
+                            text = projection.blockedReasonLabel ?: strings.strategy.blockedNoticeFallback,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = colors.tertiaryText,
+                        )
+                    }
                 }
             }
         }
 
-        DevelopmentStrategyCard(projection.developmentStrategy)
+        DevelopmentStrategyCard(projection.developmentStrategy, strings)
 
         projection.sections.forEach { section ->
             ProjectionInfoCard(section)
         }
 
-        SectionCard(title = "실행 작업", eyebrow = "Actions") {
+        SectionCard(title = strings.actionsSectionTitle, eyebrow = "Actions") {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 ActionButtonGroup(projection.actions, onAction = { action -> onUiEvent(HrnsUiEvent.ActionRequested(action)) })
                 Text(
@@ -979,7 +1030,7 @@ fun StrategyScreen(
                     ),
                     color = colors.tertiaryText,
                 )
-                runStatusProjection?.let { HarnessRunFeedback(it, onUiEvent) }
+                runStatusProjection?.let { HarnessRunFeedback(it, onUiEvent, strings) }
             }
         }
     }
@@ -992,6 +1043,7 @@ fun StrategyScreen(
             notice = projection.requestInboxNotice,
             onSubmit = { draft -> onUiEvent(HrnsUiEvent.RequestEntrySubmitted(draft)) },
             onDismiss = { showRequestModal = false },
+            strings = strings,
         )
     }
 }
@@ -1002,26 +1054,26 @@ fun StrategyScreen(
  * 계획으로 오인하지 않도록 날짜 배지를 항상 함께 보인다.
  */
 @Composable
-private fun DevelopmentStrategyCard(model: DevelopmentStrategyCardModel) {
+private fun DevelopmentStrategyCard(model: DevelopmentStrategyCardModel, strings: AppStrings) {
     val colors = LocalHrnsColors.current
     SectionCard(
-        title = "개발 전략",
+        title = strings.strategy.developmentStrategyTitle,
         eyebrow = "TODAY_STRATEGY.md",
         trailing = {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusChip(text = model.dateLabel, tone = "muted", showDot = false)
-                StatusChip(text = if (model.isReadOnlyDay) "과거 날짜 · 원문" else "원문", tone = "muted", showDot = false)
+                StatusChip(
+                    text = if (model.isReadOnlyDay) strings.strategy.pastRawChip else strings.strategy.rawChip,
+                    tone = "muted",
+                    showDot = false,
+                )
             }
         },
     ) {
         val text = model.text
         if (text.isNullOrBlank()) {
             Text(
-                text = if (model.isReadOnlyDay) {
-                    "이 날짜에는 작성된 개발 전략이 없습니다."
-                } else {
-                    "아직 오늘의 개발 전략이 없습니다. 요구사항을 저장하고 계획을 생성하면 여기에 나타납니다."
-                },
+                text = if (model.isReadOnlyDay) strings.strategy.noStrategyPastNotice else strings.strategy.noStrategyTodayNotice,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                 color = colors.tertiaryText,
             )
@@ -1044,8 +1096,10 @@ private fun RequestEntryModal(
     notice: String?,
     onSubmit: (RequestEntryDraft) -> Unit,
     onDismiss: () -> Unit,
+    strings: AppStrings,
 ) {
     val colors = LocalHrnsColors.current
+    val e = strings.requestEditor
     var title by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(RequestEntryType.Bug) }
     var source by remember { mutableStateOf(RequestEntrySource.Human) }
@@ -1070,23 +1124,23 @@ private fun RequestEntryModal(
         if (isDirty) showUnsavedConfirm = true else onDismiss()
     }
 
-    ModalDialog(title = "요구사항 작성", onDismissRequest = ::attemptClose) {
+    ModalDialog(title = e.modalTitle, onDismissRequest = ::attemptClose) {
         if (showUnsavedConfirm) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    text = "저장하지 않은 변경사항이 있습니다. 닫으시겠습니까?",
+                    text = e.unsavedChangesPrompt,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
                     color = colors.primaryText,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PlaceholderActionButton(
-                        text = "계속 작성",
+                        text = e.continueEditingButton,
                         primary = true,
                         enabled = true,
                         onClick = { showUnsavedConfirm = false },
                     )
                     PlaceholderActionButton(
-                        text = "저장하지 않고 닫기",
+                        text = e.discardAndCloseButton,
                         enabled = true,
                         onClick = onDismiss,
                     )
@@ -1095,35 +1149,35 @@ private fun RequestEntryModal(
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "오늘 해결할 문제, 기대 결과, 제약 조건을 자유롭게 적어 주세요. 구조화된 계획 입력은 REQUEST_STRUCTURED.md에서 별도로 다룹니다.",
+                    text = e.hint,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
                     color = colors.tertiaryText,
                 )
-                LabeledTextField(label = "제목", value = title, onValueChange = { title = it })
+                LabeledTextField(label = e.titleFieldLabel, value = title, onValueChange = { title = it })
                 EnumOptionRow(
-                    label = "유형",
+                    label = e.typeLabel,
                     options = RequestEntryType.entries,
                     selected = type,
                     optionLabel = { it.label },
                     onSelect = { type = it },
                 )
                 EnumOptionRow(
-                    label = "출처",
+                    label = e.sourceLabel,
                     options = RequestEntrySource.entries,
                     selected = source,
                     optionLabel = { it.label },
                     onSelect = { source = it },
                 )
                 EnumOptionRow(
-                    label = "우선순위",
+                    label = e.priorityLabel,
                     options = RequestEntryPriority.entries,
                     selected = priority,
                     optionLabel = { it.label },
                     onSelect = { priority = it },
                 )
-                LabeledTextField(label = "요약", value = summary, onValueChange = { summary = it })
-                LabeledTextField(label = "상세", value = detail, onValueChange = { detail = it }, multiline = true)
-                LabeledTextField(label = "제약", value = constraints, onValueChange = { constraints = it }, multiline = true)
+                LabeledTextField(label = e.summaryFieldLabel, value = summary, onValueChange = { summary = it })
+                LabeledTextField(label = e.detailFieldLabel, value = detail, onValueChange = { detail = it }, multiline = true)
+                LabeledTextField(label = e.constraintsFieldLabel, value = constraints, onValueChange = { constraints = it }, multiline = true)
 
                 notice?.let {
                     Text(
@@ -1134,14 +1188,14 @@ private fun RequestEntryModal(
                 }
 
                 val blockReason = when {
-                    saving -> "저장 중입니다…"
-                    !editingEnabled -> "현재 날짜 또는 상태에서는 요구사항을 저장할 수 없습니다."
-                    title.isBlank() || summary.isBlank() -> "제목과 요약을 입력하세요."
+                    saving -> e.savingNotice
+                    !editingEnabled -> e.notAllowedNotice
+                    title.isBlank() || summary.isBlank() -> e.titleAndSummaryRequiredNotice
                     else -> null
                 }
 
                 PlaceholderActionButton(
-                    text = if (saving) "저장 중..." else "요구사항 저장",
+                    text = if (saving) e.savingButton else e.saveButton,
                     primary = true,
                     enabled = editingEnabled && !saving && title.isNotBlank() && summary.isNotBlank(),
                     onClick = {
@@ -1180,15 +1234,16 @@ private fun RequestEntryModal(
  * 카드 하나를 공유해도 항상 실제로 진행 중이거나 마지막으로 실행된 action만 보여준다.
  */
 @Composable
-private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit) {
+private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit, strings: AppStrings) {
     val colors = LocalHrnsColors.current
+    val locale = LocalAppLocale.current
 
     if (runStatus.isRunning) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             InlineSpinner()
             Spacer(Modifier.width(10.dp))
             Text(
-                text = "${runStatus.lastCommandKind?.displayLabel() ?: "실행"} 진행 중입니다…",
+                text = "${runStatus.lastCommandKind?.displayLabel(locale) ?: strings.actionsSectionTitle} ${strings.strategy.runningSuffix}",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 color = colors.secondaryText,
             )
@@ -1205,7 +1260,7 @@ private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsU
             runStatus.lastCompletedAtLabel?.let { completedAt ->
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "완료 $completedAt",
+                    text = "${strings.strategy.completedAtPrefix} $completedAt",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = colors.tertiaryText,
                 )
@@ -1221,14 +1276,14 @@ private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsU
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             kind.toRetryAction()?.let { retryAction ->
                 PlaceholderActionButton(
-                    text = kind.retryLabel(),
+                    text = kind.retryLabel(locale),
                     enabled = true,
                     onClick = { onUiEvent(HrnsUiEvent.ActionRequested(retryAction)) },
                 )
             }
             if (runStatus.cancelEnabled) {
                 PlaceholderActionButton(
-                    text = "실행 취소",
+                    text = strings.strategy.cancelRunButton,
                     enabled = true,
                     onClick = { onUiEvent(HrnsUiEvent.HarnessRunCancelRequested) },
                 )
@@ -1244,6 +1299,7 @@ private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsU
 @Composable
 fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit) {
     val colors = LocalHrnsColors.current
+    val strings = appStrings(LocalAppLocale.current)
 
     ScreenContainer {
         ScreenHero(
@@ -1252,12 +1308,12 @@ fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit)
             subtitle = projection.subtitle,
         )
 
-        SectionCard(title = "실행 상세", eyebrow = "Details") {
+        SectionCard(title = strings.run.detailTitle, eyebrow = "Details") {
             // 기본 화면에서는 접어 둔다 — 필요할 때만 펼쳐서 보는 저수준 상세 정보다(새 Phase 6).
             var stagesExpanded by remember { mutableStateOf(false) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PlaceholderActionButton(
-                    text = if (stagesExpanded) "진행 단계 접기" else "진행 단계 보기",
+                    text = if (stagesExpanded) strings.run.hideStagesButton else strings.run.showStagesButton,
                     enabled = true,
                     onClick = { stagesExpanded = !stagesExpanded },
                 )
@@ -1269,27 +1325,27 @@ fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit)
             }
         }
 
-        SectionCard(title = "실행 로그", eyebrow = "Console") {
+        SectionCard(title = strings.run.consoleTitle, eyebrow = "Console") {
             ConsoleBlock(lines = projection.consoleLines)
         }
 
-        SectionCard(title = "단계 상세", eyebrow = "Detail") {
+        SectionCard(title = strings.run.stageDetailTitle, eyebrow = "Detail") {
             KeyValueGrid(rows = projection.stageDetailRows)
         }
 
-        SectionCard(title = "실패 유형", eyebrow = "Failures") {
+        SectionCard(title = strings.run.failuresTitle, eyebrow = "Failures") {
             InlineChips(chips = projection.failureChips)
         }
 
-        SectionCard(title = "실행 작업", eyebrow = "Actions") {
+        SectionCard(title = strings.actionsSectionTitle, eyebrow = "Actions") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PlaceholderActionButton(
-                    text = "실행 취소",
+                    text = strings.run.cancelRunButton,
                     enabled = projection.cancelEnabled,
                     onClick = { onUiEvent(HrnsUiEvent.HarnessRunCancelRequested) },
                 )
                 PlaceholderActionButton(
-                    text = "잠금 강제 해제",
+                    text = strings.run.forceReleaseLockButton,
                     enabled = projection.forceReleaseEnabled,
                     onClick = { onUiEvent(HrnsUiEvent.LockForceReleaseRequested) },
                 )
@@ -1407,6 +1463,7 @@ private fun ConsoleDot(color: androidx.compose.ui.graphics.Color) {
 @Composable
 fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> Unit = {}) {
     val colors = LocalHrnsColors.current
+    val strings = appStrings(LocalAppLocale.current)
     var incompleteHandoffAcknowledged by remember(projection.incompleteHandoffItems) { mutableStateOf(false) }
 
     ScreenContainer {
@@ -1418,24 +1475,24 @@ fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> U
 
         val card = projection.activeCard
         if (card != null) {
-            SectionCard(title = card.title, eyebrow = "최근 작업 기록 · 보존된 기록 · 허용된 행동") {
+            SectionCard(title = card.title, eyebrow = strings.recovery.activeCardEyebrow) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    RecoveryFact(label = "최근 작업 기록", value = card.whatHappened)
-                    RecoveryFact(label = "보존된 기록", value = card.preservedRecord)
-                    RecoveryFact(label = "현재 허용된 행동", value = card.allowedNextAction)
+                    RecoveryFact(label = strings.recovery.whatHappenedLabel, value = card.whatHappened)
+                    RecoveryFact(label = strings.recovery.preservedRecordLabel, value = card.preservedRecord)
+                    RecoveryFact(label = strings.recovery.allowedNextActionLabel, value = card.allowedNextAction)
                 }
             }
         } else {
-            SectionCard(title = "복구가 필요한 문제 없음", eyebrow = "Recovery") {
+            SectionCard(title = strings.recovery.noIssueTitle, eyebrow = "Recovery") {
                 Text(
-                    text = "현재 관측된 stop reason이나 queue blocked marker가 없습니다.",
+                    text = strings.recovery.noIssueNotice,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                     color = colors.secondaryText,
                 )
             }
         }
 
-        SectionCard(title = "마감 체크리스트", eyebrow = "Closure") {
+        SectionCard(title = strings.recovery.closureChecklistTitle, eyebrow = "Closure") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 InlineChips(chips = projection.closureChecklistRows)
                 Text(
@@ -1461,7 +1518,7 @@ fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> U
                                 onCheckedChange = { incompleteHandoffAcknowledged = it },
                             )
                             Text(
-                                text = "위 미완료 항목을 인지했으며 이 상태로 마감을 진행합니다.",
+                                text = strings.recovery.acknowledgeIncompleteHandoffLabel,
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                                 color = colors.primaryText,
                             )
@@ -1471,20 +1528,20 @@ fun RecoveryScreen(projection: RecoveryProjection, onUiEvent: (HrnsUiEvent) -> U
             }
         }
 
-        SectionCard(title = "읽기 전용 진단", eyebrow = "상태 진단") {
+        SectionCard(title = strings.recovery.readOnlyDiagnosticsTitle, eyebrow = strings.recovery.diagnosticsEyebrow) {
             KeyValueGrid(
                 rows = listOf(
-                    "연속성 진단" to projection.continuityDiagnosticsLabel,
-                    "Usage ledger" to projection.usageLedgerLabel,
-                    "실패 이력" to projection.failureHistoryLabel,
-                    "마지막 정상 State" to projection.lastKnownGoodLabel,
-                    "Harness 호환성" to projection.compatibilityLabel,
-                    "잠금" to projection.lockLabel,
+                    strings.recovery.continuityDiagnosticsLabel to projection.continuityDiagnosticsLabel,
+                    strings.recovery.usageLedgerLabel to projection.usageLedgerLabel,
+                    strings.recovery.failureHistoryLabel to projection.failureHistoryLabel,
+                    strings.recovery.lastKnownGoodStateLabel to projection.lastKnownGoodLabel,
+                    strings.recovery.compatibilityLabel to projection.compatibilityLabel,
+                    strings.recovery.lockLabel to projection.lockLabel,
                 ),
             )
         }
 
-        SectionCard(title = "실행 작업", eyebrow = "Actions") {
+        SectionCard(title = strings.actionsSectionTitle, eyebrow = "Actions") {
             val gatedActions = projection.actions.map { action ->
                 if (
                     action.action == UiAction.RunClosureValidation &&
@@ -1534,6 +1591,7 @@ private fun RecoveryFact(label: String, value: String) {
 @Composable
 private fun PathProbeRow(result: PathProbeResult) {
     val colors = LocalHrnsColors.current
+    val locale = LocalAppLocale.current
 
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1548,7 +1606,7 @@ private fun PathProbeRow(result: PathProbeResult) {
                 modifier = Modifier.weight(1f),
             )
             StatusChip(
-                text = result.state.koreanLabel(),
+                text = result.state.localizedLabel(locale),
                 tone = result.state.tone(),
             )
         }
@@ -1565,7 +1623,7 @@ private fun PathProbeRow(result: PathProbeResult) {
         }
         if (result.message.isNotBlank()) {
             Text(
-                text = result.message,
+                text = localizeInfraLabel(result.message, locale),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                 color = colors.tertiaryText,
             )
@@ -1574,7 +1632,7 @@ private fun PathProbeRow(result: PathProbeResult) {
         // 안내한다. 등록·경로 지정은 모두 이 화면(프로젝트 관리) 아래 카드에서 이뤄진다.
         if (result.state == PathProbeState.NotConfigured) {
             Text(
-                text = result.unsetGuidance(),
+                text = result.unsetGuidance(locale),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
                 color = colors.accent,
             )
@@ -1582,22 +1640,40 @@ private fun PathProbeRow(result: PathProbeResult) {
     }
 }
 
-private fun PathProbeResult.unsetGuidance(): String =
-    when (label) {
-        "KitRoot" -> "기본값은 개발용 내장 SDK입니다. 외부 Harness Kit을 쓰려면 아래 프로젝트 관리 > 고급 설정에서 경로를 지정하세요."
-        "WorkspaceRoot" -> "아래 프로젝트 관리에서 프로젝트를 등록하면 Workspace root가 채워집니다."
-        "ProjectRoot" -> "아래 프로젝트 관리에서 프로젝트를 등록하면 Repository root가 채워집니다."
-        else -> "선택 항목입니다. 필요하면 프로젝트 등록 시 함께 지정하세요."
+private fun PathProbeResult.unsetGuidance(locale: io.hrns_now.core.domain.model.AppLocale): String =
+    when (locale) {
+        io.hrns_now.core.domain.model.AppLocale.Korean -> when (label) {
+            "KitRoot" -> "기본값은 개발용 내장 SDK입니다. 외부 Harness Kit을 쓰려면 아래 프로젝트 관리 > 고급 설정에서 경로를 지정하세요."
+            "WorkspaceRoot" -> "아래 프로젝트 관리에서 프로젝트를 등록하면 Workspace root가 채워집니다."
+            "ProjectRoot" -> "아래 프로젝트 관리에서 프로젝트를 등록하면 Repository root가 채워집니다."
+            else -> "선택 항목입니다. 필요하면 프로젝트 등록 시 함께 지정하세요."
+        }
+        io.hrns_now.core.domain.model.AppLocale.English -> when (label) {
+            "KitRoot" -> "The default is the internal developer SDK. To use an external Harness Kit, set the path in project management > advanced settings below."
+            "WorkspaceRoot" -> "Registering a project in project management below fills in the workspace root."
+            "ProjectRoot" -> "Registering a project in project management below fills in the repository root."
+            else -> "This is optional. Set it together when registering a project if needed."
+        }
     }
 
-private fun PathProbeState.koreanLabel(): String =
-    when (this) {
-        PathProbeState.NotConfigured -> "미설정"
-        PathProbeState.Exists -> "확인됨"
-        PathProbeState.Missing -> "없음"
-        PathProbeState.NotReadable -> "읽기 불가"
-        PathProbeState.WrongType -> "유형 불일치"
-        PathProbeState.Unknown -> "확인 필요"
+private fun PathProbeState.localizedLabel(locale: io.hrns_now.core.domain.model.AppLocale): String =
+    when (locale) {
+        io.hrns_now.core.domain.model.AppLocale.Korean -> when (this) {
+            PathProbeState.NotConfigured -> "미설정"
+            PathProbeState.Exists -> "확인됨"
+            PathProbeState.Missing -> "없음"
+            PathProbeState.NotReadable -> "읽기 불가"
+            PathProbeState.WrongType -> "유형 불일치"
+            PathProbeState.Unknown -> "확인 필요"
+        }
+        io.hrns_now.core.domain.model.AppLocale.English -> when (this) {
+            PathProbeState.NotConfigured -> "Not configured"
+            PathProbeState.Exists -> "Confirmed"
+            PathProbeState.Missing -> "Missing"
+            PathProbeState.NotReadable -> "Not readable"
+            PathProbeState.WrongType -> "Wrong type"
+            PathProbeState.Unknown -> "Needs review"
+        }
     }
 
 private fun PathProbeState.tone(): String =

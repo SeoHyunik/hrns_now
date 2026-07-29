@@ -1,5 +1,6 @@
 package io.hrns_now.app.presentation.mapper
 
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.ArtifactReadinessState
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.BoundaryStatus
@@ -112,6 +113,7 @@ class CockpitProjectionAssemblerTest {
         compatibilityDetail: HarnessCompatibilityDetail = HarnessCompatibilityDetail.Supported(supportedManifest),
         boundary: BoundaryStatus = BoundaryStatus.Valid,
         projectConnected: Boolean = true,
+        locale: AppLocale = AppLocale.Korean,
     ) = assembler.assemble(
         projectConnected = projectConnected,
         profileLabel = "corp-default",
@@ -122,6 +124,7 @@ class CockpitProjectionAssemblerTest {
         process = ProcessRunStatus.Idle,
         lastSuccessfulReadAtLabel = "12:00:00",
         lastAttemptAtLabel = "12:00:00",
+        locale = locale,
     )
 
     private fun success(state: WorkflowState = healthyExecutionReadyState()): StateReadResult.Success =
@@ -353,5 +356,55 @@ class CockpitProjectionAssemblerTest {
 
         assertEquals(UiAction.ConnectProject, projection.primaryAction?.action)
         assertFalse(requireNotNull(projection.primaryAction).enabled)
+    }
+
+    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 Cockpit 화면 본문에도 실제로 적용되는지 확인한다. */
+    @Test
+    fun `English locale은 phase status queue 라벨과 action label을 영어로 투영한다`() {
+        val projection = assemble(success(), locale = AppLocale.English)
+
+        assertEquals("Execution ready", projection.phaseLabel)
+        assertEquals("Execution ready", projection.statusLabel)
+        assertEquals("Active", projection.queueStatusLabel)
+        assertEquals("Passed", projection.opsValidationLabel)
+        assertEquals("Not complete", projection.closureLabel)
+        assertEquals("Run selected code task", projection.primaryAction?.label)
+    }
+
+    @Test
+    fun `English locale의 blockedReasonLabel도 typed reasonKey에서 영어 문구로 투영된다`() {
+        val projection = assemble(success(), daySelection = pastSelection(), locale = AppLocale.English)
+
+        assertEquals(UiAction.OpenToday, projection.primaryAction?.action)
+        assertEquals("Past dates are read-only.", projection.blockedReasonLabel)
+    }
+
+    /**
+     * typed [io.hrns_now.core.domain.model.BlockedReasonKey]로 바뀐 뒤에는 raw 원문이 담길 수
+     * 있는 String 필드 자체가 없다 — 이 테스트는 그 타입 보장이 영어 locale에서도 유지되는지
+     * 확인한다(Phase 8 보완 §1, 이전 String.contains 검증을 대체).
+     */
+    @Test
+    fun `unknown domain raw 값은 English locale에서도 노출되지 않는다`() {
+        val secret = "raw-session-id-en-secret"
+        val unknownState = healthyExecutionReadyState().copy(
+            phase = WorkflowPhase.Unknown(secret),
+            status = WorkflowStatus.Unknown(secret),
+            stopReason = StopReason.Unknown(secret),
+            queue = healthyExecutionReadyState().queue.copy(status = QueueStatus.Unknown(secret)),
+        )
+        val projection = assemble(success(unknownState), locale = AppLocale.English)
+        val visible = listOfNotNull(
+            projection.phaseLabel,
+            projection.statusLabel,
+            projection.queueStatusLabel,
+            projection.stopReasonLabel,
+            projection.blockedReasonLabel,
+        ).joinToString(" ")
+
+        assertFalse(visible.contains(secret))
+        assertEquals("Unknown", projection.phaseLabel)
+        assertEquals("Unknown", projection.statusLabel)
+        assertEquals("Unknown", projection.queueStatusLabel)
     }
 }

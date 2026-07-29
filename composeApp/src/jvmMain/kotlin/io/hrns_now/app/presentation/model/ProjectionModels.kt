@@ -80,6 +80,16 @@ data class TodayWorkProjection(
     val requestEditingEnabled: Boolean = false,
     /** 마지막 요청 저장이 성공했는지 나타내며, 편집기는 이 값이 true일 때만 draft를 비운다. */
     val requestSaveSucceeded: Boolean = false,
+    /**
+     * 오늘 State가 Missing이고 `ActionPolicy`가 실제로 `BootstrapDay`를 primary로 허용할 때만
+     * true다(Phase 8 보완 §2.1) — 이 값이 true인 동안만 요구사항 카드가 "오늘 작업 시작" 단일
+     * CTA로 전환된다. `actions`에는 이 typed action을 중복 포함하지 않는다.
+     */
+    val bootstrapEligible: Boolean = false,
+    /** [bootstrapEligible]일 때만 채워지는 실제 실행 가능한 `BootstrapDay` 버튼 모델이다. */
+    val bootstrapAction: ActionButtonModel? = null,
+    /** 요구사항 편집이 막혀 있고 Bootstrap도 열려 있지 않을 때 보여줄 typed 차단 사유 문구다. */
+    val blockedReasonLabel: String? = null,
 )
 
 /** stop reason/blocked marker 하나의 3분리 표시다: 최근 작업 기록 / 보존된 기록 / 현재 허용 행동. */

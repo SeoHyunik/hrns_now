@@ -2086,4 +2086,31 @@ class AppViewModelTest {
         assertEquals(true, notification?.message?.contains("새 프로젝트"))
         viewModel.dispose()
     }
+
+    /**
+     * 새 Phase 8 보완 §1: locale은 assembler 단위테스트뿐 아니라 ViewModel이 실제로 조립하는
+     * registryMessage/알림 문구에도 적용돼야 한다 — `currentLocale` 배선이 끝까지 이어지는지
+     * end-to-end로 확인한다.
+     */
+    @Test
+    fun `setLocale English 이후 프로젝트 선택 registryMessage와 알림이 영어로 조립된다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = null)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) RootPathCheck.Invalid(PathIssue.NotProvided) else RootPathCheck.Valid(Path.of(raw), Path.of(raw))
+        }
+        val viewModel = newViewModel(statePort, dispatcher, registry = registry, boundaryResolver = resolver)
+        runCurrent()
+
+        viewModel.setLocale(AppLocale.English)
+        runCurrent()
+        viewModel.onEvent(HrnsUiEvent.ProjectSelected(project.id))
+        runCurrent()
+
+        val ready = viewModel.state.value as HrnsUiState.Ready
+        assertEquals(true, ready.registryMessage?.contains("Selected project"))
+        viewModel.dispose()
+    }
 }
