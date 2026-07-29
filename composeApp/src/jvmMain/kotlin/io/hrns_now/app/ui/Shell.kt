@@ -515,15 +515,13 @@ private fun BrandMark() {
     val colors = LocalHrnsColors.current
     Box(
         modifier = Modifier
-            .size(60.dp)
+            .size(48.dp)
             .shadow(
                 elevation = 6.dp,
                 shape = CircleShape,
                 ambientColor = colors.chelseaGlow,
                 spotColor = colors.chelseaGlow,
-            )
-            .background(colors.surfaceElevated, CircleShape)
-            .border(1.dp, colors.chelseaBlueSoft, CircleShape),
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Image(
