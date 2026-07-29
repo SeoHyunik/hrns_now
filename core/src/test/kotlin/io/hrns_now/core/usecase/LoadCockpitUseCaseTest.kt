@@ -201,4 +201,28 @@ class LoadCockpitUseCaseTest {
         assertEquals(validLatest, invalidExplicit.selection.workspaceDay.date)
         assertTrue(invalidExplicit.selection.isReadOnly)
     }
+
+    /**
+     * 새 Phase 8 §6: 오늘 daily directory가 아직 없어도(discovery 목록에 없어도) 명시적으로
+     * 오늘을 선택하면 그대로 허용해야 한다 — 그렇지 않으면 "오늘 작업 시작"이 조용히 과거 날짜
+     * fallback으로 되돌아간다. 오늘이 아닌 날짜는 여전히 discovery 결과에 있어야만 명시 선택된다.
+     */
+    @Test
+    fun `오늘 날짜는 탐색된 목록에 없어도 명시 선택을 그대로 허용한다`() {
+        val statePort = object : WorkflowStatePort {
+            override fun read(day: WorkspaceDay): StateReadResult =
+                StateReadResult.Missing(day.dayRoot.resolve("WORKFLOW_STATE.json"))
+        }
+        val yesterday = LocalDate.of(2026, 6, 25)
+        val useCase = useCase(
+            statePort = statePort,
+            dayDiscovery = { listOf(yesterday) },
+        )
+        val config = config("S:\\workspace")
+
+        val resolution = useCase.resolveDays(config, today)
+
+        assertEquals(today, resolution.selection.workspaceDay.date)
+        assertFalse(resolution.selection.isReadOnly)
+    }
 }

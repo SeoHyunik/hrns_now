@@ -170,7 +170,6 @@ class CockpitProjectionAssemblerTest {
     fun `비정상 읽기 결과는 각각 안전한 3분리 진단을 만든다`() {
         val secret = "raw-session-id=super-secret"
         val projections = listOf(
-            assemble(StateReadResult.Missing(Path.of("WORKFLOW_STATE.json"))),
             assemble(StateReadResult.EncodingError(secret, null)),
             assemble(StateReadResult.UnsupportedSchema(secret)),
             assemble(StateReadResult.AccessDenied(Path.of("WORKFLOW_STATE.json"))),
@@ -187,6 +186,28 @@ class CockpitProjectionAssemblerTest {
             assertFalse(visible.contains(secret))
         }
         assertEquals("확인 불가", projections.first().phaseLabel)
+    }
+
+    /**
+     * 새 Phase 8 §2.2: 오늘 날짜 + Missing state + compatibility/boundary/process 정상은
+     * `OpenRecoveryCenter`가 아니라 `BootstrapDay`를 primary CTA로 연다.
+     */
+    @Test
+    fun `오늘 날짜의 Missing state는 정상 조건에서 BootstrapDay를 primary CTA로 연다`() {
+        val projection = assemble(StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")))
+
+        assertEquals(UiAction.BootstrapDay, projection.primaryAction?.action)
+        assertEquals(setOf(UiAction.BootstrapDay, UiAction.Refresh), projection.allowedActions.map { it.action }.toSet())
+        assertNull(projection.diagnostics)
+        assertEquals("확인 불가", projection.phaseLabel)
+    }
+
+    @Test
+    fun `과거 날짜의 Missing state는 여전히 복구 센터로 fail-closed한다`() {
+        val projection = assemble(StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")), daySelection = pastSelection())
+
+        assertEquals(UiAction.OpenRecoveryCenter, projection.primaryAction?.action)
+        assertFalse(projection.allowedActions.any { it.action == UiAction.BootstrapDay })
     }
 
     @Test

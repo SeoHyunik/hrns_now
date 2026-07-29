@@ -108,7 +108,7 @@ class RunStatusProjectionAssemblerTest {
         assertTrue(projection.forceReleaseEnabled)
         val ownerRow = projection.stageDetailRows.single { it.first == "잠금 소유자" }
         assertTrue(ownerRow.second.contains("4242"))
-        assertTrue(ownerRow.second.contains("환경 점검"))
+        assertTrue(ownerRow.second.contains("연결 점검"))
         assertFalse(ownerRow.second.contains("stale"), "Active 상태에서는 stale 표시가 없어야 한다")
     }
 
@@ -134,8 +134,8 @@ class RunStatusProjectionAssemblerTest {
     fun `stage chip은 환경 점검 작업 기준 점검 두 항목을 항상 보여준다`() {
         val projection = assembler.assemble(HarnessRunViewState(), null, now)
 
-        assertTrue(projection.stages.any { it.label == "환경 점검" })
-        assertTrue(projection.stages.any { it.label == "작업 기준 점검" })
+        assertTrue(projection.stages.any { it.label == "연결 점검" })
+        assertTrue(projection.stages.any { it.label == "작업 준비 점검" })
     }
     @Test
     fun `외부 실행 가능성은 새 실행 보류 안내로 먼저 표시한다`() {
@@ -181,7 +181,7 @@ class RunStatusProjectionAssemblerTest {
         val projection = assembler.assemble(runView, lockInspection = null, now = completedAt)
 
         assertFalse(projection.isRunning)
-        assertEquals("환경 점검", projection.lastOutcome?.label)
+        assertEquals("연결 점검", projection.lastOutcome?.label)
         assertEquals("정상", projection.lastOutcome?.value)
         assertEquals("success", projection.lastOutcome?.tone)
         assertEquals("모든 점검을 통과했습니다.", projection.lastSummaryLine)

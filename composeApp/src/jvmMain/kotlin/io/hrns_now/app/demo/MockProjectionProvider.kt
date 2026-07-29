@@ -3,6 +3,7 @@ package io.hrns_now.app.demo
 import io.hrns_now.app.presentation.model.ActionButtonModel
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
+import io.hrns_now.app.presentation.model.DevelopmentStrategyCardModel
 import io.hrns_now.app.presentation.model.InfoCardModel
 import io.hrns_now.app.presentation.model.RecoveryProjection
 import io.hrns_now.app.presentation.model.RunStatusProjection
@@ -54,7 +55,7 @@ class MockProjectionProvider {
                 InfoCardModel("실행 프로필", listOf("상태" to "실행 프로필: 기본")),
             ),
             actions = listOf(
-                ActionButtonModel("환경 점검"),
+                ActionButtonModel("연결 점검"),
                 ActionButtonModel("프로젝트 연결"),
                 ActionButtonModel("프로젝트 파악 실행"),
                 ActionButtonModel("브리프 확정"),
@@ -100,6 +101,11 @@ class MockProjectionProvider {
             title = "작업 계획",
             subtitle = "선택된 단일 작업과 수동 실행 조건을 명확히 보여줍니다.",
             statusChip = StatusChipModel("코드 실행 수동 대기 code_execution_held", "", "warning"),
+            developmentStrategy = DevelopmentStrategyCardModel(
+                text = "# Demo 전략\n\ndemo 모드에서는 실제 파일을 읽지 않습니다.",
+                dateLabel = "demo",
+                isReadOnlyDay = false,
+            ),
             sections = listOf(
                 InfoCardModel("현재 선택된 작업", listOf("작업" to "선택되지 않음")),
                 InfoCardModel("실행 방식 Execution wrapper", listOf("형태" to "Execution wrapper: 미정")),

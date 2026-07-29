@@ -46,7 +46,11 @@ sealed interface HrnsUiState {
         val recovery: RecoveryProjection,
         val registryProjects: List<RegistryProjectItem>,
         val workspaceDays: List<WorkspaceDayItem>,
+        /** 오늘 날짜다(새 Phase 8 §6) — 아직 daily directory가 없어도 오늘 시작을 안내하는 데 쓴다. */
+        val todayDate: LocalDate,
         val activeProjectSourceLabel: String,
         val registryMessage: String?,
+        /** "진단 후 등록"의 진행/결과다(새 Phase 8 §1) — modal 안에서 직접 렌더링한다. */
+        val registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
     ) : HrnsUiState
 }

@@ -7,6 +7,7 @@ import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.RegistrationFeedback
 import io.hrns_now.app.presentation.model.RegistryProjectItem
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.WorkspaceDayItem
@@ -50,6 +51,8 @@ class CockpitUiStateAssembler(
         closureDecision: ClosureDecision,
         recoveryDiagnostics: RecoveryDiagnostics,
         runtimeResolution: RuntimeResolution? = null,
+        today: LocalDate = LocalDate.now(),
+        registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
     ): HrnsUiState.Ready {
         val actionPolicyCockpit = cockpitAssembler.assemble(
             projectConnected = loaded.projectConnected,
@@ -114,8 +117,10 @@ class CockpitUiStateAssembler(
                     isSelected = date == loaded.daySelection.workspaceDay.date,
                 )
             },
+            todayDate = today,
             activeProjectSourceLabel = activeProjectSource.displayLabel(),
             registryMessage = registryMessage,
+            registrationFeedback = registrationFeedback,
         )
     }
 }

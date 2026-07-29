@@ -54,6 +54,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -177,6 +179,7 @@ fun NavigationButton(
             .background(container, RoundedCornerShape(RadiusMd))
             .let { if (border != null) it.border1(border, RoundedCornerShape(RadiusMd)) else it }
             .hoverable(interaction)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -379,19 +382,30 @@ fun PlaceholderActionButton(
     onClick: () -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    // 클릭 가능한 버튼은 hover 시 손 모양 커서를 일관되게 보인다(새 Phase 8 §4.1) —
+    // disabled 버튼은 기본 화살표 커서를 유지해 클릭 불가 상태를 함께 전달한다.
+    val hoverModifier = if (enabled) {
+        modifier
+            .hoverable(interaction)
+            .pointerHoverIcon(PointerIcon.Hand)
+    } else {
+        modifier
+    }
     if (primary) {
         Button(
             onClick = onClick,
             enabled = enabled,
-            modifier = modifier,
+            modifier = hoverModifier,
+            interactionSource = interaction,
             shape = RoundedCornerShape(RadiusMd),
             colors = ButtonDefaults.buttonColors(
-                containerColor = colors.accent,
+                containerColor = if (hovered && enabled) colors.chelseaBlue else colors.accent,
                 contentColor = colors.onAccent,
                 disabledContainerColor = colors.surfaceElevated,
                 disabledContentColor = colors.tertiaryText,
-            ),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp),
+            ),            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp),
         ) {
             Text(text = text, fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp))
@@ -400,15 +414,15 @@ fun PlaceholderActionButton(
         TextButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = modifier,
+            modifier = hoverModifier,
+            interactionSource = interaction,
             shape = RoundedCornerShape(RadiusMd),
             colors = ButtonDefaults.textButtonColors(
-                containerColor = colors.surfaceElevated,
+                containerColor = if (hovered && enabled) colors.accentSoft else colors.surfaceElevated,
                 contentColor = colors.primaryText,
                 disabledContainerColor = colors.surfaceMuted,
                 disabledContentColor = colors.tertiaryText,
-            ),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp),
+            ),            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp),
         ) {
             Text(text = text, fontWeight = FontWeight.Medium,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp))
@@ -432,6 +446,13 @@ fun PlaceholderActionButton(
             enabled = action.enabled,
             onClick = onClick,
         )
+        action.description?.let { description ->
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = colors.secondaryText,
+            )
+        }
         action.helperText?.let { helper ->
             Text(
                 text = helper,
@@ -595,7 +616,10 @@ fun ModalDialog(
                         color = colors.primaryText,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = onDismissRequest) {
+                    TextButton(
+                        onClick = onDismissRequest,
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+                    ) {
                         Text("닫기", style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp))
                     }
                 }

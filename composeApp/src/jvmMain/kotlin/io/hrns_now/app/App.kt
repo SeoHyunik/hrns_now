@@ -13,14 +13,17 @@ import io.hrns_now.app.demo.MockProjectionProvider
 import io.hrns_now.app.demo.MockWorkspaceConfigProvider
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.NotificationItem
 import io.hrns_now.app.presentation.viewmodel.AppViewModel
 import io.hrns_now.app.ui.HrnsShell
 import io.hrns_now.app.ui.HrnsThemeMode
+import io.hrns_now.app.ui.LocalAppLocale
 import io.hrns_now.app.ui.LocalHrnsColors
 import io.hrns_now.app.ui.hrnsColors
 import io.hrns_now.app.ui.hrnsMaterialColorScheme
 import io.hrns_now.app.ui.hrnsTypography
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.config.PathProbeKind
 import io.hrns_now.core.config.PathProbeResult
 import io.hrns_now.core.config.PathProbeState
@@ -55,6 +58,7 @@ import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
 import io.hrns_now.infra.runtime.DeveloperSdkRuntimeResolver
 import io.hrns_now.infra.git.CommandLineGitStatusAdapter
+import io.hrns_now.infra.preferences.UiPreferencesFileAdapter
 import io.hrns_now.infra.recovery.WorkspaceRecoveryDiagnosticsAdapter
 import io.hrns_now.infra.request.RequestInboxWriterAdapter
 import io.hrns_now.infra.request.TodayStrategyFileReaderAdapter
@@ -85,6 +89,18 @@ fun App() {
         val state by productionViewModel.state.collectAsState()
         state
     }
+    val notifications: List<NotificationItem> = if (productionViewModel == null) {
+        emptyList()
+    } else {
+        val items by productionViewModel.notifications.collectAsState()
+        items
+    }
+    val locale: AppLocale = if (productionViewModel == null) {
+        AppLocale.Korean
+    } else {
+        val current by productionViewModel.locale.collectAsState()
+        current
+    }
     val onUiEvent: (HrnsUiEvent) -> Unit = remember(productionViewModel) {
         { event -> productionViewModel?.onEvent(event) }
     }
@@ -92,13 +108,23 @@ fun App() {
         { action ->
             when (action) {
                 // 순수 navigation이다 — Harness/State에 영향을 주지 않으므로 ViewModel 이벤트로 보내지 않는다.
+                // (새 Phase 8 §2.3/§5: 이전에는 이 분기 밖 action들이 else로 떨어져 ViewModel도
+                // 처리하지 않는 완전한 무반응 버튼이었다.)
                 UiAction.OpenRecoveryCenter, UiAction.ReviewClosure -> selectedRoute = AppRoute.Recovery
+                UiAction.ConnectProject, UiAction.SelectWorkspaceDay -> selectedRoute = AppRoute.Setup
+                UiAction.ReviewPlan -> selectedRoute = AppRoute.Strategy
+                UiAction.ShowCompatibilityIssue -> selectedRoute = AppRoute.Cockpit
+                UiAction.ViewExecutionStatus -> selectedRoute = AppRoute.Run
+                // OpenToday는 실제 날짜 선택(IO)이 필요해 순수 navigation이 아니다 — ViewModel이 처리한다.
                 else -> onUiEvent(HrnsUiEvent.ActionRequested(action))
             }
         }
     }
 
-    CompositionLocalProvider(LocalHrnsColors provides hrnsColors(themeMode)) {
+    CompositionLocalProvider(
+        LocalHrnsColors provides hrnsColors(themeMode),
+        LocalAppLocale provides locale,
+    ) {
         MaterialTheme(
             colorScheme = hrnsMaterialColorScheme(themeMode),
             typography = typography,
@@ -116,6 +142,12 @@ fun App() {
                 },
                 onCockpitAction = onCockpitAction,
                 onUiEvent = onUiEvent,
+                notifications = notifications,
+                onDismissNotification = { id -> productionViewModel?.dismissNotification(id) },
+                onMarkNotificationRead = { id -> productionViewModel?.markNotificationRead(id) },
+                onMarkAllNotificationsRead = { productionViewModel?.markAllNotificationsRead() },
+                locale = locale,
+                onLocaleChange = { newLocale -> productionViewModel?.setLocale(newLocale) },
             )
         }
     }
@@ -169,6 +201,7 @@ private fun demoUiState(): HrnsUiState {
         recovery = mock.recovery(),
         registryProjects = emptyList(),
         workspaceDays = emptyList(),
+        todayDate = java.time.LocalDate.now(),
         activeProjectSourceLabel = "demo",
         registryMessage = null,
     )
@@ -179,6 +212,13 @@ private fun resolveRegistryPath(): Path {
     val appData = System.getenv("APPDATA")?.trim()?.takeIf(String::isNotEmpty)
         ?: (System.getProperty("user.home") + "\\AppData\\Roaming")
     return Paths.get(appData, "hrns-now", "projects.json")
+}
+
+/** `%APPDATA%\hrns-now\ui-preferences.json` — locale처럼 UI 소유 설정 전용 경로다(새 Phase 8 §7). */
+private fun resolveUiPreferencesPath(): Path {
+    val appData = System.getenv("APPDATA")?.trim()?.takeIf(String::isNotEmpty)
+        ?: (System.getProperty("user.home") + "\\AppData\\Roaming")
+    return Paths.get(appData, "hrns-now", "ui-preferences.json")
 }
 
 /** `%LOCALAPPDATA%\hrns-now\locks\` — Harness workspace 밖의 앱 소유 lock 디렉터리다(Phase 3). */
@@ -240,6 +280,7 @@ private fun createProductionViewModel(): AppViewModel {
         saveRequest = SaveRequestUseCase(requestWriter),
         todayStrategyReader = TodayStrategyFileReaderAdapter(),
         gitStatusPort = CommandLineGitStatusAdapter(),
+        uiPreferencesPort = UiPreferencesFileAdapter(resolveUiPreferencesPath()),
         recoveryDiagnosticsPort = WorkspaceRecoveryDiagnosticsAdapter(),
     )
 }

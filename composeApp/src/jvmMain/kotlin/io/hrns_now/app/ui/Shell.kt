@@ -2,6 +2,7 @@ package io.hrns_now.app.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -33,13 +40,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.NotificationItem
+import io.hrns_now.app.presentation.model.NotificationTone
 import io.hrns_now.core.AppRoute
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.core.domain.model.ArtifactProbeResult
 import io.hrns_now.core.domain.model.ArtifactProbeState
@@ -48,6 +61,7 @@ import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.app.presentation.model.ShellProjection
 import io.hrns_now.infra.InfraMarker
+import kotlinx.coroutines.delay
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 최상위 Shell
@@ -66,6 +80,12 @@ fun HrnsShell(
     onThemeToggle: () -> Unit,
     onCockpitAction: (UiAction) -> Unit,
     onUiEvent: (HrnsUiEvent) -> Unit,
+    notifications: List<NotificationItem> = emptyList(),
+    onDismissNotification: (String) -> Unit = {},
+    onMarkNotificationRead: (String) -> Unit = {},
+    onMarkAllNotificationsRead: () -> Unit = {},
+    locale: AppLocale = AppLocale.Korean,
+    onLocaleChange: (AppLocale) -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
 
@@ -83,6 +103,12 @@ fun HrnsShell(
                 onThemeToggle = onThemeToggle,
                 onCockpitAction = onCockpitAction,
                 onUiEvent = onUiEvent,
+                notifications = notifications,
+                onDismissNotification = onDismissNotification,
+                onMarkNotificationRead = onMarkNotificationRead,
+                onMarkAllNotificationsRead = onMarkAllNotificationsRead,
+                locale = locale,
+                onLocaleChange = onLocaleChange,
             )
         }
     }
@@ -112,7 +138,14 @@ private fun ReadyShell(
     onThemeToggle: () -> Unit,
     onCockpitAction: (UiAction) -> Unit,
     onUiEvent: (HrnsUiEvent) -> Unit,
+    notifications: List<NotificationItem>,
+    onDismissNotification: (String) -> Unit,
+    onMarkNotificationRead: (String) -> Unit,
+    onMarkAllNotificationsRead: () -> Unit,
+    locale: AppLocale,
+    onLocaleChange: (AppLocale) -> Unit,
 ) {
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopRibbon(
             projection = state.shell,
@@ -121,6 +154,11 @@ private fun ReadyShell(
             readiness = state.workspaceReadiness,
             themeMode = themeMode,
             onThemeToggle = onThemeToggle,
+            notifications = notifications,
+            onDismissNotification = onDismissNotification,
+            onMarkAllNotificationsRead = onMarkAllNotificationsRead,
+            locale = locale,
+            onLocaleChange = onLocaleChange,
         )
         Row(modifier = Modifier.fillMaxSize()) {
             LeftRail(
@@ -150,8 +188,10 @@ private fun ReadyShell(
                     onCockpitAction = onCockpitAction,
                     registryProjects = state.registryProjects,
                     workspaceDays = state.workspaceDays,
+                    todayDate = state.todayDate,
                     activeProjectSourceLabel = state.activeProjectSourceLabel,
                     registryMessage = state.registryMessage,
+                    registrationFeedback = state.registrationFeedback,
                     onUiEvent = onUiEvent,
                 )
             }
@@ -163,6 +203,12 @@ private fun ReadyShell(
                     .fillMaxSize(),
             )
         }
+    }
+        NotificationToastHost(
+            notifications = notifications,
+            onMarkRead = onMarkNotificationRead,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 84.dp, end = 24.dp),
+        )
     }
 }
 
@@ -178,8 +224,14 @@ private fun TopRibbon(
     readiness: WorkspaceReadiness,
     themeMode: HrnsThemeMode,
     onThemeToggle: () -> Unit,
+    notifications: List<NotificationItem>,
+    onDismissNotification: (String) -> Unit,
+    onMarkAllNotificationsRead: () -> Unit,
+    locale: AppLocale,
+    onLocaleChange: (AppLocale) -> Unit,
 ) {
     val colors = LocalHrnsColors.current
+    val strings = chromeStrings(locale)
 
     Row(
         modifier = Modifier
@@ -209,13 +261,13 @@ private fun TopRibbon(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "프로젝트",
+                        text = strings.projectLabel,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         color = colors.tertiaryText,
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = activeProjectName ?: "선택 안 됨",
+                        text = activeProjectName ?: strings.notSelected,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         fontWeight = FontWeight.SemiBold,
                         color = when {
@@ -231,12 +283,229 @@ private fun TopRibbon(
         Spacer(modifier = Modifier.weight(1f))
 
         // 준비 상태 요약 (1행, 가운데)
-        ReadinessRibbon(readiness)
+        ReadinessRibbon(readiness, strings)
 
         Spacer(modifier = Modifier.weight(1f))
 
+        // 알림함 — 우측 상단, 배지·transient toast·이력 조회(새 Phase 8 §4.2)
+        NotificationBell(
+            notifications = notifications,
+            onDismiss = onDismissNotification,
+            onMarkAllRead = onMarkAllNotificationsRead,
+            strings = strings,
+        )
+
+        // 한국어/English 전환 — 선택 즉시 적용되고 UiPreferencesPort에만 저장된다(새 Phase 8 §7).
+        LocaleToggle(locale = locale, strings = strings, onLocaleChange = onLocaleChange)
+
         // 테마 토글
         ThemeToggle(themeMode = themeMode, onClick = onThemeToggle)
+    }
+}
+
+@Composable
+private fun LocaleToggle(locale: AppLocale, strings: ChromeStrings, onLocaleChange: (AppLocale) -> Unit) {
+    val colors = LocalHrnsColors.current
+    TextButton(
+        onClick = {
+            onLocaleChange(if (locale == AppLocale.Korean) AppLocale.English else AppLocale.Korean)
+        },
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+        shape = RoundedCornerShape(999.dp),
+        colors = ButtonDefaults.textButtonColors(
+            containerColor = colors.cardBackground,
+            contentColor = colors.primaryText,
+        ),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = if (locale == AppLocale.Korean) strings.localeSelectorKorean else strings.localeSelectorEnglish,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 전역 알림함 — 배지·이력 dropdown·transient toast(새 Phase 8 §4.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NotificationBell(
+    notifications: List<NotificationItem>,
+    onDismiss: (String) -> Unit,
+    onMarkAllRead: () -> Unit,
+    strings: ChromeStrings,
+) {
+    val colors = LocalHrnsColors.current
+    var trayOpen by remember { mutableStateOf(false) }
+    val unreadCount = notifications.count { !it.read }
+
+    TextButton(
+        onClick = {
+            trayOpen = !trayOpen
+            if (trayOpen) onMarkAllRead()
+        },
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+        shape = RoundedCornerShape(999.dp),
+        colors = ButtonDefaults.textButtonColors(
+            containerColor = colors.cardBackground,
+            contentColor = colors.primaryText,
+        ),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = strings.notificationBell,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (unreadCount > 0) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier.background(colors.danger, RoundedCornerShape(999.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = unreadCount.toString(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    color = colors.onAccent,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+
+    if (trayOpen) {
+        Popup(alignment = Alignment.TopEnd, onDismissRequest = { trayOpen = false }) {
+            NotificationTrayContent(notifications = notifications, onDismiss = onDismiss, strings = strings)
+        }
+    }
+}
+
+@Composable
+private fun NotificationTrayContent(
+    notifications: List<NotificationItem>,
+    onDismiss: (String) -> Unit,
+    strings: ChromeStrings,
+) {
+    val colors = LocalHrnsColors.current
+    Column(
+        modifier = Modifier
+            .width(340.dp)
+            .heightIn(max = 420.dp)
+            .shadow(elevation = 20.dp, shape = RoundedCornerShape(16.dp))
+            .background(colors.cardBackground, RoundedCornerShape(16.dp))
+            .border(BorderStroke(1.dp, colors.chelseaBlueSoft), RoundedCornerShape(16.dp))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = strings.notificationBell,
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp),
+            fontWeight = FontWeight.SemiBold,
+            color = colors.primaryText,
+        )
+        if (notifications.isEmpty()) {
+            Text(
+                text = strings.notificationEmpty,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                color = colors.tertiaryText,
+            )
+        } else {
+            notifications.forEach { item -> NotificationTrayRow(item, onDismiss, strings) }
+        }
+    }
+}
+
+@Composable
+private fun NotificationTrayRow(item: NotificationItem, onDismiss: (String) -> Unit, strings: ChromeStrings) {
+    val colors = LocalHrnsColors.current
+    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .size(7.dp)
+                .background(item.tone.dotColor(), CircleShape),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = item.message,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+            color = colors.primaryText,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        TextButton(
+            onClick = { onDismiss(item.id) },
+            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(strings.dismiss, style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+        }
+    }
+}
+
+@Composable
+private fun NotificationTone.dotColor(): Color {
+    val c = LocalHrnsColors.current
+    return when (this) {
+        NotificationTone.Success -> c.success
+        NotificationTone.Failure -> c.danger
+        NotificationTone.Info -> c.warning
+    }
+}
+
+/**
+ * 최근 미확인 알림 하나를 짧게 보여주고 자동으로 사라진다(새 Phase 8 §4.2). 사용자가 명시적으로
+ * 닫을 수도 있다 — 둘 다 해당 항목을 읽음 처리만 할 뿐 알림함 이력에서 지우지는 않는다.
+ */
+@Composable
+private fun NotificationToastHost(
+    notifications: List<NotificationItem>,
+    onMarkRead: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val latest = notifications.firstOrNull { !it.read } ?: return
+    val colors = LocalHrnsColors.current
+    val strings = chromeStrings(LocalAppLocale.current)
+
+    LaunchedEffect(latest.id) {
+        delay(4000)
+        onMarkRead(latest.id)
+    }
+
+    Box(
+        modifier = modifier
+            .width(320.dp)
+            .shadow(elevation = 18.dp, shape = RoundedCornerShape(14.dp))
+            .background(colors.cardBackground, RoundedCornerShape(14.dp))
+            .border(BorderStroke(1.dp, colors.chelseaBlueSoft), RoundedCornerShape(14.dp))
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .padding(top = 5.dp)
+                    .size(8.dp)
+                    .background(latest.tone.dotColor(), CircleShape),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = latest.message,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 19.sp),
+                color = colors.primaryText,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = { onMarkRead(latest.id) },
+                modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(strings.dismiss, style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+            }
+        }
     }
 }
 
@@ -264,14 +533,14 @@ private fun BrandMark() {
 }
 
 @Composable
-private fun ReadinessRibbon(readiness: WorkspaceReadiness) {
+private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeStrings) {
     val colors = LocalHrnsColors.current
     val items = listOf(
-        "작업공간" to readiness.workspaceLabel,
-        "엔진" to readiness.engineLabel,
-        "저장소" to readiness.bridgeLabel,
-        "프로필" to readiness.profileLabel,
-        "점검" to readiness.doctorLabel,
+        strings.readinessWorkspace to readiness.workspaceLabel,
+        strings.readinessEngine to readiness.engineLabel,
+        strings.readinessBridge to readiness.bridgeLabel,
+        strings.readinessProfile to readiness.profileLabel,
+        strings.readinessDoctor to readiness.doctorLabel,
     )
 
     Row(
@@ -352,6 +621,7 @@ private fun ThemeToggle(themeMode: HrnsThemeMode, onClick: () -> Unit) {
 
     TextButton(
         onClick = onClick,
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
             containerColor = colors.cardBackground,
@@ -385,6 +655,7 @@ private fun LeftRail(
 ) {
     val scrollState = rememberScrollState()
     val colors = LocalHrnsColors.current
+    val strings = chromeStrings(LocalAppLocale.current)
 
     Column(
         modifier = modifier
@@ -393,41 +664,41 @@ private fun LeftRail(
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        SidebarSectionLabel("작업 흐름")
+        SidebarSectionLabel(strings.navSectionWorkflow)
 
         NavigationButton(
-            text = "프로젝트 관리",
+            text = strings.navSetup,
             selected = selectedRoute == AppRoute.Setup,
             onClick = { onRouteSelected(AppRoute.Setup) },
             leadingGlyph = "01",
         )
         NavigationButton(
-            text = "작업 현황",
+            text = strings.navCockpit,
             selected = selectedRoute == AppRoute.Cockpit,
             onClick = { onRouteSelected(AppRoute.Cockpit) },
             leadingGlyph = "02",
         )
         NavigationButton(
-            text = "작업 계획",
+            text = strings.navStrategy,
             selected = selectedRoute == AppRoute.Strategy,
             onClick = { onRouteSelected(AppRoute.Strategy) },
             leadingGlyph = "03",
         )
         NavigationButton(
-            text = "실행 기록",
+            text = strings.navRun,
             selected = selectedRoute == AppRoute.Run,
             onClick = { onRouteSelected(AppRoute.Run) },
             leadingGlyph = "04",
         )
         NavigationButton(
-            text = "복구 센터 · 마감 확인",
+            text = strings.navRecovery,
             selected = selectedRoute == AppRoute.Recovery,
             onClick = { onRouteSelected(AppRoute.Recovery) },
             leadingGlyph = "05",
         )
 
         Spacer(modifier = Modifier.height(28.dp))
-        SidebarSectionLabel("안내")
+        SidebarSectionLabel(strings.navSectionGuide)
 
         Box(
             modifier = Modifier
@@ -435,7 +706,7 @@ private fun LeftRail(
                 .fillMaxWidth(),
         ) {
             Text(
-                text = "작업공간 경로와 기준 파일 존재 여부만 읽는 read-only 셸입니다.",
+                text = strings.readOnlyShellNote,
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
@@ -507,7 +778,10 @@ private fun InspectorPanel(
             )
         }
 
-        SectionCard(title = "아티팩트", eyebrow = "Artifacts") {
+        // 새 Phase 8 §5.2: compact technical panel은 하나의 영문 표기 규칙(STATUS/ENVIRONMENT/
+        // ARTIFACTS)으로 통일한다 — 이전에는 "아티팩트"(한글)/"Meta"(영문 약어)/"Read-only"가
+        // 서로 다른 언어·모호한 제목으로 섞여 있었다. 카드 안 설명은 자연스러운 한국어 문장으로 둔다.
+        SectionCard(title = "ARTIFACTS", eyebrow = "기준 파일") {
             // legacy fallback 파일(WORKDAY_STATE.json 등)은 기본 화면에서 숨긴다 (계약 2.2).
             val visibleItems = artifactSummary.items.filter { it.requirement != ArtifactRequirement.Legacy }
             Column {
@@ -529,35 +803,7 @@ private fun InspectorPanel(
             }
         }
 
-        SectionCard(
-            title = "앱이 소유하지 않음",
-            eyebrow = "Read-only",
-            warning = true,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                projection.notAppOwnedMessages.forEach { message ->
-                    Row(verticalAlignment = Alignment.Top) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 8.dp)
-                                .size(4.dp)
-                                .background(colors.warning, CircleShape),
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.5.sp,
-                                lineHeight = 20.sp,
-                            ),
-                            color = colors.primaryText,
-                        )
-                    }
-                }
-            }
-        }
-
-        SectionCard(title = "환경", eyebrow = "Meta") {
+        SectionCard(title = "ENVIRONMENT", eyebrow = "환경") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = projection.subtitle,
@@ -583,6 +829,20 @@ private fun InspectorPanel(
                         ),
                         color = colors.primaryText,
                     )
+                }
+                // 이전에는 별도의 상시 노출 "앱이 소유하지 않음" 경고 카드였다 — 행동을 안내하지
+                // 않는 반복 문구라 이 화면 기본 구성에서 제거하고, 필요한 사실만 여기 짧게 남긴다.
+                if (projection.notAppOwnedMessages.isNotEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        projection.notAppOwnedMessages.forEach { message ->
+                            Text(
+                                text = "· $message",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                                color = colors.tertiaryText,
+                            )
+                        }
+                    }
                 }
             }
         }

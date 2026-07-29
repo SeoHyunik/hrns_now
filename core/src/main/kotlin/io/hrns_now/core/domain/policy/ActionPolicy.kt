@@ -45,6 +45,13 @@ class ActionPolicy {
 
         val stateRead = context.stateRead
         if (stateRead !is StateReadResult.Success) {
+            if (bootstrapEligible(stateRead, context)) {
+                return RecommendedActions(
+                    primary = UiAction.BootstrapDay,
+                    allowed = setOf(UiAction.BootstrapDay, UiAction.Refresh),
+                    blockedReason = null,
+                )
+            }
             return RecommendedActions(
                 primary = UiAction.OpenRecoveryCenter,
                 allowed = setOf(
@@ -96,6 +103,22 @@ class ActionPolicy {
 
         return normalActions(state, context.activeSliceKind)
     }
+
+    /**
+     * 오늘 날짜에 State가 아직 없는 새 workspace day는 `run-cycle.ps1`이 `init-workspace`로
+     * `WORKFLOW_STATE.json`을 새로 만드는 fresh-day bootstrap 경로다(live 계약 확인:
+     * `scripts/run-cycle.ps1`의 "Fresh-day bootstrap note" 주석 — 새 날짜 폴더에서
+     * `WORKFLOW_STATE.json`은 `init-workspace` 이후에 생성된다). Malformed/UnsupportedSchema/
+     * EncodingError/AccessDenied나 과거 날짜, compatibility/boundary 미확인, 실행 중/lock 상태는
+     * 모두 fail-closed로 이 경로에서 제외한다(새 Phase 8, `doc/claude_prompts/
+     * phase8-workflow-clarity-feedback.md` §2.2).
+     */
+    private fun bootstrapEligible(stateRead: StateReadResult?, context: ActionContext): Boolean =
+        stateRead is StateReadResult.Missing &&
+            context.selectedDayKind == SelectedDayKind.Today &&
+            context.compatibility == CompatibilityStatus.Supported &&
+            context.boundary == BoundaryStatus.Valid &&
+            context.process == ProcessRunStatus.Idle
 
     private fun stateInvalidReason(stateRead: StateReadResult?): String =
         when (stateRead) {

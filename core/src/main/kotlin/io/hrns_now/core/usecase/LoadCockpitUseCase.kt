@@ -65,7 +65,10 @@ class LoadCockpitUseCase(
         } else {
             dayDiscovery(root).distinct().sortedDescending()
         }
-        val validExplicitDate = explicitDate?.takeIf { it in availableDates }
+        // 새 Phase 8 §6: 오늘은 daily directory discovery 결과와 무관하게 명시 선택을 허용한다 —
+        // 그렇지 않으면 "오늘 작업 시작"으로 오늘을 선택해도 이 필터가 조용히 과거 날짜 fallback으로
+        // 되돌려 버린다. 과거 날짜는 여전히 실제로 발견된 폴더에 있을 때만 명시 선택을 허용한다.
+        val validExplicitDate = explicitDate?.takeIf { it in availableDates || it == daySelectionPolicy.today }
         return WorkspaceDayResolution(
             selection = daySelectionPolicy.select(
                 projectWorkspaceRoot = root,

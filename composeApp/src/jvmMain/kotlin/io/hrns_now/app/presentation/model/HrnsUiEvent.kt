@@ -17,6 +17,9 @@ sealed interface HrnsUiEvent {
     data class ClosureValidationRequested(val incompleteHandoffAcknowledged: Boolean) : HrnsUiEvent
     data class ProjectSelected(val id: ProjectId) : HrnsUiEvent
     data class ProjectRegistrationRequested(val candidate: RegisterProjectCandidate) : HrnsUiEvent
+
+    /** 등록 modal을 닫을 때 이전 시도의 running/success/failure 표시를 지운다(새 Phase 8 §1). */
+    data object RegistrationFeedbackDismissed : HrnsUiEvent
     data class ProjectDeletionRequested(val id: ProjectId) : HrnsUiEvent
     data class WorkspaceDaySelected(val date: LocalDate) : HrnsUiEvent
 

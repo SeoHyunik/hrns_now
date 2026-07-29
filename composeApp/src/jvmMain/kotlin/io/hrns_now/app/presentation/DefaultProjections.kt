@@ -3,6 +3,7 @@ package io.hrns_now.app.presentation
 import io.hrns_now.app.presentation.model.ActionButtonModel
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
+import io.hrns_now.app.presentation.model.DevelopmentStrategyCardModel
 import io.hrns_now.app.presentation.model.InfoCardModel
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.ShellProjection
@@ -58,22 +59,25 @@ fun buildSetupProjection(
         ),
         actions = listOf(
             diagnosticAction(
-                label = "환경 점검",
+                label = "연결 점검",
+                description = "Harness Kit과 프로젝트 연결이 실행 가능한지 확인합니다.",
                 action = UiAction.RunDoctor,
                 diagnosticActions = diagnosticActions,
             ),
             diagnosticAction(
-                label = "작업 기준 점검",
+                label = "작업 준비 점검",
+                description = "오늘 작업을 시작하기 위한 상태와 기준 파일을 확인합니다.",
                 action = UiAction.RunOpsValidation,
                 diagnosticActions = diagnosticActions,
             ),
         ),
-        note = "환경 점검과 작업 기준 점검은 선택한 프로젝트·날짜 및 안전 조건을 충족할 때만 실행됩니다.",
+        note = "연결 점검과 작업 준비 점검은 선택한 프로젝트·날짜 및 안전 조건을 충족할 때만 실행됩니다.",
     )
 }
 
 private fun diagnosticAction(
     label: String,
+    description: String,
     action: UiAction,
     diagnosticActions: List<CockpitActionItem>,
 ): ActionButtonModel {
@@ -83,6 +87,7 @@ private fun diagnosticAction(
         enabled = actionItem?.enabled == true,
         helperText = if (actionItem == null) "현재 상태에서는 실행할 수 없습니다." else null,
         action = action,
+        description = description,
     )
 }
 private fun PathProbeState.summaryLabel(): String =
@@ -100,7 +105,7 @@ private fun PathProbeState.summaryLabel(): String =
  * `WORKFLOW_STATE.json` queue 판단을 서로 다른 섹션으로 분리해 보여준다 — 둘이 어긋나면
  * `WORKFLOW_STATE.json`(= [cockpit])이 최종 진실이다(`doc/claude_prompts/phase4-standard-daily-flow.md` §3).
  * action 목록은 [cockpit]이 이미 계산한 allowed action 중 일일 실행 흐름에 속하는 것만 남긴다 —
- * 환경 점검/작업 기준 점검은 프로젝트 관리 화면, Closure류는 Phase 5 범위라 여기서 다루지 않는다.
+ * 연결 점검/작업 준비 점검은 프로젝트 관리 화면, Closure류는 Phase 5 범위라 여기서 다루지 않는다.
  */
 fun buildTodayWorkProjection(
     cockpit: CockpitProjection,
@@ -147,11 +152,12 @@ fun buildTodayWorkProjection(
             value = cockpit.activeSliceId ?: "",
             tone = if (cockpit.blockedReasonLabel != null) "warning" else "neutral",
         ),
+        developmentStrategy = DevelopmentStrategyCardModel(
+            text = strategyText,
+            dateLabel = cockpit.dateLabel,
+            isReadOnlyDay = cockpit.isReadOnlyDay,
+        ),
         sections = listOf(
-            InfoCardModel(
-                "개발 전략",
-                listOf("내용" to (strategyText?.takeIf(String::isNotBlank) ?: "아직 없습니다.")),
-            ),
             InfoCardModel(
                 "작업 대기열",
                 listOf(

@@ -111,23 +111,30 @@ class DefaultProjectionsTest {
         assertEquals("잠금" to "Ops Validation (PID 4242, 마지막 heartbeat 3초 전)", confirmation.rows.last())
     }
 
+    /**
+     * 새 Phase 8 §3: "개발 전략"은 더 이상 일반 `InfoCardModel` 목록에 섞이지 않고, 원문을 그대로
+     * 담는 별도 [io.hrns_now.app.presentation.model.DevelopmentStrategyCardModel]로 분리된다 —
+     * "없으면 안내 문구"는 이제 mapper가 아니라 Compose 카드가 렌더링 시점에 보여준다.
+     */
     @Test
-    fun `Strategy 섹션은 사람용 원문이 없으면 안내 문구를 보인다`() {
+    fun `개발 전략 카드는 원문 텍스트와 날짜·읽기 전용 여부를 그대로 투영한다`() {
         val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
 
         val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
 
-        assertEquals("내용" to "아직 없습니다.", projection.sections.first().rows.single())
+        assertEquals(null, projection.developmentStrategy.text)
+        assertEquals(cockpit.dateLabel, projection.developmentStrategy.dateLabel)
+        assertEquals(cockpit.isReadOnlyDay, projection.developmentStrategy.isReadOnlyDay)
     }
 
     @Test
-    fun `작업 계획의 전략과 대기열 제목은 설명 괄호 없이 한국어 표시명만 사용한다`() {
+    fun `작업 계획의 대기열 제목은 설명 괄호 없이 한국어 표시명만 사용한다`() {
         val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
 
         val projection = buildTodayWorkProjection(cockpit, strategyText = "전략", requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
 
-        assertEquals("개발 전략", projection.sections[0].title)
-        assertEquals("작업 대기열", projection.sections[1].title)
+        assertEquals("전략", projection.developmentStrategy.text)
+        assertEquals("작업 대기열", projection.sections[0].title)
     }
 
     @Test

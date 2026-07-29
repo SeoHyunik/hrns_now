@@ -10,6 +10,7 @@ import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.BoundaryStatus
 import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
 import io.hrns_now.core.domain.model.ProcessRunStatus
+import io.hrns_now.core.domain.model.RecommendedActions
 import io.hrns_now.core.domain.model.RuntimeIssue
 import io.hrns_now.core.domain.model.RuntimeResolution
 import io.hrns_now.core.domain.model.RuntimeSource
@@ -83,7 +84,7 @@ class CockpitProjectionAssembler(
             lastAttemptAtLabel = lastAttemptAtLabel,
             primaryAction = recommended.primary?.let { actionItem(it, harnessRunInProgress) },
             allowedActions = recommended.allowed.map { actionItem(it, harnessRunInProgress) },
-            diagnostics = diagnosticsFor(stateRead, recommended.blockedReason),
+            diagnostics = diagnosticsFor(stateRead, recommended),
             compatibilityDiagnostics = if (runtimeResolution is RuntimeResolution.Missing || runtimeResolution is RuntimeResolution.Invalid) {
                 null
             } else {
@@ -154,15 +155,22 @@ class CockpitProjectionAssembler(
             is ArtifactReadinessState.Unknown -> "warning"
         }
 
-    private fun diagnosticsFor(stateRead: StateReadResult, ctaGuidance: String?): CockpitDiagnostics? =
-        when (stateRead) {
+    private fun diagnosticsFor(stateRead: StateReadResult, recommended: RecommendedActions): CockpitDiagnostics? {
+        val ctaGuidance = recommended.blockedReason
+        return when (stateRead) {
             is StateReadResult.Success -> null
 
-            is StateReadResult.Missing -> CockpitDiagnostics(
-                whatHappened = "오늘 날짜의 상태 파일이 아직 없습니다.",
-                lastKnownGoodPreserved = false,
-                nextStep = ctaGuidance ?: "작업공간과 날짜를 확인한 뒤 새로고침하세요.",
-            )
+            // 오늘 날짜의 정상적인 "아직 시작 안 함" 상태다(새 Phase 8 §2/§3) — BootstrapDay가
+            // 열려 있으면 오류/경고 진단 카드가 아니라 그 typed CTA 자체가 다음 행동을 알려준다.
+            is StateReadResult.Missing -> if (recommended.primary == UiAction.BootstrapDay) {
+                null
+            } else {
+                CockpitDiagnostics(
+                    whatHappened = "오늘 날짜의 상태 파일이 아직 없습니다.",
+                    lastKnownGoodPreserved = false,
+                    nextStep = ctaGuidance ?: "작업공간과 날짜를 확인한 뒤 새로고침하세요.",
+                )
+            }
 
             is StateReadResult.Malformed -> CockpitDiagnostics(
                 whatHappened = "상태 파일을 해석할 수 없습니다.",
@@ -188,6 +196,7 @@ class CockpitProjectionAssembler(
                 nextStep = ctaGuidance ?: "파일 권한을 확인하세요.",
             )
         }
+    }
 
     /**
      * `Supported`/`SupportedWithUnknownFields`는 실행을 막지 않으므로 `null`이다(기존

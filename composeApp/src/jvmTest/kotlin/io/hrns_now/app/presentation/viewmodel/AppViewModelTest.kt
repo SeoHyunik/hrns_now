@@ -2,6 +2,7 @@ package io.hrns_now.app.presentation.viewmodel
 
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.NotificationTone
 import io.hrns_now.core.config.PathProbeKind
 import io.hrns_now.core.config.PathProbeResult
 import io.hrns_now.core.config.PathProbeState
@@ -27,6 +28,7 @@ import io.hrns_now.core.domain.model.LockAcquireResult
 import io.hrns_now.core.domain.model.LockHandle
 import io.hrns_now.core.domain.model.LockPayload
 import io.hrns_now.core.domain.model.LockReleaseResult
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.LockState
 import io.hrns_now.core.domain.model.OpsValidationState
 import io.hrns_now.core.domain.model.PathIssue
@@ -63,6 +65,7 @@ import io.hrns_now.core.port.RequestWriterPort
 import io.hrns_now.core.domain.model.RepositoryStatus
 import io.hrns_now.core.port.GitStatusPort
 import io.hrns_now.core.port.TodayStrategyReaderPort
+import io.hrns_now.core.port.UiPreferencesPort
 import io.hrns_now.core.port.WorkflowStatePort
 import io.hrns_now.core.result.HarnessDiagnosticContract
 import io.hrns_now.core.result.HarnessOverallStatus
@@ -262,6 +265,16 @@ class AppViewModelTest {
         override fun read(day: WorkspaceDay): StateReadResult = result(callCount.incrementAndGet())
     }
 
+    /** 인메모리 [UiPreferencesPort] 테스트 대역이다(새 Phase 8 §7) — 실제 %APPDATA%를 건드리지 않는다. */
+    private class FakeUiPreferencesPort(private var stored: AppLocale? = null) : UiPreferencesPort {
+        val writeCalls = mutableListOf<AppLocale>()
+        override fun readLocale(): AppLocale? = stored
+        override fun writeLocale(locale: AppLocale) {
+            writeCalls += locale
+            stored = locale
+        }
+    }
+
     /** 항상 파일이 없는 것처럼 동작하는 [RequestWriterPort] 테스트 대역이다(Phase 4). */
     private class FakeRequestWriterPort : RequestWriterPort {
         override fun load(day: WorkspaceDay): LoadedRequest? = null
@@ -402,6 +415,7 @@ class AppViewModelTest {
         requestWriter: RequestWriterPort = FakeRequestWriterPort(),
         todayStrategyReader: TodayStrategyReaderPort = TodayStrategyReaderPort { null },
         gitStatusPort: GitStatusPort = GitStatusPort { RepositoryStatus.Clean },
+        uiPreferencesPort: UiPreferencesPort = FakeUiPreferencesPort(),
     ): AppViewModel = AppViewModel(
         loadCockpit = loadUseCase(statePort, availableDates = availableDates),
         changeProbe = changeProbe,
@@ -430,6 +444,7 @@ class AppViewModelTest {
         saveRequest = SaveRequestUseCase(requestWriter),
         todayStrategyReader = todayStrategyReader,
         gitStatusPort = gitStatusPort,
+        uiPreferencesPort = uiPreferencesPort,
         ioDispatcher = dispatcher,
         pollIntervalMillis = pollIntervalMillis,
         clock = { fixedInstant },
@@ -1225,6 +1240,51 @@ class AppViewModelTest {
         viewModel.dispose()
     }
 
+    /**
+     * 새 Phase 8 §2.3/§6: 오늘 폴더가 아직 없어 과거 날짜로 fallback된 화면에서 `OpenToday`는
+     * 순수 navigation이 아니라 실제로 오늘 날짜를 선택해야 한다 — discovery 목록에 오늘이 없어도
+     * 항상 허용된다(UI가 폴더를 만들지는 않는다).
+     */
+    @Test
+    fun `오늘 폴더가 없어도 OpenToday action은 오늘 날짜를 선택하고 읽기 전용을 해제한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val today = LocalDate.of(2026, 6, 26)
+        val past = LocalDate.of(2026, 6, 25)
+        val project = harnessProject("a", "S:\\project-a")
+        val registry = FakeProjectRegistryPort(
+            initialProjects = listOf(project),
+            initialActiveId = project.id,
+        )
+        val readDates = mutableListOf<LocalDate>()
+        val statePort = object : WorkflowStatePort {
+            override fun read(day: WorkspaceDay): StateReadResult {
+                readDates += day.date
+                return StateReadResult.Missing(day.dayRoot.resolve("WORKFLOW_STATE.json"))
+            }
+        }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            availableDates = listOf(past),
+        )
+        runCurrent()
+
+        val fallback = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertTrue(fallback.cockpit.isReadOnlyDay)
+        assertEquals(past, readDates.last())
+        assertEquals(today, fallback.todayDate)
+
+        viewModel.onEvent(HrnsUiEvent.ActionRequested(UiAction.OpenToday))
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertFalse(ready.cockpit.isReadOnlyDay)
+        assertEquals(today, readDates.last())
+        assertFalse(ready.registryMessage.orEmpty().contains("찾을 수 없습니다"))
+        viewModel.dispose()
+    }
+
     @Test
     fun `State mtime이 같아도 polling은 변경된 compatibility manifest를 반영한다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -1937,6 +1997,93 @@ class AppViewModelTest {
         runCurrent()
 
         assertEquals(1, executions.get())
+        viewModel.dispose()
+    }
+
+    /**
+     * 새 Phase 8 §7: locale은 `UiPreferencesPort`에만 저장되고 `WORKFLOW_STATE.json`/Registry와
+     * 무관하다. 저장된 값이 없으면 한국어로 fail-closed하고, 저장된 값이 있으면 그대로 복원한다.
+     */
+    @Test
+    fun `저장된 locale이 없으면 한국어를 기본값으로 사용한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val viewModel = newViewModel(statePort, dispatcher, uiPreferencesPort = FakeUiPreferencesPort(stored = null))
+        runCurrent()
+
+        assertEquals(AppLocale.Korean, viewModel.locale.value)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `저장된 locale이 있으면 시작 시 그대로 복원한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val viewModel = newViewModel(statePort, dispatcher, uiPreferencesPort = FakeUiPreferencesPort(stored = AppLocale.English))
+        runCurrent()
+
+        assertEquals(AppLocale.English, viewModel.locale.value)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `setLocale은 즉시 flow를 갱신하고 UiPreferencesPort에만 저장한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val preferences = FakeUiPreferencesPort(stored = null)
+        val viewModel = newViewModel(statePort, dispatcher, uiPreferencesPort = preferences)
+        runCurrent()
+
+        viewModel.setLocale(AppLocale.English)
+
+        assertEquals(AppLocale.English, viewModel.locale.value)
+        runCurrent()
+        assertEquals(listOf(AppLocale.English), preferences.writeCalls)
+        viewModel.dispose()
+    }
+
+    /** 새 Phase 8 §4.2: 사용자가 결과를 기다린 등록 성공은 typed 알림으로 남는다. */
+    @Test
+    fun `프로젝트 등록 성공은 전역 알림함에 성공 알림을 남긴다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        // 등록 전에는 활성 프로젝트가 없어 초기 loadOnce의 evaluateBoundary가 null 경로로도
+        // 호출된다 — `::validBoundary`(항상 non-null 요구)는 여기서 쓸 수 없다.
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) {
+                RootPathCheck.Invalid(PathIssue.NotProvided)
+            } else {
+                val path = Path.of(raw)
+                RootPathCheck.Valid(path, path)
+            }
+        }
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.Completed(0, null, null, false, false) },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "새 프로젝트",
+                    useInternalDeveloperSdk = false,
+                    kitRootRaw = "S:\\kit",
+                    projectWorkspaceRootRaw = "S:\\workspace",
+                    repositoryRootRaw = "S:\\repo",
+                    profileId = "기본",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val notification = viewModel.notifications.value.firstOrNull { it.tone == NotificationTone.Success }
+        assertEquals(true, notification?.message?.contains("새 프로젝트"))
         viewModel.dispose()
     }
 }

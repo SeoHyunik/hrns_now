@@ -374,7 +374,6 @@ class ActionPolicyTest {
             StateReadResult.Malformed("raw-session-id=secret", null),
             StateReadResult.EncodingError("token=secret", null),
             StateReadResult.UnsupportedSchema("secret-schema-value"),
-            StateReadResult.Missing(Paths.get("WORKFLOW_STATE.json")),
         )
 
         reads.forEach { read ->
@@ -382,6 +381,68 @@ class ActionPolicyTest {
             val reason = assertNotNull(result.blockedReason)
             assertFalse(reason.contains("secret"))
             assertEquals(UiAction.OpenRecoveryCenter, result.primary)
+        }
+    }
+
+    /**
+     * 새 Phase 8 §2.2: 오늘 날짜 + State Missing + 프로젝트/runtime(compatibility로 대리)/boundary
+     * 정상 + lock/실행 없음 조합에서만 `BootstrapDay`를 허용한다. 단일 조건이라도 어긋나면
+     * 기존 fail-closed recovery 경로를 그대로 유지한다.
+     */
+    @Test
+    fun `오늘 날짜의 Missing state는 모든 조건이 정상일 때만 BootstrapDay를 허용한다`() {
+        val missing = StateReadResult.Missing(Paths.get("WORKFLOW_STATE.json"))
+
+        val eligible = policy.recommend(successContext(healthyState()).copy(stateRead = missing))
+        assertEquals(UiAction.BootstrapDay, eligible.primary)
+        assertEquals(setOf(UiAction.BootstrapDay, UiAction.Refresh), eligible.allowed)
+        assertEquals(null, eligible.blockedReason)
+    }
+
+    @Test
+    fun `Missing state라도 조건 하나만 어긋나면 BootstrapDay를 허용하지 않는다`() {
+        val missing = StateReadResult.Missing(Paths.get("WORKFLOW_STATE.json"))
+
+        val pastDay = policy.recommend(
+            successContext(healthyState(), selectedDayKind = SelectedDayKind.Past).copy(stateRead = missing),
+        )
+        assertEquals(UiAction.OpenRecoveryCenter, pastDay.primary)
+        assertFalse(UiAction.BootstrapDay in pastDay.allowed)
+
+        val incompatible = policy.recommend(
+            successContext(healthyState(), compatibility = CompatibilityStatus.Unsupported).copy(stateRead = missing),
+        )
+        assertEquals(UiAction.OpenRecoveryCenter, incompatible.primary)
+        assertFalse(UiAction.BootstrapDay in incompatible.allowed)
+
+        val invalidBoundary = policy.recommend(
+            successContext(healthyState(), boundary = BoundaryStatus.Invalid).copy(stateRead = missing),
+        )
+        assertEquals(UiAction.OpenRecoveryCenter, invalidBoundary.primary)
+        assertFalse(UiAction.BootstrapDay in invalidBoundary.allowed)
+
+        listOf(ProcessRunStatus.Locked, ProcessRunStatus.Running).forEach { process ->
+            val result = policy.recommend(
+                successContext(healthyState(), process = process).copy(stateRead = missing),
+            )
+            assertEquals(UiAction.OpenRecoveryCenter, result.primary, process.toString())
+            assertFalse(UiAction.BootstrapDay in result.allowed, process.toString())
+        }
+    }
+
+    @Test
+    fun `Malformed·EncodingError·UnsupportedSchema·AccessDenied는 오늘 날짜여도 BootstrapDay를 허용하지 않는다`() {
+        val reads = listOf<StateReadResult>(
+            StateReadResult.Malformed("broken", null),
+            StateReadResult.EncodingError("bad-encoding", null),
+            StateReadResult.UnsupportedSchema("9.9"),
+            StateReadResult.AccessDenied(Paths.get("WORKFLOW_STATE.json")),
+        )
+
+        reads.forEach { read ->
+            val result = policy.recommend(successContext(healthyState()).copy(stateRead = read))
+            assertEquals(UiAction.OpenRecoveryCenter, result.primary, read.toString())
+            assertFalse(UiAction.BootstrapDay in result.allowed, read.toString())
         }
     }
 

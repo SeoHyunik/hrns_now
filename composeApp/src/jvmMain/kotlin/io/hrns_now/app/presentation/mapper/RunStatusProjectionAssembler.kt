@@ -199,9 +199,9 @@ class RunStatusProjectionAssembler {
 
 internal fun HarnessCommandKind.displayLabel(): String =
     when (this) {
-        HarnessCommandKind.Doctor -> "환경 점검"
-        HarnessCommandKind.ValidateOps -> "작업 기준 점검"
-        HarnessCommandKind.Bootstrap -> "작업 준비"
+        HarnessCommandKind.Doctor -> "연결 점검"
+        HarnessCommandKind.ValidateOps -> "작업 준비 점검"
+        HarnessCommandKind.Bootstrap -> "오늘 작업 시작"
         HarnessCommandKind.Planning -> "계획 실행"
         HarnessCommandKind.Replan -> "재계획 실행"
         HarnessCommandKind.ExecutionCode -> "코드 작업 실행"
@@ -212,7 +212,7 @@ internal fun HarnessCommandKind.displayLabel(): String =
 /**
  * 인라인 실행 feedback 카드(새 Phase 6)의 "다시 점검/다시 검증" 재시도 버튼이 다시 호출할 typed
  * action이다. Bootstrap/Planning류는 각자의 화면 action 그룹에서 이미 재클릭 가능하므로 별도
- * 재시도 CTA를 중복 제공하지 않는다 — 환경 점검·작업 기준 점검만 명시적 재시도 문구를 붙인다.
+ * 재시도 CTA를 중복 제공하지 않는다 — 연결 점검·작업 준비 점검만 명시적 재시도 문구를 붙인다.
  */
 internal fun HarnessCommandKind.toRetryAction(): UiAction? =
     when (this) {

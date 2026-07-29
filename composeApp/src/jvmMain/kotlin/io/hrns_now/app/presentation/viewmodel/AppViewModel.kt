@@ -7,10 +7,15 @@ import io.hrns_now.app.presentation.buildSetupProjection
 import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.mapper.CockpitUiStateAssembler
 import io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler
+import io.hrns_now.app.presentation.mapper.displayLabel
 import io.hrns_now.app.presentation.mapper.lockSummaryLabel
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.NotificationItem
+import io.hrns_now.app.presentation.model.NotificationTone
+import io.hrns_now.app.presentation.model.RegistrationFeedback
+import io.hrns_now.app.presentation.NotificationCenter
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.domain.model.ActionContext
 import io.hrns_now.core.domain.model.BoundaryStatus
@@ -29,7 +34,9 @@ import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.RepositoryStatus
 import io.hrns_now.core.domain.model.RecoveryDiagnostics
 import io.hrns_now.core.domain.model.RootPathCheck
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.RuntimeResolution
+import io.hrns_now.core.domain.model.RuntimeSource
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.model.SelectedDayKind
@@ -50,6 +57,7 @@ import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.RuntimeSourceResolverPort
 import io.hrns_now.core.port.TodayStrategyReaderPort
+import io.hrns_now.core.port.UiPreferencesPort
 import io.hrns_now.core.usecase.ExecuteHarnessActionOutcome
 import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
 import io.hrns_now.core.usecase.HarnessExecutionContext
@@ -68,6 +76,7 @@ import io.hrns_now.core.usecase.RegisterProjectCandidate
 import io.hrns_now.core.usecase.ProjectRegistrationInspection
 import io.hrns_now.core.usecase.RegisterProjectResult
 import io.hrns_now.core.usecase.RegisterProjectUseCase
+import io.hrns_now.core.usecase.RegistrationRejectionReason
 import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
 import io.hrns_now.core.usecase.SelectProjectResult
 import io.hrns_now.core.usecase.SelectProjectUseCase
@@ -121,6 +130,10 @@ class AppViewModel(
     private val saveRequest: SaveRequestUseCase,
     private val todayStrategyReader: TodayStrategyReaderPort,
     private val gitStatusPort: GitStatusPort,
+    private val uiPreferencesPort: UiPreferencesPort = object : UiPreferencesPort {
+        override fun readLocale(): AppLocale? = null
+        override fun writeLocale(locale: AppLocale) = Unit
+    },
     private val recoveryDiagnosticsPort: RecoveryDiagnosticsPort = RecoveryDiagnosticsPort { RecoveryDiagnostics.Empty },
     private val boundaryPolicy: BoundaryPolicy = BoundaryPolicy(),
     private val compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy(),
@@ -133,11 +146,33 @@ class AppViewModel(
     private val runTimeout: Duration = Duration.ofSeconds(90),
     private val lockHeartbeatIntervalMillis: Long = 10_000L,
     private val clock: () -> Instant = Instant::now,
+    private val notificationCenter: NotificationCenter = NotificationCenter(clock = clock),
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : ViewModel(CoroutineScope(SupervisorJob() + mainDispatcher)) {
 
     private val _state = MutableStateFlow<HrnsUiState>(HrnsUiState.Loading)
     val state: StateFlow<HrnsUiState> = _state.asStateFlow()
+
+    /** 전역 알림함이다(새 Phase 8 §4.2) — `HrnsUiState`와 별도 StateFlow로 두어 Shell이 독립 구독한다. */
+    val notifications: StateFlow<List<NotificationItem>> = notificationCenter.items
+
+    fun dismissNotification(id: String) = notificationCenter.dismiss(id)
+
+    fun markNotificationRead(id: String) = notificationCenter.markRead(id)
+
+    fun markAllNotificationsRead() = notificationCenter.markAllRead()
+
+    /**
+     * 화면 표시 언어다(새 Phase 8 §7) — `WORKFLOW_STATE.json`/Harness workspace/project Registry와
+     * 무관한 UI 소유 값이며 [uiPreferencesPort]에만 저장한다.
+     */
+    private val _locale = MutableStateFlow(AppLocale.Korean)
+    val locale: StateFlow<AppLocale> = _locale.asStateFlow()
+
+    fun setLocale(locale: AppLocale) {
+        _locale.value = locale
+        viewModelScope.launch { withContext(ioDispatcher) { uiPreferencesPort.writeLocale(locale) } }
+    }
 
     private var hasResolvedActiveProject = false
     private var currentWorkspaceConfig: WorkspaceConfig? = null
@@ -145,6 +180,7 @@ class AppViewModel(
     private var activeSource: ActiveProjectSource = ActiveProjectSource.NoneSelected
     private var registryProjects: List<HarnessProject> = emptyList()
     private var registryMessage: String? = null
+    private var registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle
 
     private var selectedDay: WorkspaceDaySelection? = null
     private var availableDates: List<LocalDate> = emptyList()
@@ -176,6 +212,9 @@ class AppViewModel(
     private var recoveryDiagnostics: RecoveryDiagnostics = RecoveryDiagnostics.Empty
 
     init {
+        viewModelScope.launch {
+            _locale.value = withContext(ioDispatcher) { uiPreferencesPort.readLocale() } ?: AppLocale.Korean
+        }
         refresh()
         startPolling()
     }
@@ -201,6 +240,9 @@ class AppViewModel(
                 UiAction.RunDocSlice -> onHarnessRunRequested(UiAction.RunDocSlice, HarnessCommandKind.ExecutionDoc)
                 UiAction.RunClosureValidation ->
                     onClosureValidationRequested(incompleteHandoffAcknowledged = false)
+                // 과거 날짜 fallback 화면에서 "오늘로 이동"은 순수 navigation이 아니다 — 실제로 오늘
+                // 날짜를 선택해야 한다(새 Phase 8 §2.3). 오늘 폴더가 아직 없어도 항상 허용한다.
+                UiAction.OpenToday -> viewModelScope.launch { onWorkspaceDaySelected(todayLocalDate()) }
                 else -> Unit
             }
             is HrnsUiEvent.ClosureValidationRequested ->
@@ -208,6 +250,7 @@ class AppViewModel(
             is HrnsUiEvent.ProjectSelected -> viewModelScope.launch { onProjectSelected(event.id) }
             is HrnsUiEvent.ProjectRegistrationRequested ->
                 viewModelScope.launch { onProjectRegistrationRequested(event.candidate) }
+            HrnsUiEvent.RegistrationFeedbackDismissed -> pushRegistrationFeedback(RegistrationFeedback.Idle)
             is HrnsUiEvent.ProjectDeletionRequested -> viewModelScope.launch { onProjectDeletionRequested(event.id) }
             is HrnsUiEvent.WorkspaceDaySelected -> viewModelScope.launch { onWorkspaceDaySelected(event.date) }
             HrnsUiEvent.HarnessRunCancelRequested -> harnessRunCancellationToken?.requestCancel()
@@ -236,23 +279,37 @@ class AppViewModel(
      * fail-closed로 Registry 저장을 막는다.
      */
     private suspend fun onProjectRegistrationRequested(candidate: RegisterProjectCandidate) {
+        pushRegistrationFeedback(RegistrationFeedback.Running)
         val inspection = withContext(ioDispatcher) { registerProject.inspect(candidate) }
         val prepared = when (inspection) {
             is ProjectRegistrationInspection.Ready -> inspection
             is ProjectRegistrationInspection.InvalidCandidate -> {
                 registryMessage = "등록할 수 없습니다: ${inspection.message}"
+                val feedback = RegistrationFeedback.Failure(
+                    whatHappened = inspection.message,
+                    nextStep = inspection.reason.nextStepGuidance(),
+                    showAdvancedSettingsHint = inspection.reason.suggestsAdvancedSettings(),
+                )
+                registrationFeedback = feedback
+                notifyRegistrationFailure()
                 loadOnce(forceRead = true)
                 return
             }
             is ProjectRegistrationInspection.BoundaryRejected -> {
                 registryMessage = "등록할 수 없습니다: 경로 경계 조건을 확인하세요 (${inspection.boundary.violations.size}건 위반)."
+                val feedback = RegistrationFeedback.Failure(
+                    whatHappened = "작업공간·저장소·Kit 경로가 서로 겹치거나 일치합니다 (${inspection.boundary.violations.size}건 위반).",
+                    nextStep = "각 경로가 서로 다른 위치를 가리키는지 확인한 뒤 다시 등록하세요.",
+                )
+                registrationFeedback = feedback
+                notifyRegistrationFailure()
                 loadOnce(forceRead = true)
                 return
             }
         }
         val project = prepared.project
         val resolvedKitRoot = prepared.resolvedKitRoot
-        val date = clock().atZone(ZoneId.systemDefault()).toLocalDate()
+        val date = todayLocalDate()
         val command = HarnessCommand.Doctor(
             kitRoot = resolvedKitRoot,
             workspaceRoot = project.projectWorkspaceRoot,
@@ -276,7 +333,13 @@ class AppViewModel(
                 isRunning = false,
                 notice = "온보딩 진단 잠금을 안전하게 획득하지 못해 Registry를 저장하지 않았습니다.",
             )
+            registrationFeedback = RegistrationFeedback.Failure(
+                whatHappened = "온보딩 진단 잠금을 안전하게 획득하지 못했습니다.",
+                nextStep = "다른 HRNS-NOW 실행이 끝난 뒤 다시 시도하세요.",
+            )
             refreshRunProjectionOnly()
+            pushRegistrationFeedback(registrationFeedback)
+            notifyRegistrationFailure()
             return
         }
 
@@ -303,18 +366,32 @@ class AppViewModel(
             compatibilityPolicy.evaluate(compatibilityPort.readManifest(resolvedKitRoot))
         }
         if (!doctorAllowsRegistration(result)) {
-            registryMessage = "환경 점검을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 기록에서 결과를 확인하세요."
+            registryMessage = "연결 점검을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 기록에서 결과를 확인하세요."
+            val feedback = RegistrationFeedback.Failure(
+                whatHappened = "연결 점검(Doctor)을 통과하지 못했습니다.",
+                nextStep = "실행 기록에서 상세 결과를 확인한 뒤 경로와 설정을 점검하세요.",
+            )
+            registrationFeedback = feedback
+            notifyRegistrationFailure()
             loadOnce(forceRead = true)
             return
         }
         if (!compatibilityAllowsRegistration(compatibility)) {
             registryMessage = "Harness 호환성을 확인하지 못해 Registry를 저장하지 않았습니다."
+            val feedback = RegistrationFeedback.Failure(
+                whatHappened = "Harness 버전 호환성을 확인하지 못했습니다.",
+                nextStep = "Harness Kit 버전을 확인하세요.",
+            )
+            registrationFeedback = feedback
+            notifyRegistrationFailure()
             loadOnce(forceRead = true)
             return
         }
 
         when (val result = withContext(ioDispatcher) { registerProject.save(prepared) }) {
             is RegisterProjectResult.Registered -> {
+                registrationFeedback = RegistrationFeedback.Success(result.project.displayName)
+                notificationCenter.push("'${result.project.displayName}' 프로젝트를 등록했습니다.", NotificationTone.Success)
                 when (val selected = withContext(ioDispatcher) { selectProject(result.project.id) }) {
                     is SelectProjectResult.Selected -> {
                         applyActiveProject(selected.project)
@@ -326,12 +403,56 @@ class AppViewModel(
                         refreshRegistryProjects("프로젝트는 저장됐지만 활성 선택을 기록하지 못했습니다: ${selected.message}")
                 }
             }
-            is RegisterProjectResult.SaveFailed -> registryMessage = "Registry 저장 실패: ${result.message}"
+            is RegisterProjectResult.SaveFailed -> {
+                registryMessage = "Registry 저장 실패: ${result.message}"
+                val feedback = RegistrationFeedback.Failure(
+                    whatHappened = "Registry 저장에 실패했습니다: ${result.message}",
+                    nextStep = "잠시 후 다시 시도하세요.",
+                )
+                registrationFeedback = feedback
+                notifyRegistrationFailure()
+            }
             is RegisterProjectResult.InvalidCandidate,
             is RegisterProjectResult.BoundaryRejected,
             -> error("검증된 후보를 저장할 때는 발생할 수 없는 결과입니다.")
         }
         loadOnce(forceRead = true)
+    }
+
+    /** typed 원인만으로 다음 행동 문구를 결정한다 — 사람이 읽는 message 문자열을 비교하지 않는다. */
+    private fun RegistrationRejectionReason.nextStepGuidance(): String =
+        when (this) {
+            RegistrationRejectionReason.BlankDisplayName -> "표시명을 입력하세요."
+            RegistrationRejectionReason.BlankProfile -> "Profile을 입력하세요."
+            RegistrationRejectionReason.BlankExternalKitPath -> "고급 설정에서 외부 Harness Kit 경로를 입력하세요."
+            RegistrationRejectionReason.InvalidExternalKitPathFormat -> "고급 설정에서 Kit 경로 형식을 다시 확인하세요."
+            is RegistrationRejectionReason.RuntimeMissing -> if (source == RuntimeSource.InternalDeveloperSdk) {
+                "개발용 SDK(.local\\harness-kit)를 준비하거나 고급 설정을 열어 외부 Harness Kit을 선택하세요."
+            } else {
+                "고급 설정에서 외부 Harness Kit 경로를 다시 확인하세요."
+            }
+            is RegistrationRejectionReason.RuntimeInvalid -> if (source == RuntimeSource.InternalDeveloperSdk) {
+                "개발용 SDK 내용을 확인하거나 고급 설정을 열어 외부 Harness Kit을 선택하세요."
+            } else {
+                "고급 설정에서 외부 Harness Kit 경로 내용을 다시 확인하세요."
+            }
+        }
+
+    private fun RegistrationRejectionReason.suggestsAdvancedSettings(): Boolean =
+        when (this) {
+            is RegistrationRejectionReason.RuntimeMissing -> source == RuntimeSource.InternalDeveloperSdk
+            is RegistrationRejectionReason.RuntimeInvalid -> source == RuntimeSource.InternalDeveloperSdk
+            RegistrationRejectionReason.BlankDisplayName,
+            RegistrationRejectionReason.BlankProfile,
+            RegistrationRejectionReason.BlankExternalKitPath,
+            RegistrationRejectionReason.InvalidExternalKitPathFormat,
+            -> false
+        }
+
+    private fun pushRegistrationFeedback(feedback: RegistrationFeedback) {
+        registrationFeedback = feedback
+        val current = _state.value as? HrnsUiState.Ready ?: return
+        _state.value = current.copy(registrationFeedback = feedback)
     }
 
     private fun doctorAllowsRegistration(result: ProcessRunResult): Boolean =
@@ -367,7 +488,9 @@ class AppViewModel(
     }
 
     private suspend fun onWorkspaceDaySelected(date: LocalDate) {
-        if (date !in availableDates) {
+        // 오늘은 아직 daily directory가 없어도 항상 선택할 수 있다 — UI가 폴더/4-file을 만들지는
+        // 않지만, 오늘 시작 흐름은 discovery 목록 존재 여부에 의존하면 안 된다(새 Phase 8 §6).
+        if (date !in availableDates && date != todayLocalDate()) {
             registryMessage = "선택한 날짜 폴더를 찾을 수 없습니다."
             loadOnce(forceRead = true)
             return
@@ -602,8 +725,12 @@ class AppViewModel(
             closureDecision = closureDecision,
             recoveryDiagnostics = recoveryDiagnostics,
             runtimeResolution = runtimeResolution,
+            today = todayLocalDate(),
+            registrationFeedback = registrationFeedback,
         )
     }
+
+    private fun todayLocalDate(): LocalDate = clock().atZone(ZoneId.systemDefault()).toLocalDate()
 
     private fun currentProcessRunStatus(lockInspection: LockInspection?): ProcessRunStatus =
         when {
@@ -815,7 +942,51 @@ class AppViewModel(
                 }
             }
             refreshRunProjectionOnly()
+            notifyRunOutcome(action, outcome)
         }
+    }
+
+    /**
+     * 실행 결과를 전역 알림함에 남긴다(새 Phase 8 §4.2) — 등록/저장과 마찬가지로 사용자가
+     * 결과를 기다린 action에만 쓴다. `Completed`/`Failed`는 이미 조립된 `RunStatusProjection.
+     * lastOutcome`(= State reread가 아니라 `ProcessRunResult.contract.overall` 기반 typed 결과,
+     * 기존 실행 기록 카드와 같은 신호)만 재사용하고, stdout 원문을 다시 파싱하지 않는다.
+     * `Rejected`/`LockUnavailable`/`UnsupportedAction`은 이미 typed·안전한 `notice` 문구를 쓴다.
+     */
+    private fun notifyRunOutcome(action: UiAction, outcome: ExecuteHarnessActionOutcome) {
+        val label = action.displayLabel()
+        when (outcome) {
+            is ExecuteHarnessActionOutcome.Completed -> {
+                val outcomeChip = (_state.value as? HrnsUiState.Ready)?.runStatus?.lastOutcome
+                val tone = when (outcomeChip?.tone) {
+                    "success" -> NotificationTone.Success
+                    "warning" -> NotificationTone.Info
+                    else -> NotificationTone.Failure
+                }
+                notificationCenter.push(runNotificationMessage(label, tone), tone)
+            }
+            is ExecuteHarnessActionOutcome.Rejected ->
+                notificationCenter.push("$label 작업을 지금 실행할 수 없습니다.", NotificationTone.Failure)
+            is ExecuteHarnessActionOutcome.Failed ->
+                notificationCenter.push("$label 작업에 실패했습니다.", NotificationTone.Failure)
+            is ExecuteHarnessActionOutcome.LockUnavailable ->
+                notificationCenter.push("$label 작업의 실행 잠금을 획득하지 못했습니다.", NotificationTone.Failure)
+            is ExecuteHarnessActionOutcome.UnsupportedAction ->
+                notificationCenter.push("$label 작업은 현재 지원하지 않습니다.", NotificationTone.Failure)
+        }
+    }
+
+    /** 알림함에는 원문 process 결과·경로·세션을 남기지 않고 typed outcome의 안전한 요약만 저장한다. */
+    private fun runNotificationMessage(label: String, tone: NotificationTone): String =
+        when (tone) {
+            NotificationTone.Success -> "$label 작업이 완료되었습니다."
+            NotificationTone.Info -> "$label 작업 결과를 확인하세요."
+            NotificationTone.Failure -> "$label 작업을 완료하지 못했습니다."
+        }
+
+    /** 등록 modal의 상세 원인은 현재 입력 문맥에서만 보이고, 알림 이력에는 복제하지 않는다. */
+    private fun notifyRegistrationFailure() {
+        notificationCenter.push("프로젝트 등록을 완료하지 못했습니다.", NotificationTone.Failure)
     }
     private suspend fun onLockForceReleaseRequested() {
         val project = activeProject ?: return
@@ -855,10 +1026,14 @@ class AppViewModel(
         requestSaveSucceeded = outcome == SaveRequestOutcome.Saved
         requestInboxNotice = when (outcome) {
             SaveRequestOutcome.Saved -> "요청을 저장했습니다."
-            SaveRequestOutcome.InboxUnavailable -> "요청 입력 파일을 찾을 수 없습니다. 먼저 '작업 준비'를 실행하세요."
+            SaveRequestOutcome.InboxUnavailable -> "요청 입력 파일을 찾을 수 없습니다. 먼저 '오늘 작업 시작'을 실행하세요."
             SaveRequestOutcome.Conflict -> "다른 곳에서 파일이 변경되어 저장하지 못했습니다. 초안은 유지됩니다. 다시 시도하면 최신 내용을 다시 읽으며, 필요하면 REQUEST_INBOX.md를 확인해 수동 병합하세요."
             is SaveRequestOutcome.Failed -> "요청을 저장하지 못했습니다: ${outcome.reason}"
         }
+        notificationCenter.push(
+            if (requestSaveSucceeded) "요구사항을 저장했습니다." else "요구사항을 저장하지 못했습니다.",
+            if (requestSaveSucceeded) NotificationTone.Success else NotificationTone.Failure,
+        )
         refreshTodayWorkProjectionOnly()
     }
 
@@ -916,7 +1091,7 @@ class AppViewModel(
                 externalExecutionSuspected = externalExecutionSuspected,
             ),
             cockpit = updatedCockpit,
-            // 실행 중에도 "프로젝트 관리" 화면의 환경 점검/작업 기준 점검 버튼이 즉시 비활성화되도록
+            // 실행 중에도 "프로젝트 관리" 화면의 연결 점검/작업 준비 점검 버튼이 즉시 비활성화되도록
             // setup도 다시 조립한다 — 그렇지 않으면 중복 클릭 방지가 다음 전체 loadOnce까지 지연된다.
             setup = buildSetupProjection(
                 config = current.workspaceConfig,
