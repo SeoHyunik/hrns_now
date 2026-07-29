@@ -515,7 +515,7 @@ private fun BrandMark() {
     val colors = LocalHrnsColors.current
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(52.dp)
             .shadow(
                 elevation = 6.dp,
                 shape = CircleShape,
