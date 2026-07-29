@@ -515,7 +515,7 @@ private fun NotificationToastHost(
 private fun BrandMark() {
     Box(
         modifier = Modifier
-            .size(48.dp),
+            .size(64.dp),
         contentAlignment = Alignment.Center,
     ) {
         Image(
