@@ -52,6 +52,7 @@ import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.app.presentation.model.NotificationItem
 import io.hrns_now.app.presentation.model.NotificationTone
+import io.hrns_now.app.presentation.model.RegistryProjectItem
 import io.hrns_now.core.AppRoute
 import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.config.WorkspaceReadiness
@@ -151,7 +152,10 @@ private fun ReadyShell(
     Column(modifier = Modifier.fillMaxSize()) {
         TopRibbon(
             projection = state.shell,
-            activeProjectName = state.cockpit.projectName,
+            activeProjectName = ribbonActiveProjectName(
+                registryProjects = state.registryProjects,
+                workflowStateProjectName = state.cockpit.projectName,
+            ),
             activeProjectStale = state.cockpit.isStale,
             readiness = state.workspaceReadiness,
             themeMode = themeMode,
@@ -214,6 +218,17 @@ private fun ReadyShell(
     }
 }
 
+/**
+ * 상단 리본의 현재 프로젝트명은 Registry의 활성 선택이 권위다. 신규 연결 직후에는
+ * `WORKFLOW_STATE.json`이 아직 없을 수 있으므로, State 안의 projectName만 보면 실제로
+ * 선택된 프로젝트를 `NONE`으로 잘못 표시하게 된다. State 이름은 Registry가 없는 경우에만
+ * 읽기 전용 보조값으로 사용한다.
+ */
+internal fun ribbonActiveProjectName(
+    registryProjects: List<RegistryProjectItem>,
+    workflowStateProjectName: String?,
+): String? =
+    registryProjects.firstOrNull { it.isActive }?.label ?: workflowStateProjectName
 // ─────────────────────────────────────────────────────────────────────────────
 // 상단 리본  ──  brand · 페이지 라벨 · 준비 상태 요약 · 테마 토글
 // ─────────────────────────────────────────────────────────────────────────────
