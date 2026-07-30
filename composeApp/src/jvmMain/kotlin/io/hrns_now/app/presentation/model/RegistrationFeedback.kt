@@ -9,7 +9,15 @@ package io.hrns_now.app.presentation.model
 sealed interface RegistrationFeedback {
     data object Idle : RegistrationFeedback
     data object Running : RegistrationFeedback
-    data class Success(val projectName: String) : RegistrationFeedback
+
+    /**
+     * [workspacePreparation]은 등록 자체의 성공과 분리된 결과다(Phase 9 QA03-B) — "등록은
+     * 완료됨"과 "오늘 workspace 준비는 실패/차단됨"을 서로 다른 사실로 보여줄 수 있다.
+     */
+    data class Success(
+        val projectName: String,
+        val workspacePreparation: WorkspacePreparationOutcome = WorkspacePreparationOutcome.NotAttempted,
+    ) : RegistrationFeedback
 
     /**
      * [showAdvancedSettingsHint]는 원인이 내장 SDK 관련(Missing/Invalid)일 때만 true다 — 이 경우
@@ -20,4 +28,17 @@ sealed interface RegistrationFeedback {
         val nextStep: String,
         val showAdvancedSettingsHint: Boolean = false,
     ) : RegistrationFeedback
+}
+
+/**
+ * 등록 직후 자동으로 시도한 오늘 workspace 준비(typed `BootstrapDay` 실행)의 결과다(Phase 9 QA03-B).
+ * [reasonText]는 이미 typed 값(`BlockedReasonKey`/`ExecuteHarnessActionOutcome`)에서 locale별로
+ * 조립된 안전한 문구이며, raw process 출력이나 경로 원문을 담지 않는다.
+ */
+sealed interface WorkspacePreparationOutcome {
+    /** 등록만 선택했거나, 이미 오늘 workspace가 준비돼 있어 Bootstrap이 필요하지 않았다. */
+    data object NotAttempted : WorkspacePreparationOutcome
+    data object InProgress : WorkspacePreparationOutcome
+    data object Prepared : WorkspacePreparationOutcome
+    data class NotPrepared(val reasonText: String) : WorkspacePreparationOutcome
 }

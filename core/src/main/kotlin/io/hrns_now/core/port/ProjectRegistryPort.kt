@@ -24,4 +24,11 @@ interface ProjectRegistryPort {
     suspend fun save(project: HarnessProject): RegistrySaveResult
     suspend fun delete(id: ProjectId): RegistrySaveResult
     suspend fun markActive(id: ProjectId): RegistrySaveResult
+
+    /**
+     * Registry의 "마지막으로 활성화된 프로젝트" 선택만 지운다(Phase 9 QA03-A). 등록된 project
+     * entry는 전혀 건드리지 않는다 — `delete`와 달리 이 메서드는 목록에서 아무것도 제거하지
+     * 않는다.
+     */
+    suspend fun clearActive(): RegistrySaveResult
 }

@@ -50,6 +50,7 @@ import io.hrns_now.app.presentation.model.RegistrationFeedback
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.TodayWorkProjection
+import io.hrns_now.app.presentation.model.WorkspacePreparationOutcome
 import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.RequestEntryPriority
 import io.hrns_now.core.domain.model.RequestEntrySource
@@ -222,6 +223,7 @@ fun SetupScreen(
             runtimeSourceDiagnostics = activeProjectRuntimeDiagnostics,
             workspaceConfig = workspaceConfig,
             strings = strings,
+            onUiEvent = onUiEvent,
         )
 
         projection.cards.forEach { card ->
@@ -317,6 +319,7 @@ private fun ActiveProjectSummaryCard(
     runtimeSourceDiagnostics: CockpitDiagnostics?,
     workspaceConfig: WorkspaceConfig,
     strings: AppStrings,
+    onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
     val colors = LocalHrnsColors.current
     SectionCard(title = strings.setup.activeProjectTitle, eyebrow = "Active project") {
@@ -339,6 +342,13 @@ private fun ActiveProjectSummaryCard(
                     StatusChip(
                         text = if (isStale) strings.setup.staleLabel else strings.setup.okLabel,
                         tone = if (isStale) "warning" else "success",
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    // Phase 9 QA03-A: Registry의 활성 선택만 지운다 — 등록 정보는 그대로 남긴다.
+                    PlaceholderActionButton(
+                        text = strings.setup.releaseActiveProjectButton,
+                        enabled = true,
+                        onClick = { onUiEvent(HrnsUiEvent.ActiveProjectReleaseRequested) },
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -394,10 +404,17 @@ private fun ProjectManagementSection(
     val colors = LocalHrnsColors.current
     var showManagementModal by remember { mutableStateOf(false) }
 
-    // 등록 성공 직후에는 modal을 자동으로 닫는다 — 다음 등록 시도를 위해 registrationFeedback은
-    // ViewModel이 다음 요청 시작 시점에 다시 Running으로 되돌린다.
+    // 등록 흐름 전체(오늘 workspace 준비 시도까지)가 끝나면 modal을 자동으로 닫는다 — 다음 등록
+    // 시도를 위해 registrationFeedback은 ViewModel이 다음 요청 시작 시점에 다시 Running으로
+    // 되돌린다. workspace 준비가 아직 진행 중(InProgress)이면 그 결과를 modal 안에서 계속
+    // 보여줘야 하므로 닫지 않는다(Phase 9 QA03-B).
     LaunchedEffect(registrationFeedback) {
-        if (registrationFeedback is RegistrationFeedback.Success) showManagementModal = false
+        val feedback = registrationFeedback
+        if (feedback is RegistrationFeedback.Success &&
+            feedback.workspacePreparation !is WorkspacePreparationOutcome.InProgress
+        ) {
+            showManagementModal = false
+        }
     }
 
     fun dismissManagementModal() {
@@ -453,7 +470,9 @@ private fun ProjectManagementSection(
                     )
                 }
                 PlaceholderActionButton(
-                    text = strings.setup.registerProjectButton,
+                    // Phase 9 QA03-A: 활성 프로젝트가 있으면 "새 프로젝트 등록"으로 표시해 이
+                    // 버튼이 현재 활성 프로젝트를 비활성화로 숨기지 않는다는 것을 분명히 한다.
+                    text = if (active != null) strings.setup.registerAnotherProjectButton else strings.setup.registerProjectButton,
                     primary = true,
                     enabled = true,
                     onClick = { showManagementModal = true },
@@ -714,28 +733,45 @@ private fun ProjectRegistrationForm(
             }
         }
 
-        PlaceholderActionButton(
-            text = if (registrationFeedback is RegistrationFeedback.Running) strings.setup.diagnosingButton else strings.setup.diagnoseAndRegisterButton,
-            primary = true,
-            enabled = registrationFeedback !is RegistrationFeedback.Running &&
-                displayName.isNotBlank() && workspaceRoot.isNotBlank() &&
-                repositoryRoot.isNotBlank() && profileId.isNotBlank() &&
-                (!useExternalKit || kitRoot.isNotBlank()),
-            onClick = {
-                onUiEvent(
-                    HrnsUiEvent.ProjectRegistrationRequested(
-                        RegisterProjectCandidate(
-                            displayName = displayName,
-                            useInternalDeveloperSdk = !useExternalKit,
-                            kitRootRaw = if (useExternalKit) kitRoot else null,
-                            projectWorkspaceRootRaw = workspaceRoot,
-                            repositoryRootRaw = repositoryRoot,
-                            profileId = profileId,
-                        ),
-                    ),
-                )
-            },
+        val candidate = RegisterProjectCandidate(
+            displayName = displayName,
+            useInternalDeveloperSdk = !useExternalKit,
+            kitRootRaw = if (useExternalKit) kitRoot else null,
+            projectWorkspaceRootRaw = workspaceRoot,
+            repositoryRootRaw = repositoryRoot,
+            profileId = profileId,
         )
+        val submissionInProgress = registrationFeedback is RegistrationFeedback.Running ||
+            (registrationFeedback is RegistrationFeedback.Success &&
+                registrationFeedback.workspacePreparation is WorkspacePreparationOutcome.InProgress)
+        val formValid = displayName.isNotBlank() && workspaceRoot.isNotBlank() &&
+            repositoryRoot.isNotBlank() && profileId.isNotBlank() &&
+            (!useExternalKit || kitRoot.isNotBlank())
+
+        // Phase 9 QA03-B: 신규 프로젝트의 기본 primary 흐름은 등록에 이어 오늘 workspace까지
+        // 준비하는 것이다. 등록만 원하는 경우는 보조 행동으로 별도 제공한다.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PlaceholderActionButton(
+                text = if (registrationFeedback is RegistrationFeedback.Running) {
+                    strings.setup.diagnosingButton
+                } else {
+                    strings.setup.diagnoseRegisterAndPrepareButton
+                },
+                primary = true,
+                enabled = !submissionInProgress && formValid,
+                onClick = {
+                    onUiEvent(HrnsUiEvent.ProjectRegistrationRequested(candidate, prepareWorkspace = true))
+                },
+            )
+            PlaceholderActionButton(
+                text = strings.setup.registerOnlyButton,
+                primary = false,
+                enabled = !submissionInProgress && formValid,
+                onClick = {
+                    onUiEvent(HrnsUiEvent.ProjectRegistrationRequested(candidate, prepareWorkspace = false))
+                },
+            )
+        }
 
         RegistrationFeedbackRow(registrationFeedback, strings)
     }
@@ -761,14 +797,18 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: App
             )
         }
 
-        is RegistrationFeedback.Success -> Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusChip(text = strings.setup.registrationCompleteChip, tone = "success")
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "${strings.setup.registeredNoticePrefix}${feedback.projectName}${strings.setup.registeredNoticeSuffix}",
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                color = colors.primaryText,
-            )
+        is RegistrationFeedback.Success -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusChip(text = strings.setup.registrationCompleteChip, tone = "success")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${strings.setup.registeredNoticePrefix}${feedback.projectName}${strings.setup.registeredNoticeSuffix}",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                    color = colors.primaryText,
+                )
+            }
+            // Phase 9 QA03-B: 등록 완료 사실과 오늘 workspace 준비 결과를 분리해서 보여준다.
+            WorkspacePreparationRow(feedback.workspacePreparation, strings)
         }
 
         is RegistrationFeedback.Failure -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -782,6 +822,47 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: App
             )
             Text(
                 text = feedback.nextStep,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                color = colors.secondaryText,
+            )
+        }
+    }
+}
+
+/**
+ * 등록 직후 자동 Bootstrap 시도 결과를 등록 성공 사실과 분리해서 보여준다(Phase 9 QA03-B).
+ * [WorkspacePreparationOutcome.NotPrepared.reasonText]는 이미 typed 값에서 조립된 안전한 문구다.
+ */
+@Composable
+private fun WorkspacePreparationRow(outcome: WorkspacePreparationOutcome, strings: AppStrings) {
+    val colors = LocalHrnsColors.current
+    when (outcome) {
+        WorkspacePreparationOutcome.NotAttempted -> Unit
+
+        WorkspacePreparationOutcome.InProgress -> Row(verticalAlignment = Alignment.CenterVertically) {
+            InlineSpinner()
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = strings.setup.workspacePreparationInProgressNotice,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                color = colors.secondaryText,
+            )
+        }
+
+        WorkspacePreparationOutcome.Prepared -> Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusChip(text = strings.setup.workspacePreparedChip, tone = "success")
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = strings.setup.workspacePreparedNotice,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                color = colors.primaryText,
+            )
+        }
+
+        is WorkspacePreparationOutcome.NotPrepared -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            StatusChip(text = strings.setup.workspaceNotPreparedChip, tone = "warning")
+            Text(
+                text = outcome.reasonText,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
                 color = colors.secondaryText,
             )

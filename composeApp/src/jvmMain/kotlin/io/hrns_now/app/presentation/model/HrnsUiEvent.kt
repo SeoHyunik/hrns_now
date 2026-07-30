@@ -16,11 +16,26 @@ sealed interface HrnsUiEvent {
      */
     data class ClosureValidationRequested(val incompleteHandoffAcknowledged: Boolean) : HrnsUiEvent
     data class ProjectSelected(val id: ProjectId) : HrnsUiEvent
-    data class ProjectRegistrationRequested(val candidate: RegisterProjectCandidate) : HrnsUiEvent
+
+    /**
+     * [prepareWorkspace]가 true(기본값)면 등록·선택·context 재조회에 이어 오늘 workspace 준비까지
+     * 한 흐름으로 시도한다(Phase 9 QA03-B). 등록만 원하면 false를 보낸다 — 이 경우에도 등록 자체의
+     * 검증·경계·Doctor·compatibility 절차는 동일하다.
+     */
+    data class ProjectRegistrationRequested(
+        val candidate: RegisterProjectCandidate,
+        val prepareWorkspace: Boolean = true,
+    ) : HrnsUiEvent
 
     /** 등록 modal을 닫을 때 이전 시도의 running/success/failure 표시를 지운다(새 Phase 8 §1). */
     data object RegistrationFeedbackDismissed : HrnsUiEvent
     data class ProjectDeletionRequested(val id: ProjectId) : HrnsUiEvent
+
+    /**
+     * Registry의 "마지막으로 활성화된 프로젝트" 선택만 지운다(Phase 9 QA03-A) — 등록된 project
+     * entry, workspace, repository, Harness Kit, State/daily 파일은 건드리지 않는다.
+     */
+    data object ActiveProjectReleaseRequested : HrnsUiEvent
     data class WorkspaceDaySelected(val date: LocalDate) : HrnsUiEvent
 
     /** 진행 중인 Doctor/ValidateOps 실행 취소를 요청한다(Phase 3). 실행 중이 아니면 무시된다. */

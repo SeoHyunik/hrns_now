@@ -16,6 +16,7 @@ import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.app.presentation.model.NotificationItem
 import io.hrns_now.app.presentation.model.NotificationTone
 import io.hrns_now.app.presentation.model.RegistrationFeedback
+import io.hrns_now.app.presentation.model.WorkspacePreparationOutcome
 import io.hrns_now.app.presentation.NotificationCenter
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.domain.model.ActionContext
@@ -72,6 +73,7 @@ import io.hrns_now.core.result.HarnessOverallStatus
 import io.hrns_now.core.result.ProcessRunResult
 import io.hrns_now.core.result.StateReadResult
 import io.hrns_now.core.usecase.ActiveProjectSource
+import io.hrns_now.core.usecase.ClearActiveProjectUseCase
 import io.hrns_now.core.usecase.DeleteProjectUseCase
 import io.hrns_now.core.usecase.LoadCockpitUseCase
 import io.hrns_now.core.usecase.LoadProjectsUseCase
@@ -123,6 +125,7 @@ class AppViewModel(
     private val selectProject: SelectProjectUseCase,
     private val selectWorkspaceDay: SelectWorkspaceDayUseCase,
     private val deleteProject: DeleteProjectUseCase,
+    private val clearActiveProject: ClearActiveProjectUseCase,
     private val boundaryPathResolver: (String?) -> RootPathCheck,
     private val compatibilityPort: KitVersionManifestPort,
     private val runtimeSourceResolver: RuntimeSourceResolverPort,
@@ -217,6 +220,11 @@ class AppViewModel(
     private var closureDecision: ClosureDecision =
         ClosureDecision.Blocked(listOf(ClosureBlockReasonKey.StateInvalid(StateInvalidKind.NotYetRead)))
     private var lastStateRead: StateReadResult? = null
+    /**
+     * 마지막 재조회에서 실제 filesystem probe가 확인한 daily required 4-file 상태다. Bootstrap
+     * 완료 표시는 WORKFLOW_STATE.json 파싱 성공만이 아니라 이 값도 함께 충족해야 한다.
+     */
+    private var lastRequiredArtifactsReady: Boolean = false
     private var recoveryDiagnostics: RecoveryDiagnostics = RecoveryDiagnostics.Empty
 
     init {
@@ -257,9 +265,10 @@ class AppViewModel(
                 onClosureValidationRequested(event.incompleteHandoffAcknowledged)
             is HrnsUiEvent.ProjectSelected -> viewModelScope.launch { onProjectSelected(event.id) }
             is HrnsUiEvent.ProjectRegistrationRequested ->
-                viewModelScope.launch { onProjectRegistrationRequested(event.candidate) }
+                viewModelScope.launch { onProjectRegistrationRequested(event.candidate, event.prepareWorkspace) }
             HrnsUiEvent.RegistrationFeedbackDismissed -> pushRegistrationFeedback(RegistrationFeedback.Idle)
             is HrnsUiEvent.ProjectDeletionRequested -> viewModelScope.launch { onProjectDeletionRequested(event.id) }
+            HrnsUiEvent.ActiveProjectReleaseRequested -> viewModelScope.launch { onActiveProjectReleaseRequested() }
             is HrnsUiEvent.WorkspaceDaySelected -> viewModelScope.launch { onWorkspaceDaySelected(event.date) }
             HrnsUiEvent.HarnessRunCancelRequested -> harnessRunCancellationToken?.requestCancel()
             HrnsUiEvent.LockForceReleaseRequested -> viewModelScope.launch { onLockForceReleaseRequested() }
@@ -286,7 +295,10 @@ class AppViewModel(
      * Doctor warn(GPU capability 등)은 결과 카드로 보존하되, fail/계약 미파싱/호환성 불일치는
      * fail-closed로 Registry 저장을 막는다.
      */
-    private suspend fun onProjectRegistrationRequested(candidate: RegisterProjectCandidate) {
+    private suspend fun onProjectRegistrationRequested(
+        candidate: RegisterProjectCandidate,
+        prepareWorkspace: Boolean,
+    ) {
         pushRegistrationFeedback(RegistrationFeedback.Running)
         val inspection = withContext(ioDispatcher) { registerProject.inspect(candidate) }
         val prepared = when (inspection) {
@@ -399,17 +411,34 @@ class AppViewModel(
 
         when (val result = withContext(ioDispatcher) { registerProject.save(prepared) }) {
             is RegisterProjectResult.Registered -> {
-                registrationFeedback = RegistrationFeedback.Success(result.project.displayName)
                 notificationCenter.push(projectRegisteredNotification(result.project.displayName, currentLocale), NotificationTone.Success)
                 when (val selected = withContext(ioDispatcher) { selectProject(result.project.id) }) {
                     is SelectProjectResult.Selected -> {
                         applyActiveProject(selected.project)
                         refreshRegistryProjects(projectRegisteredRefreshMessage(selected.project.displayName, currentLocale))
+                        // §B: 등록·선택·context 재조회까지 끝난 뒤에만 오늘 workspace 준비 여부를
+                        // 판단한다 — ActionPolicy가 최신 재조회 결과로 다시 계산한 뒤여야 한다.
+                        loadOnce(forceRead = true)
+                        val preparation = if (prepareWorkspace) {
+                            pushRegistrationFeedback(
+                                RegistrationFeedback.Success(result.project.displayName, WorkspacePreparationOutcome.InProgress),
+                            )
+                            attemptWorkspacePreparationAfterRegistration()
+                        } else {
+                            WorkspacePreparationOutcome.NotAttempted
+                        }
+                        registrationFeedback = RegistrationFeedback.Success(result.project.displayName, preparation)
+                        pushRegistrationFeedback(registrationFeedback)
+                        return
                     }
-                    SelectProjectResult.NotFound ->
+                    SelectProjectResult.NotFound -> {
+                        registrationFeedback = RegistrationFeedback.Success(result.project.displayName)
                         refreshRegistryProjects(projectRegisteredButNotFoundMessage(currentLocale))
-                    is SelectProjectResult.SaveFailed ->
+                    }
+                    is SelectProjectResult.SaveFailed -> {
+                        registrationFeedback = RegistrationFeedback.Success(result.project.displayName)
                         refreshRegistryProjects(projectRegisteredButSelectSaveFailedMessage(selected.message, currentLocale))
+                    }
                 }
             }
             is RegisterProjectResult.SaveFailed -> {
@@ -639,6 +668,7 @@ class AppViewModel(
         if (sequence != loadSequence || contextGeneration != loadContextGeneration) return
         lastLockInspection = lockInspection
         lastStateRead = loaded.stateRead
+        lastRequiredArtifactsReady = loaded.workspaceArtifactSummary.isRequiredReady
         recoveryDiagnostics = loadedRecoveryDiagnostics
         closureDecision = closurePolicy.evaluate(
             ClosureContext(
@@ -847,96 +877,186 @@ class AppViewModel(
             refreshRunProjectionOnly()
             return
         }
-        val context = latestExecutionContext ?: return
+        // isRunning을 launch 이전에 동기적으로 세워야 중복 클릭 가드(맨 위 harnessRunView.isRunning
+        // 확인)가 코루틴이 실제로 디스패치되기 전의 연속 클릭도 정확히 차단한다.
+        if (latestExecutionContext == null) return
+        harnessRunView = HarnessRunViewState(lastCommand = kind, isRunning = true, runStartedAt = clock(), lastResult = null)
+        refreshRunProjectionOnly()
+        harnessRunJob = viewModelScope.launch { runHarnessAction(action, kind) }
+    }
+
+    /**
+     * 실제 Harness 명령 실행 → lock-held State reread → 화면/알림 갱신까지 수행하고 typed
+     * outcome을 돌려준다. 사용자가 직접 요청한 실행은 [onHarnessRunRequested]가 pre-check 뒤
+     * launch해서 호출하고, 등록 직후 자동 Bootstrap 시도([attemptWorkspacePreparationAfterRegistration])는
+     * 이미 suspend 문맥이므로 이 함수를 직접 await해 결과를 등록 feedback에 반영한다 — 등록
+     * 화면용 별도 lock/process lifecycle을 복제하지 않는다(Phase 9 QA03-B).
+     */
+    private suspend fun runHarnessAction(action: UiAction, kind: HarnessCommandKind): ExecuteHarnessActionOutcome {
+        val context = latestExecutionContext
+        if (context == null) {
+            val outcome = ExecuteHarnessActionOutcome.UnsupportedAction(action)
+            harnessRunView = HarnessRunViewState(lastCommand = kind, notice = unsupportedActionNotice(currentLocale))
+            refreshRunProjectionOnly()
+            return outcome
+        }
         val capturedGeneration = loadContextGeneration
         val cancellationToken = ProcessCancellationToken()
         harnessRunCancellationToken = cancellationToken
         harnessRunView = HarnessRunViewState(lastCommand = kind, isRunning = true, runStartedAt = clock(), lastResult = null)
         refreshRunProjectionOnly()
 
-        harnessRunJob = viewModelScope.launch {
-            val outcome = try {
-                withContext(ioDispatcher) {
-                    executeHarnessAction.invoke(
-                        context = context,
-                        action = action,
-                        timeout = runTimeout,
-                        cancellationToken = cancellationToken,
-                        onLockAcquired = { handle ->
-                            withContext(mainDispatcher) {
-                                currentLockHandle = handle
-                                startHeartbeat(handle)
-                            }
-                        },
-                        onBeforeLockRelease = {
-                            withContext(mainDispatcher) {
-                                stopHeartbeat()
-                                currentLockHandle = null
-                            }
-                        },
-                    )
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                ExecuteHarnessActionOutcome.Failed(
-                    ProcessRunResult.StartFailed(harnessRunObserveFailedNotice(currentLocale)),
+        val outcome = try {
+            withContext(ioDispatcher) {
+                executeHarnessAction.invoke(
+                    context = context,
+                    action = action,
+                    timeout = runTimeout,
+                    cancellationToken = cancellationToken,
+                    onLockAcquired = { handle ->
+                        withContext(mainDispatcher) {
+                            currentLockHandle = handle
+                            startHeartbeat(handle)
+                        }
+                    },
+                    onBeforeLockRelease = {
+                        withContext(mainDispatcher) {
+                            stopHeartbeat()
+                            currentLockHandle = null
+                        }
+                    },
                 )
-            } finally {
-                stopHeartbeat()
-                currentLockHandle = null
-                lastLockInspection = withContext(ioDispatcher) { inspectLock(context.project.id, context.day.date) }
             }
-
-            if (capturedGeneration != loadContextGeneration) return@launch
-
-            when (outcome) {
-                is ExecuteHarnessActionOutcome.Completed -> {
-                    // Use case는 own lock 보유 중 State를 이미 다시 읽었다. 아래 full reload는 strategy/artifact/UI
-                    // projection을 갱신하기 위한 후속 표시 작업이며, own mtime 변화는 외부 실행으로 오인하지 않는다.
-                    localStateRefreshPending = true
-                    loadOnce(forceRead = true)
-                    harnessRunView = harnessRunView.copy(
-                        isRunning = false,
-                        runCompletedAt = clock(),
-                        lastResult = outcome.processResult,
-                        notice = null,
-                    )
-                }
-
-                is ExecuteHarnessActionOutcome.Rejected -> {
-                    val notice = outcome.reasonKey?.toDisplayText(currentLocale) ?: rejectedFallbackNotice(currentLocale)
-                    harnessRunView = HarnessRunViewState(lastCommand = kind, notice = notice)
-                }
-
-                is ExecuteHarnessActionOutcome.Failed -> {
-                    harnessRunView = HarnessRunViewState(
-                        lastCommand = kind,
-                        runCompletedAt = clock(),
-                        lastResult = outcome.processResult,
-                    )
-                }
-
-                is ExecuteHarnessActionOutcome.LockUnavailable -> {
-                    val lockResult = outcome.result
-                    val notice = when (lockResult) {
-                        is LockAcquireResult.Busy -> lockBusyNotice(currentLocale)
-                        is LockAcquireResult.Failed -> lockFailedNotice(lockResult.reason, currentLocale)
-                        is LockAcquireResult.Acquired -> error("획득한 잠금은 LockUnavailable이 될 수 없습니다.")
-                    }
-                    harnessRunView = HarnessRunViewState(lastCommand = kind, notice = notice)
-                }
-
-                is ExecuteHarnessActionOutcome.UnsupportedAction -> {
-                    harnessRunView = HarnessRunViewState(
-                        lastCommand = kind,
-                        notice = unsupportedActionNotice(currentLocale),
-                    )
-                }
-            }
-            refreshRunProjectionOnly()
-            notifyRunOutcome(action, outcome)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ExecuteHarnessActionOutcome.Failed(
+                ProcessRunResult.StartFailed(harnessRunObserveFailedNotice(currentLocale)),
+            )
+        } finally {
+            stopHeartbeat()
+            currentLockHandle = null
+            lastLockInspection = withContext(ioDispatcher) { inspectLock(context.project.id, context.day.date) }
         }
+
+        if (capturedGeneration != loadContextGeneration) return outcome
+
+        when (outcome) {
+            is ExecuteHarnessActionOutcome.Completed -> {
+                // Use case는 own lock 보유 중 State를 이미 다시 읽었다. 아래 full reload는 strategy/artifact/UI
+                // projection을 갱신하기 위한 후속 표시 작업이며, own mtime 변화는 외부 실행으로 오인하지 않는다.
+                localStateRefreshPending = true
+                loadOnce(forceRead = true)
+                harnessRunView = harnessRunView.copy(
+                    isRunning = false,
+                    runCompletedAt = clock(),
+                    lastResult = outcome.processResult,
+                    notice = null,
+                )
+            }
+
+            is ExecuteHarnessActionOutcome.Rejected -> {
+                val notice = outcome.reasonKey?.toDisplayText(currentLocale) ?: rejectedFallbackNotice(currentLocale)
+                harnessRunView = HarnessRunViewState(lastCommand = kind, notice = notice)
+            }
+
+            is ExecuteHarnessActionOutcome.Failed -> {
+                harnessRunView = HarnessRunViewState(
+                    lastCommand = kind,
+                    runCompletedAt = clock(),
+                    lastResult = outcome.processResult,
+                )
+            }
+
+            is ExecuteHarnessActionOutcome.LockUnavailable -> {
+                val lockResult = outcome.result
+                val notice = when (lockResult) {
+                    is LockAcquireResult.Busy -> lockBusyNotice(currentLocale)
+                    is LockAcquireResult.Failed -> lockFailedNotice(lockResult.reason, currentLocale)
+                    is LockAcquireResult.Acquired -> error("획득한 잠금은 LockUnavailable이 될 수 없습니다.")
+                }
+                harnessRunView = HarnessRunViewState(lastCommand = kind, notice = notice)
+            }
+
+            is ExecuteHarnessActionOutcome.UnsupportedAction -> {
+                harnessRunView = HarnessRunViewState(
+                    lastCommand = kind,
+                    notice = unsupportedActionNotice(currentLocale),
+                )
+            }
+        }
+        refreshRunProjectionOnly()
+        notifyRunOutcome(action, outcome)
+        return outcome
+    }
+
+    /**
+     * 등록+선택+context 재조회가 끝난 뒤, ActionPolicy가 실제로 `BootstrapDay`를 primary로 허용할
+     * 때만 [runHarnessAction]을 그대로 재사용해 오늘 workspace를 준비한다(Phase 9 QA03-B §B).
+     * 등록 자체의 성공 여부와 분리된 결과만 돌려주며, 이 결과가 Registry를 되돌리는 이유가 되지
+     * 않는다. stdout 성공 문구가 아니라 재조회한 State로 준비 성공을 판단한다.
+     */
+    private suspend fun attemptWorkspacePreparationAfterRegistration(): WorkspacePreparationOutcome {
+        val ready = _state.value as? HrnsUiState.Ready
+        val eligible = ready?.todayWork?.bootstrapEligible == true
+        if (!eligible) {
+            return ready?.cockpit?.blockedReasonLabel
+                ?.let { WorkspacePreparationOutcome.NotPrepared(it) }
+                ?: WorkspacePreparationOutcome.NotAttempted
+        }
+        return when (val outcome = runHarnessAction(UiAction.BootstrapDay, HarnessCommandKind.Bootstrap)) {
+            is ExecuteHarnessActionOutcome.Completed ->
+                if (lastStateRead is StateReadResult.Success && lastRequiredArtifactsReady) {
+                    WorkspacePreparationOutcome.Prepared
+                } else {
+                    WorkspacePreparationOutcome.NotPrepared(workspacePreparationNotConfirmedNotice(currentLocale))
+                }
+            is ExecuteHarnessActionOutcome.Rejected ->
+                WorkspacePreparationOutcome.NotPrepared(
+                    outcome.reasonKey?.toDisplayText(currentLocale) ?: rejectedFallbackNotice(currentLocale),
+                )
+            is ExecuteHarnessActionOutcome.Failed ->
+                WorkspacePreparationOutcome.NotPrepared(workspacePreparationFailedNotice(currentLocale))
+            is ExecuteHarnessActionOutcome.LockUnavailable -> {
+                val lockResult = outcome.result
+                val notice = when (lockResult) {
+                    is LockAcquireResult.Busy -> lockBusyNotice(currentLocale)
+                    is LockAcquireResult.Failed -> lockFailedNotice(lockResult.reason, currentLocale)
+                    is LockAcquireResult.Acquired -> error("획득한 잠금은 LockUnavailable이 될 수 없습니다.")
+                }
+                WorkspacePreparationOutcome.NotPrepared(notice)
+            }
+            is ExecuteHarnessActionOutcome.UnsupportedAction ->
+                WorkspacePreparationOutcome.NotPrepared(unsupportedActionNotice(currentLocale))
+        }
+    }
+
+    /**
+     * Registry의 활성 선택만 지운다(Phase 9 QA03-A) — 등록된 project entry, workspace, repository,
+     * Harness Kit, State/daily 파일은 전혀 건드리지 않는다. 해제 직후 selected day/polling
+     * context/active project projection을 [onProjectDeletionRequested]와 동일하게 안전 초기화하고
+     * 재조회한다.
+     */
+    private suspend fun onActiveProjectReleaseRequested() {
+        val project = activeProject ?: return
+        when (val result = withContext(ioDispatcher) { clearActiveProject() }) {
+            RegistrySaveResult.Success -> {
+                hasResolvedActiveProject = false
+                activeProject = null
+                currentWorkspaceConfig = null
+                selectedDay = null
+                availableDates = emptyList()
+                preferredDate = null
+                lastPolledMtime = null
+                lastCompatibilityDetail = null
+                resetHarnessRunContext()
+                loadContextGeneration += 1
+                refreshRegistryProjects(activeProjectReleasedMessage(project.displayName, currentLocale))
+            }
+            is RegistrySaveResult.Failed ->
+                refreshRegistryProjects(activeProjectReleaseFailedMessage(result.message, currentLocale))
+        }
+        loadOnce(forceRead = true)
     }
 
     /**

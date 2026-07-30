@@ -37,6 +37,7 @@ class RegisterProjectUseCaseTest {
         }
         override suspend fun delete(id: ProjectId): RegistrySaveResult = RegistrySaveResult.Success
         override suspend fun markActive(id: ProjectId): RegistrySaveResult = RegistrySaveResult.Success
+        override suspend fun clearActive(): RegistrySaveResult = RegistrySaveResult.Success
     }
 
     private fun candidate(

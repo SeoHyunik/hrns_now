@@ -235,6 +235,28 @@ fun projectDeleteFailedMessage(detail: String, locale: AppLocale): String = when
     AppLocale.English -> "Couldn't delete the project: $detail"
 }
 
+/** Phase 9 QA03-A: 해제는 등록된 project entry를 지우지 않는다 — 문구도 삭제와 분명히 구분한다. */
+fun activeProjectReleasedMessage(projectName: String, locale: AppLocale): String = when (locale) {
+    AppLocale.Korean -> "'$projectName' 프로젝트를 해제했습니다. 등록 정보는 그대로 남아 있습니다."
+    AppLocale.English -> "Released '$projectName'. Its registry entry is still there."
+}
+
+fun activeProjectReleaseFailedMessage(detail: String, locale: AppLocale): String = when (locale) {
+    AppLocale.Korean -> "프로젝트 해제를 저장하지 못했습니다: $detail"
+    AppLocale.English -> "Couldn't save the project release: $detail"
+}
+
+/** Phase 9 QA03-B: Bootstrap이 끝났지만 재조회한 State가 Success가 아닐 때 쓰는 안전한 안내다. */
+fun workspacePreparationNotConfirmedNotice(locale: AppLocale): String = when (locale) {
+    AppLocale.Korean -> "등록은 완료됐지만, 오늘 작업공간 준비 결과를 아직 확인하지 못했습니다. 작업 계획 화면에서 다시 확인하세요."
+    AppLocale.English -> "Registration is complete, but today's workspace preparation result isn't confirmed yet. Check the Plan screen again."
+}
+
+fun workspacePreparationFailedNotice(locale: AppLocale): String = when (locale) {
+    AppLocale.Korean -> "등록은 완료됐지만, 오늘 작업공간 준비 실행이 실패했습니다. 작업 계획 화면에서 다시 시도하세요."
+    AppLocale.English -> "Registration is complete, but preparing today's workspace failed. Try again from the Plan screen."
+}
+
 fun dayFolderNotFoundMessage(locale: AppLocale): String = when (locale) {
     AppLocale.Korean -> "선택한 날짜 폴더를 찾을 수 없습니다."
     AppLocale.English -> "The selected date folder couldn't be found."

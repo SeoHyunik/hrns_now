@@ -36,6 +36,7 @@ import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.policy.ActionPolicy
 import io.hrns_now.core.domain.policy.WorkspaceDaySelectionPolicy
+import io.hrns_now.core.usecase.ClearActiveProjectUseCase
 import io.hrns_now.core.usecase.DeleteProjectUseCase
 import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
 import io.hrns_now.core.usecase.HarnessCommandMapper
@@ -265,6 +266,7 @@ private fun createProductionViewModel(): AppViewModel {
         selectProject = SelectProjectUseCase(registry),
         selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
         deleteProject = DeleteProjectUseCase(registry),
+        clearActiveProject = ClearActiveProjectUseCase(registry),
         boundaryPathResolver = realPathGateway::resolve,
         compatibilityPort = JsonKitVersionManifestAdapter(),
         runtimeSourceResolver = runtimeSourceResolver,

@@ -2,6 +2,8 @@ package io.hrns_now.app.presentation.viewmodel
 
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.RegistrationFeedback
+import io.hrns_now.app.presentation.model.WorkspacePreparationOutcome
 import io.hrns_now.app.presentation.model.NotificationTone
 import io.hrns_now.core.config.PathProbeKind
 import io.hrns_now.core.config.PathProbeResult
@@ -12,6 +14,10 @@ import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceReadiness
 import io.hrns_now.core.config.WorkspaceRoots
 import io.hrns_now.core.domain.model.ArtifactReadinessState
+import io.hrns_now.core.domain.model.ArtifactKind
+import io.hrns_now.core.domain.model.ArtifactProbeResult
+import io.hrns_now.core.domain.model.ArtifactProbeState
+import io.hrns_now.core.domain.model.ArtifactRequirement
 import io.hrns_now.core.domain.model.ArtifactsState
 import io.hrns_now.core.domain.model.ClosureState
 import io.hrns_now.core.domain.model.ContractVersion
@@ -73,6 +79,7 @@ import io.hrns_now.core.result.ProcessRunResult
 import io.hrns_now.core.result.RegistryLoadResult
 import io.hrns_now.core.result.RegistrySaveResult
 import io.hrns_now.core.result.StateReadResult
+import io.hrns_now.core.usecase.ClearActiveProjectUseCase
 import io.hrns_now.core.usecase.DeleteProjectUseCase
 import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
 import io.hrns_now.core.usecase.HarnessCommandMapper
@@ -137,6 +144,20 @@ class AppViewModelTest {
 
     private fun readiness(): WorkspaceReadiness =
         WorkspaceReadiness("오프라인", "확인됨", "확인 필요", "테스트", "대기")
+
+    /** Bootstrap 준비 완료 판정이 실제 daily required 4-file probe도 확인하는지 위한 fixture다. */
+    private fun requiredDailyArtifactSummary(): WorkspaceArtifactSummary = WorkspaceArtifactSummary(
+        listOf("REQUEST_INBOX.md", "TODAY_STRATEGY.md", "DAILY_HANDOFF.md", "WORKFLOW_STATE.json").map { name ->
+            ArtifactProbeResult(
+                label = name,
+                path = "S:\\workspace\\2026-06-26\\$name",
+                kind = ArtifactKind.File,
+                requirement = ArtifactRequirement.Required,
+                state = ArtifactProbeState.Exists,
+                message = "exists",
+            )
+        },
+    )
 
     private fun workspaceConfig(workspaceRoot: String? = "S:\\workspace"): WorkspaceConfig = WorkspaceConfig(
         workspaceName = null,
@@ -374,11 +395,21 @@ class AppViewModelTest {
             activeId = id
             return RegistrySaveResult.Success
         }
+
+        var clearActiveResult: RegistrySaveResult = RegistrySaveResult.Success
+
+        override suspend fun clearActive(): RegistrySaveResult {
+            recordThread?.invoke()
+            if (clearActiveResult is RegistrySaveResult.Failed) return clearActiveResult
+            activeId = null
+            return RegistrySaveResult.Success
+        }
     }
     private fun loadUseCase(
         statePort: WorkflowStatePort,
         recordThread: (() -> Unit)? = null,
         availableDates: List<LocalDate> = emptyList(),
+        workspaceArtifactSummary: WorkspaceArtifactSummary = WorkspaceArtifactSummary(emptyList()),
     ): LoadCockpitUseCase = LoadCockpitUseCase(
         pathProbe = {
             recordThread?.invoke()
@@ -390,7 +421,7 @@ class AppViewModelTest {
         },
         artifactProbe = { _, _ ->
             recordThread?.invoke()
-            WorkspaceArtifactSummary(emptyList())
+            workspaceArtifactSummary
         },
         dayDiscovery = {
             recordThread?.invoke()
@@ -407,6 +438,7 @@ class AppViewModelTest {
         pollIntervalMillis: Long = 3000L,
         registry: ProjectRegistryPort = FakeProjectRegistryPort(),
         availableDates: List<LocalDate> = emptyList(),
+        workspaceArtifactSummary: WorkspaceArtifactSummary = WorkspaceArtifactSummary(emptyList()),
         boundaryResolver: (String?) -> RootPathCheck = { RootPathCheck.Invalid(PathIssue.NotProvided) },
         compatibilityPort: KitVersionManifestPort = KitVersionManifestPort { KitVersionReadResult.Missing },
         runtimeSourceResolver: RuntimeSourceResolverPort = identityRuntimeSourceResolver(),
@@ -417,7 +449,11 @@ class AppViewModelTest {
         gitStatusPort: GitStatusPort = GitStatusPort { RepositoryStatus.Clean },
         uiPreferencesPort: UiPreferencesPort = FakeUiPreferencesPort(),
     ): AppViewModel = AppViewModel(
-        loadCockpit = loadUseCase(statePort, availableDates = availableDates),
+        loadCockpit = loadUseCase(
+            statePort,
+            availableDates = availableDates,
+            workspaceArtifactSummary = workspaceArtifactSummary,
+        ),
         changeProbe = changeProbe,
         resolveActiveProject = ResolveActiveProjectUseCase(registry) { workspaceConfig() },
         loadProjects = LoadProjectsUseCase(registry),
@@ -429,6 +465,7 @@ class AppViewModelTest {
         selectProject = SelectProjectUseCase(registry),
         selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
         deleteProject = DeleteProjectUseCase(registry),
+        clearActiveProject = ClearActiveProjectUseCase(registry),
         boundaryPathResolver = boundaryResolver,
         compatibilityPort = compatibilityPort,
         runtimeSourceResolver = runtimeSourceResolver,
@@ -582,6 +619,7 @@ class AppViewModelTest {
             selectProject = SelectProjectUseCase(registry),
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
+            clearActiveProject = ClearActiveProjectUseCase(registry),
             boundaryPathResolver = {
                 recordThread()
                 RootPathCheck.Invalid(PathIssue.NotProvided)
@@ -696,6 +734,7 @@ class AppViewModelTest {
             selectProject = SelectProjectUseCase(registry),
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
+            clearActiveProject = ClearActiveProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
             runtimeSourceResolver = identityRuntimeSourceResolver(),
@@ -844,6 +883,7 @@ class AppViewModelTest {
             selectProject = SelectProjectUseCase(registry),
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
+            clearActiveProject = ClearActiveProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = compatibilityPort,
             runtimeSourceResolver = identityRuntimeSourceResolver(),
@@ -949,6 +989,7 @@ class AppViewModelTest {
             selectProject = SelectProjectUseCase(registry),
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
+            clearActiveProject = ClearActiveProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
             runtimeSourceResolver = identityRuntimeSourceResolver(),
@@ -1040,6 +1081,274 @@ class AppViewModelTest {
         assertTrue(ready.registryProjects.single().isActive)
         assertEquals("S:\\workspace-new", ready.workspaceConfig.roots.workspaceRoot)
         assertTrue(ready.registryMessage?.contains("Doctor·호환성 확인 후") == true)
+        viewModel.dispose()
+    }
+
+    /** Phase 9 QA03-B: 등록만 원하면(prepareWorkspace=false) Bootstrap을 자동 실행하지 않는다. */
+    @Test
+    fun `등록만 하기(prepareWorkspace false)는 오늘 workspace를 준비하지 않는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) {
+                RootPathCheck.Invalid(PathIssue.NotProvided)
+            } else {
+                val path = Path.of(raw)
+                RootPathCheck.Valid(path, path)
+            }
+        }
+        val executedKinds = mutableListOf<HarnessCommandKind>()
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { command, _, _ ->
+                executedKinds.add(command.kind)
+                successfulDoctorResult()
+            },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "등록만",
+                    useInternalDeveloperSdk = false,
+                    kitRootRaw = "S:\\kit-only",
+                    projectWorkspaceRootRaw = "S:\\workspace-only",
+                    repositoryRootRaw = "S:\\repo-only",
+                    profileId = "기본",
+                ),
+                prepareWorkspace = false,
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
+        assertEquals(WorkspacePreparationOutcome.NotAttempted, feedback.workspacePreparation)
+        assertEquals(listOf(HarnessCommandKind.Doctor), executedKinds)
+        assertTrue(ready.registryProjects.single().isActive)
+        viewModel.dispose()
+    }
+
+    /**
+     * Phase 9 QA03-B §B: 등록+선택+context 재조회 뒤 ActionPolicy가 실제로 BootstrapDay를
+     * 허용하면(Missing+오늘+boundary Valid+compatibility Supported+Idle) 자동으로 실행하고, 재조회한
+     * State가 Success가 되면 Prepared로 표시한다.
+     */
+    @Test
+    fun `진단 등록 및 오늘 작업공간 준비는 Bootstrap을 자동 실행하고 State가 Success가 되면 Prepared로 표시한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { callIndex ->
+            if (callIndex <= 2) {
+                StateReadResult.Missing(Path.of("WORKFLOW_STATE.json"))
+            } else {
+                StateReadResult.Success(workflowState("prepared"), FileVersion(fixedInstant, 10L, "hash"))
+            }
+        }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) {
+                RootPathCheck.Invalid(PathIssue.NotProvided)
+            } else {
+                val path = Path.of(raw)
+                RootPathCheck.Valid(path, path)
+            }
+        }
+        val executedKinds = mutableListOf<HarnessCommandKind>()
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            workspaceArtifactSummary = requiredDailyArtifactSummary(),
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { command, _, _ ->
+                executedKinds.add(command.kind)
+                successfulDoctorResult()
+            },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "결합 흐름",
+                    useInternalDeveloperSdk = false,
+                    kitRootRaw = "S:\\kit-combined",
+                    projectWorkspaceRootRaw = "S:\\workspace-combined",
+                    repositoryRootRaw = "S:\\repo-combined",
+                    profileId = "기본",
+                ),
+                prepareWorkspace = true,
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
+        assertEquals(WorkspacePreparationOutcome.Prepared, feedback.workspacePreparation)
+        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.Bootstrap), executedKinds)
+        assertTrue(ready.registryProjects.single().isActive)
+        viewModel.dispose()
+    }
+
+    /**
+     * Codex 보정: Bootstrap 프로세스와 State 재조회가 성공해도 실제 filesystem probe의 required
+     * 4-file이 완성되지 않았으면 준비 완료로 오인하지 않는다.
+     */
+    @Test
+    fun `Bootstrap 후 State가 성공이어도 required 4-file이 빠지면 NotPrepared다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { callIndex ->
+            if (callIndex <= 2) {
+                StateReadResult.Missing(Path.of("WORKFLOW_STATE.json"))
+            } else {
+                StateReadResult.Success(workflowState("state-only"), FileVersion(fixedInstant, 10L, "hash"))
+            }
+        }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) RootPathCheck.Invalid(PathIssue.NotProvided) else {
+                val path = Path.of(raw)
+                RootPathCheck.Valid(path, path)
+            }
+        }
+        val executedKinds = mutableListOf<HarnessCommandKind>()
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            // 기본 fixture는 required file 0개다. State만 성공해도 prepared가 될 수 없어야 한다.
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { command, _, _ ->
+                executedKinds.add(command.kind)
+                successfulDoctorResult()
+            },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "표면 미완성",
+                    useInternalDeveloperSdk = false,
+                    kitRootRaw = "S:\\kit-state-only",
+                    projectWorkspaceRootRaw = "S:\\workspace-state-only",
+                    repositoryRootRaw = "S:\\repo-state-only",
+                    profileId = "기본",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
+        assertIs<WorkspacePreparationOutcome.NotPrepared>(feedback.workspacePreparation)
+        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.Bootstrap), executedKinds)
+        assertTrue(ready.registryProjects.single().isActive)
+        viewModel.dispose()
+    }
+    /**
+     * Phase 9 QA03-B: stdout 성공 문구가 아니라 재조회한 State로 준비 성공을 판단한다 — 프로세스가
+     * 완료를 보고해도 재조회한 State가 여전히 Missing이면 NotPrepared로 표시하고, 등록 자체는
+     * Registry에 그대로 유지한다(롤백하지 않는다).
+     */
+    @Test
+    fun `Bootstrap 프로세스가 완료돼도 재조회한 State가 Success가 아니면 NotPrepared이고 등록은 유지된다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val resolver: (String?) -> RootPathCheck = { raw ->
+            if (raw == null) {
+                RootPathCheck.Invalid(PathIssue.NotProvided)
+            } else {
+                val path = Path.of(raw)
+                RootPathCheck.Valid(path, path)
+            }
+        }
+        val executedKinds = mutableListOf<HarnessCommandKind>()
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            boundaryResolver = resolver,
+            compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
+            harnessRunner = HarnessRunnerPort { command, _, _ ->
+                executedKinds.add(command.kind)
+                successfulDoctorResult()
+            },
+        )
+        runCurrent()
+
+        viewModel.onEvent(
+            HrnsUiEvent.ProjectRegistrationRequested(
+                RegisterProjectCandidate(
+                    displayName = "미확정 준비",
+                    useInternalDeveloperSdk = false,
+                    kitRootRaw = "S:\\kit-unconfirmed",
+                    projectWorkspaceRootRaw = "S:\\workspace-unconfirmed",
+                    repositoryRootRaw = "S:\\repo-unconfirmed",
+                    profileId = "기본",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
+        assertIs<WorkspacePreparationOutcome.NotPrepared>(feedback.workspacePreparation)
+        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.Bootstrap), executedKinds)
+        assertEquals(1, ready.registryProjects.size)
+        assertTrue(ready.registryProjects.single().isActive)
+        // Bootstrap 실행 결과 알림에도 raw workspace 경로가 노출되지 않는다(typed notice만 사용).
+        assertTrue(viewModel.notifications.value.none { it.message.contains("S:\\workspace-unconfirmed") })
+        viewModel.dispose()
+    }
+
+    /** Phase 9 QA03-A: 해제는 활성 선택만 지우고 등록된 project entry는 그대로 남긴다. */
+    @Test
+    fun `프로젝트 해제는 활성 선택만 지우고 등록 목록은 보존한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("a", "S:\\workspace-a")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val viewModel = newViewModel(statePort = statePort, dispatcher = dispatcher, registry = registry)
+        runCurrent()
+
+        val before = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        assertEquals("S:\\workspace-a", before.workspaceConfig.roots.workspaceRoot)
+        assertTrue(before.registryProjects.single().isActive)
+
+        viewModel.onEvent(HrnsUiEvent.ActiveProjectReleaseRequested)
+        runCurrent()
+
+        val after = assertIs<HrnsUiState.Ready>(viewModel.state.value)
+        // Registry가 비어 fallback으로 돌아간다 — "S:\\workspace"는 newViewModel의 environment
+        // fallback config 기본값이다(workspaceConfig()). 여전히 활성이라고 거짓 표시하지 않는다.
+        assertEquals("S:\\workspace", after.workspaceConfig.roots.workspaceRoot)
+        assertEquals(1, after.registryProjects.size)
+        assertFalse(after.registryProjects.single().isActive)
+        viewModel.dispose()
+    }
+
+    @Test
+    fun `활성 프로젝트가 없을 때 해제 요청은 아무 일도 하지 않는다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val registry = FakeProjectRegistryPort()
+        val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
+        val viewModel = newViewModel(statePort = statePort, dispatcher = dispatcher, registry = registry)
+        runCurrent()
+
+        viewModel.onEvent(HrnsUiEvent.ActiveProjectReleaseRequested)
+        runCurrent()
+
+        assertIs<HrnsUiState.Ready>(viewModel.state.value)
         viewModel.dispose()
     }
 
@@ -1380,6 +1689,7 @@ class AppViewModelTest {
             selectProject = SelectProjectUseCase(registry),
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
+            clearActiveProject = ClearActiveProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
             runtimeSourceResolver = identityRuntimeSourceResolver(),
@@ -1801,6 +2111,7 @@ class AppViewModelTest {
             selectProject = SelectProjectUseCase(registry),
             selectWorkspaceDay = SelectWorkspaceDayUseCase(registry),
             deleteProject = DeleteProjectUseCase(registry),
+            clearActiveProject = ClearActiveProjectUseCase(registry),
             boundaryPathResolver = { RootPathCheck.Invalid(PathIssue.NotProvided) },
             compatibilityPort = { KitVersionReadResult.Missing },
             runtimeSourceResolver = identityRuntimeSourceResolver(),

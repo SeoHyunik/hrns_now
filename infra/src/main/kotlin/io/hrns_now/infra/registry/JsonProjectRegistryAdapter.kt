@@ -129,6 +129,26 @@ class JsonProjectRegistryAdapter(
             }
         }
 
+    /**
+     * "마지막으로 활성화된 프로젝트" 선택만 지운다(Phase 9 QA03-A) — project entry 목록은
+     * [markActive]/[save]와 동일한 atomic write 경로로 그대로 다시 쓴다.
+     */
+    override suspend fun clearActive(): RegistrySaveResult =
+        mutex.withLock {
+            when (val snapshot = prepareMutationSnapshot()) {
+                is MutationSnapshotResult.Failed -> RegistrySaveResult.Failed(snapshot.message)
+                is MutationSnapshotResult.Ready -> {
+                    if (snapshot.projects.any(::isRegistryInsideProject)) {
+                        RegistrySaveResult.Failed(
+                            "Registry 경로가 기존 프로젝트 root 아래에 있어 변경할 수 없습니다.",
+                        )
+                    } else {
+                        writeEnvelope(snapshot.projects, null)
+                    }
+                }
+            }
+        }
+
     private fun findAllLocked(): RegistryLoadResult =
         when (val outcome = loadOutcome()) {
             is LoadOutcome.Empty -> RegistryLoadResult.Success(emptyList(), null)

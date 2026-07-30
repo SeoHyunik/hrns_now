@@ -234,33 +234,29 @@ private fun TopRibbon(
 ) {
     val colors = LocalHrnsColors.current
     val strings = chromeStrings(locale)
-    val ribbonMutedText = if (themeMode == HrnsThemeMode.Dark) {
-        Color(0xFFFFE9A6)
-    } else {
-        Color(0xFF765414)
-    }
+    val ribbonMutedText = colors.ribbonMutedText
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.appBackground)
             .padding(horizontal = 24.dp, vertical = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 브랜드 + 활성 프로젝트 — 사용자가 화면을 열자마자 어느 프로젝트를 보고 있는지
-        // 즉시 식별할 수 있어야 한다(새 Phase 6 제품 목표 1).
+        // 즉시 식별할 수 있어야 한다(새 Phase 6 제품 목표 1, Phase 9 QA02).
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.widthIn(min = 280.dp),
+            modifier = Modifier.widthIn(min = 260.dp),
         ) {
             BrandMark()
             Column {
                 Text(
                     text = projection.title,
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         letterSpacing = (-0.1).sp,
                     ),
                     fontWeight = FontWeight.SemiBold,
@@ -274,11 +270,15 @@ private fun TopRibbon(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = activeProjectName ?: strings.notSelected,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 15.sp),
+                        // QA02 §4: 활성 프로젝트가 없을 때는 locale과 무관하게 literal "NONE"을
+                        // 보여준다 — `strings.notSelected`(로케일 문구)를 쓰지 않는다.
+                        text = activeProjectName ?: "NONE",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 16.sp),
                         fontWeight = FontWeight.SemiBold,
                         color = when {
-                            activeProjectName == null -> ribbonMutedText
+                            // icon.png 말 실루엣과 같은 계열인 기존 chelseaBlue 토큰을 그대로 쓴다 —
+                            // 임의의 다른 blue를 새로 하드코딩하지 않는다.
+                            activeProjectName == null -> colors.chelseaBlue
                             activeProjectStale -> colors.warning
                             else -> colors.primaryText
                         },
@@ -317,7 +317,8 @@ private fun LocaleToggle(locale: AppLocale, strings: ChromeStrings, onLocaleChan
         onClick = {
             onLocaleChange(if (locale == AppLocale.Korean) AppLocale.English else AppLocale.Korean)
         },
-        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+        // QA02 §3: 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand).heightIn(min = 44.dp),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
             containerColor = colors.cardBackground,
@@ -327,7 +328,7 @@ private fun LocaleToggle(locale: AppLocale, strings: ChromeStrings, onLocaleChan
     ) {
         Text(
             text = if (locale == AppLocale.Korean) strings.localeSelectorKorean else strings.localeSelectorEnglish,
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp),
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -353,7 +354,8 @@ private fun NotificationBell(
             trayOpen = !trayOpen
             if (trayOpen) onMarkAllRead()
         },
-        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+        // QA02 §3: 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand).heightIn(min = 44.dp),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
             containerColor = colors.cardBackground,
@@ -363,7 +365,7 @@ private fun NotificationBell(
     ) {
         Text(
             text = strings.notificationBell,
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp),
             fontWeight = FontWeight.SemiBold,
         )
         if (unreadCount > 0) {
@@ -518,9 +520,10 @@ private fun NotificationToastHost(
 
 @Composable
 private fun BrandMark() {
+    // Phase 9 QA02: 1440x900 기준 내부 로고는 84dp를 기준으로 한다.
     Box(
         modifier = Modifier
-            .size(76.dp),
+            .size(84.dp),
         contentAlignment = Alignment.Center,
     ) {
         Image(
@@ -561,7 +564,7 @@ private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeString
             if (idx > 0) {
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 10.dp)
+                        .padding(horizontal = 8.dp)
                         .size(width = 1.dp, height = 12.dp)
                         .background(colors.borderSubtle),
                 )
@@ -622,7 +625,8 @@ private fun ThemeToggle(themeMode: HrnsThemeMode, onClick: () -> Unit) {
 
     TextButton(
         onClick = onClick,
-        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+        // QA02 §3: 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand).heightIn(min = 44.dp),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
             containerColor = colors.cardBackground,
@@ -638,7 +642,7 @@ private fun ThemeToggle(themeMode: HrnsThemeMode, onClick: () -> Unit) {
         Spacer(Modifier.width(8.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp),
             fontWeight = FontWeight.SemiBold,
         )
     }

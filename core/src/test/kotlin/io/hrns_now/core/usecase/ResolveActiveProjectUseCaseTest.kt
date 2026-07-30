@@ -43,6 +43,7 @@ class ResolveActiveProjectUseCaseTest {
         override suspend fun save(project: HarnessProject): RegistrySaveResult = RegistrySaveResult.Success
         override suspend fun delete(id: ProjectId): RegistrySaveResult = RegistrySaveResult.Success
         override suspend fun markActive(id: ProjectId): RegistrySaveResult = RegistrySaveResult.Success
+        override suspend fun clearActive(): RegistrySaveResult = RegistrySaveResult.Success
     }
 
     @Test

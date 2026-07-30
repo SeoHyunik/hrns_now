@@ -33,8 +33,10 @@ class ProjectSelectionUseCaseTest {
         var markResult: RegistrySaveResult = RegistrySaveResult.Success,
         var saveResult: RegistrySaveResult = RegistrySaveResult.Success,
         var deleteResult: RegistrySaveResult = RegistrySaveResult.Success,
+        var clearActiveResult: RegistrySaveResult = RegistrySaveResult.Success,
     ) : ProjectRegistryPort {
         var savedProject: HarnessProject? = null
+        var clearActiveCallCount: Int = 0
 
         override suspend fun findAll(): RegistryLoadResult =
             RegistryLoadResult.Success(listOf(project), project.id)
@@ -49,6 +51,11 @@ class ProjectSelectionUseCaseTest {
         override suspend fun delete(id: ProjectId): RegistrySaveResult = deleteResult
 
         override suspend fun markActive(id: ProjectId): RegistrySaveResult = markResult
+
+        override suspend fun clearActive(): RegistrySaveResult {
+            clearActiveCallCount++
+            return clearActiveResult
+        }
     }
 
     @Test
@@ -91,5 +98,28 @@ class ProjectSelectionUseCaseTest {
 
         assertEquals(RegistrySaveResult.Failed("disk full"), result)
         assertNull(registry.savedProject)
+    }
+
+    @Test
+    fun `활성 해제는 port의 clearActive만 호출하고 결과를 그대로 전달한다`() = runTest {
+        val registry = FakeRegistry(project = project())
+
+        val result = ClearActiveProjectUseCase(registry)()
+
+        assertEquals(RegistrySaveResult.Success, result)
+        assertEquals(1, registry.clearActiveCallCount)
+        assertNull(registry.savedProject)
+    }
+
+    @Test
+    fun `활성 해제 실패 typed 결과를 호출자에게 그대로 전달한다`() = runTest {
+        val registry = FakeRegistry(
+            project = project(),
+            clearActiveResult = RegistrySaveResult.Failed("write denied"),
+        )
+
+        val result = ClearActiveProjectUseCase(registry)()
+
+        assertEquals(RegistrySaveResult.Failed("write denied"), result)
     }
 }
