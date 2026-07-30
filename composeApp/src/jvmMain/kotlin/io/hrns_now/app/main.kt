@@ -16,7 +16,7 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         state = state,
-        icon = painterResource("launcher-icon.png"),
+        icon = painterResource("hrns-now.ico"),
         title = "HRNS-NOW",
     ) {
         App()
