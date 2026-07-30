@@ -743,6 +743,7 @@ class AppViewModel(
             lastSuccessfulReadAtLabel = lastSuccessfulReadAt?.let(::formatInstant),
             lastAttemptAtLabel = lastAttemptAt?.let(::formatInstant),
             registryProjects = registryProjects,
+            activeProjectName = activeProject?.displayName,
             availableDates = availableDates,
             activeProjectId = activeProject?.id,
             activeProjectSource = activeSource,

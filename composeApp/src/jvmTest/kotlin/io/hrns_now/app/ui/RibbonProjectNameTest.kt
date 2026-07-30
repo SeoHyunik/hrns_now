@@ -7,6 +7,17 @@ import kotlin.test.assertEquals
 
 class RibbonProjectNameTest {
     @Test
+    fun `ViewModel이 해석한 활성 프로젝트는 Registry projection이 비어도 상단 리본에 표시된다`() {
+        val name = ribbonActiveProjectName(
+            selectedProjectName = "epc_legacy_ui",
+            registryProjects = emptyList(),
+            workflowStateProjectName = null,
+        )
+
+        assertEquals("epc_legacy_ui", name)
+    }
+
+    @Test
     fun `활성 Registry 프로젝트는 State가 아직 없어도 상단 리본에 표시된다`() {
         val name = ribbonActiveProjectName(
             registryProjects = listOf(

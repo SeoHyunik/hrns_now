@@ -153,6 +153,7 @@ private fun ReadyShell(
         TopRibbon(
             projection = state.shell,
             activeProjectName = ribbonActiveProjectName(
+                selectedProjectName = state.activeProjectName,
                 registryProjects = state.registryProjects,
                 workflowStateProjectName = state.cockpit.projectName,
             ),
@@ -195,6 +196,7 @@ private fun ReadyShell(
                     registryProjects = state.registryProjects,
                     workspaceDays = state.workspaceDays,
                     todayDate = state.todayDate,
+                    activeProjectName = state.activeProjectName,
                     activeProjectSourceLabel = state.activeProjectSourceLabel,
                     registryMessage = state.registryMessage,
                     registrationFeedback = state.registrationFeedback,
@@ -226,10 +228,11 @@ private fun ReadyShell(
  * 읽기 전용 보조값으로 사용한다.
  */
 internal fun ribbonActiveProjectName(
+    selectedProjectName: String? = null,
     registryProjects: List<RegistryProjectItem>,
     workflowStateProjectName: String?,
 ): String? =
-    registryProjects.firstOrNull { it.isActive }?.label ?: workflowStateProjectName
+    selectedProjectName ?: registryProjects.firstOrNull { it.isActive }?.label ?: workflowStateProjectName
 // ─────────────────────────────────────────────────────────────────────────────
 // 상단 리본  ──  brand · 페이지 라벨 · 준비 상태 요약 · 테마 토글
 // ─────────────────────────────────────────────────────────────────────────────

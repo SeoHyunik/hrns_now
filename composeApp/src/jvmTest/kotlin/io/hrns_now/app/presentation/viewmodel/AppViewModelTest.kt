@@ -1136,6 +1136,7 @@ class AppViewModelTest {
         val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
         assertEquals(1, ready.registryProjects.size)
         assertTrue(ready.registryProjects.single().isActive)
+        assertEquals("신규 프로젝트", ready.activeProjectName)
         assertEquals("S:\\workspace-new", ready.workspaceConfig.roots.workspaceRoot)
         assertTrue(ready.registryMessage?.contains("Doctor·호환성 확인 후") == true)
         viewModel.dispose()

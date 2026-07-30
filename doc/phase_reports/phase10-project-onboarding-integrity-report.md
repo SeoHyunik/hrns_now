@@ -244,3 +244,36 @@ NEXT_ALLOWED_PHASE: Codex independent verification
 - 남은 Gate: 새 빌드의 native 프로젝트 등록/온보딩 확인 다이얼로그와 `프로젝트 준비` CTA를 실제 클릭하는 사용자 QA
 - `PHASE_10_STATUS: PASS_WITH_FIXES`
 - `NEXT_ALLOWED_PHASE: Phase 10 native onboarding interaction QA gate`
+
+## Codex 실사용 온보딩 보정 — 2026-07-30
+
+### 재현과 원인
+
+- 실제 Registry의 `last_active_project_id`는 등록된 프로젝트를 정상적으로 가리켰다. 따라서 상단 `NONE`은 활성 선택이 비어 있어서가 아니라, State/Registry 목록 projection과 활성 ViewModel 상태가 분리된 순간 화면이 보조값만 보던 문제였다.
+- 실제 등록 profile은 UI 기본값에서 저장된 `기본`이었다. live Kit의 `profiles/`에는 `corp-default`, `corp-springboot`만 존재한다.
+- 동일한 `enter-project.ps1` 인자로 재현했을 때, 파일을 만들기 전에 `Profile file does not exist: ...\profiles\기본.yaml`으로 중단됐다. 이 때문에 repository bridge 3개와 오늘 작업공간 required 4-file이 모두 없었던 것이 확인됐다.
+
+### 코드 보정
+
+- `DEFAULT_HARNESS_PROFILE_ID = "corp-default"`를 core domain 값으로 분리하고, 신규 등록 form이 번역 문구 `기본`이 아니라 실제 Harness profile ID를 기본 전송하도록 수정했다.
+- `HrnsUiState.Ready.activeProjectName`은 ViewModel이 Registry에서 해석한 활성 프로젝트를 직접 보존한다. 상단 리본과 프로젝트 관리 요약은 State 파일·Registry projection이 아직 없거나 갱신 중이어도 이 값을 우선 표시한다.
+- `RibbonProjectNameTest`는 활성 ViewModel 값이 Registry projection 없이도 `NONE`으로 떨어지지 않는 회귀를 고정했고, `AppViewModelTest`는 등록 직후의 `activeProjectName` 전달을 검증한다.
+
+### 실제 환경 보정과 Harness 검증
+
+- 현재 Registry는 원자 교체로 `기본`에서 `corp-default`로 보정했다. 교체 전 원본은 `S:\tmp`와 `%APPDATA%\hrns-now`의 교체 백업으로 보존했으며 Git에 포함하지 않았다.
+- `enter-project.ps1`은 `-Force` 없이 한 번 실행했다. 선택된 외부 repository에 bridge 3개만 만들고, 외부 workspace의 오늘 날짜 폴더에 required 4-file을 만들었다. HRNS-NOW와 Harness Kit source는 수정하지 않았다.
+- 후속 `validate-ops.ps1 -Json`은 `overall = ok`, `contract_version = 1.0`을 반환했다. `WORKFLOW_STATE.json` 파싱, `corp-default` profile 해석, required 4-file의 UTF-8 no BOM 검증이 모두 통과했다.
+
+### 검증 결과
+
+| 구분 | 결과 |
+|---|---|
+| Targeted | `:core:test --tests HarnessProfileTest`, `:composeApp:jvmTest --tests AppViewModelTest --tests RibbonProjectNameTest` PASS |
+| Full | `:core:test :infra:test :composeApp:jvmTest check` PASS |
+| JUnit XML | core 141 / infra 174 / composeApp 123, failures 0 |
+| Live Harness | `enter-project.ps1` 후 `validate-ops.ps1 -Json` PASS |
+
+### 판정
+
+이 보정은 Phase 10의 실제 온보딩 결함을 해소한다. 새 native 앱을 다시 시작한 뒤 상단 리본에 활성 프로젝트명이 나타나고 프로젝트 준비 경고가 사라지는지 사용자가 한 번 확인해야 한다. 그 확인 전에도 daily workflow의 다음 단계(요구사항 작성·계획 실행)는 State/ActionPolicy가 계속 권위다.

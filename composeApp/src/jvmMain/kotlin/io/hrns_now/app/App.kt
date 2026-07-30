@@ -203,6 +203,7 @@ private fun demoUiState(): HrnsUiState {
         runStatus = mock.runStatus(),
         recovery = mock.recovery(),
         registryProjects = emptyList(),
+        activeProjectName = null,
         workspaceDays = emptyList(),
         todayDate = java.time.LocalDate.now(),
         activeProjectSourceLabel = "demo",

@@ -56,6 +56,7 @@ import io.hrns_now.core.domain.model.RequestEntryPriority
 import io.hrns_now.core.domain.model.RequestEntrySource
 import io.hrns_now.core.domain.model.RequestEntryType
 import io.hrns_now.core.domain.model.UiAction
+import io.hrns_now.core.domain.model.DEFAULT_HARNESS_PROFILE_ID
 import io.hrns_now.core.usecase.RegisterProjectCandidate
 import java.time.LocalDate
 
@@ -78,6 +79,7 @@ fun ScreenRoute(
     registryProjects: List<RegistryProjectItem>,
     workspaceDays: List<WorkspaceDayItem>,
     todayDate: LocalDate,
+    activeProjectName: String?,
     activeProjectSourceLabel: String,
     registryMessage: String?,
     registrationFeedback: RegistrationFeedback,
@@ -97,7 +99,7 @@ fun ScreenRoute(
             selectedDayReadOnly = cockpitProjection.isReadOnlyDay,
             activeProjectSourceLabel = activeProjectSourceLabel,
             registryMessage = registryMessage,
-            activeProjectName = cockpitProjection.projectName,
+            activeProjectName = activeProjectName,
             activeProjectProfileLabel = cockpitProjection.profileLabel,
             activeProjectIsStale = cockpitProjection.isStale,
             activeProjectRuntimeSourceLabel = cockpitProjection.runtimeSourceLabel,
@@ -694,7 +696,9 @@ private fun ProjectRegistrationForm(
     var displayName by remember { mutableStateOf("") }
     var workspaceRoot by remember { mutableStateOf("") }
     var repositoryRoot by remember { mutableStateOf("") }
-    var profileId by remember { mutableStateOf("기본") }
+    // "기본"은 화면 문구일 뿐 Harness profile ID가 아니다. 명령 계약에는 live Kit의 실제
+    // profile filename인 corp-default를 전달해야 한다.
+    var profileId by remember { mutableStateOf(DEFAULT_HARNESS_PROFILE_ID) }
     var showAdvanced by remember { mutableStateOf(false) }
     var useExternalKit by remember { mutableStateOf(false) }
     var kitRoot by remember { mutableStateOf("") }

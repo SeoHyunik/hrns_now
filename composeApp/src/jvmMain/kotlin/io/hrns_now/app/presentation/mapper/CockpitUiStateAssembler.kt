@@ -35,6 +35,7 @@ class CockpitUiStateAssembler(
         lastSuccessfulReadAtLabel: String?,
         lastAttemptAtLabel: String?,
         registryProjects: List<HarnessProject>,
+        activeProjectName: String?,
         availableDates: List<LocalDate>,
         activeProjectId: ProjectId?,
         activeProjectSource: ActiveProjectSource,
@@ -124,6 +125,7 @@ class CockpitUiStateAssembler(
                     },
                 )
             },
+            activeProjectName = activeProjectName,
             workspaceDays = availableDates.map { date ->
                 WorkspaceDayItem(
                     date = date,
