@@ -7,10 +7,16 @@
 현재 기준 커밋은 다음과 같다.
 
 ```text
-d54fbef fix: Phase 10 프로젝트 온보딩 무결성 보정
+1445ca4 fix: Phase 10 프로젝트 준비와 활성 표시 보정
 ```
 
-이 커밋은 다음을 포함한다.
+이 커밋은 `d54fbef`의 온보딩 무결성 구현을 포함하며, 다음 Codex 보정을 추가한다.
+
+- 신규 등록의 실제 Harness profile 기본값: `corp-default` (`기본`은 표시 문구이지 profile ID가 아님)
+- `HrnsUiState`가 Registry에서 해석한 활성 프로젝트명을 직접 보존하여, State/Registry projection 갱신 중에도 상단 리본과 프로젝트 요약이 `NONE`으로 떨어지지 않음
+- 실제 외부 프로젝트에서 `enter-project.ps1`과 `validate-ops.ps1 -Json`으로 bridge 3-file·오늘 required 4-file·`overall=ok`을 확인함
+
+기존 온보딩 무결성 보정은 다음을 포함한다.
 
 - `HarnessCommand.OnboardProject` → 실제 `scripts/enter-project.ps1` typed argument mapping
 - `enter-project → validate-ops -Json → bridge 3-file probe → daily 4-file probe → State reread`의 단일 lock lifecycle
@@ -46,8 +52,11 @@ Set-Location -LiteralPath 'S:\dev\project\hrns_now'
 .\gradlew.bat :composeApp:run
 ```
 
-기존 실행 중인 앱은 최신 `d54fbef` 이전 build일 수 있으므로, 사용자 확인 전에 종료·재시작 여부를 분명히 알린다. 사용자의 명시적 요청 없이 마우스/키보드 합성 입력으로 UI를 조작하지 않는다.
+기존 실행 중인 앱은 최신 `1445ca4` 이전 build일 수 있으므로, 사용자 확인 전에 종료·재시작 여부를 분명히 알린다. 사용자의 명시적 요청 없이 마우스/키보드 합성 입력으로 UI를 조작하지 않는다.
 
+## Profile 실행 계약 확인
+
+신규 등록 form의 기본 입력값은 반드시 `corp-default`여야 한다. 화면에서 보이는 한국어 설명을 profile ID로 저장하거나 `기본.yaml`을 가정하지 않는다. 사용자가 직접 다른 profile ID를 입력한 경우에는 실제 Kit의 `profiles/<id>.yaml` 존재 여부를 결과와 함께 확인하며, 임의 값으로 성공 처리하지 않는다.
 ## 사용자 확인 체크리스트
 
 사용자는 외부 Harness Kit, repository, workspace를 서로 포함하지 않는 테스트 경로로 지정한다. 실제 사용자 프로젝트나 `D:\harness-kit`을 초기화·삭제하지 않는다. 공백과 한글 경로를 한 번 포함해 확인한다.
