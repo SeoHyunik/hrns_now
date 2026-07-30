@@ -7,9 +7,11 @@ import io.hrns_now.app.presentation.buildTodayWorkProjection
 import io.hrns_now.app.presentation.model.CockpitActionItem
 import io.hrns_now.app.presentation.model.CockpitProjection
 import io.hrns_now.app.presentation.model.HrnsUiState
+import io.hrns_now.app.presentation.model.RegistrationFeedback
 import io.hrns_now.app.presentation.model.RegistryProjectItem
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.WorkspaceDayItem
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.BoundaryStatus
 import io.hrns_now.core.domain.model.HarnessCompatibilityDetail
 import io.hrns_now.core.domain.model.HarnessProject
@@ -33,6 +35,7 @@ class CockpitUiStateAssembler(
         lastSuccessfulReadAtLabel: String?,
         lastAttemptAtLabel: String?,
         registryProjects: List<HarnessProject>,
+        activeProjectName: String?,
         availableDates: List<LocalDate>,
         activeProjectId: ProjectId?,
         activeProjectSource: ActiveProjectSource,
@@ -50,6 +53,10 @@ class CockpitUiStateAssembler(
         closureDecision: ClosureDecision,
         recoveryDiagnostics: RecoveryDiagnostics,
         runtimeResolution: RuntimeResolution? = null,
+        today: LocalDate = LocalDate.now(),
+        registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
+        needsProjectPreparation: Boolean = false,
+        locale: AppLocale = AppLocale.Korean,
     ): HrnsUiState.Ready {
         val actionPolicyCockpit = cockpitAssembler.assemble(
             projectConnected = loaded.projectConnected,
@@ -63,17 +70,19 @@ class CockpitUiStateAssembler(
             lastAttemptAtLabel = lastAttemptAtLabel,
             harnessRunInProgress = harnessRunInProgress,
             runtimeResolution = runtimeResolution,
+            locale = locale,
         )
         val closureValidationEnabledByActionPolicy = actionPolicyCockpit.allowedActions
             .firstOrNull { it.action == UiAction.RunClosureValidation }
             ?.enabled == true
         val cockpit = actionPolicyCockpit.gatedByClosureDecision(closureDecision)
         return HrnsUiState.Ready(
-            shell = buildShellProjection(),
+            shell = buildShellProjection(locale),
             setup = buildSetupProjection(
                 config = loaded.workspaceConfig,
                 probeSummary = loaded.workspaceProbeSummary,
                 diagnosticActions = cockpit.allowedActions,
+                locale = locale,
             ),
             workspaceConfig = loaded.workspaceConfig,
             workspaceProbeSummary = loaded.workspaceProbeSummary,
@@ -87,6 +96,7 @@ class CockpitUiStateAssembler(
                 requestSaving,
                 requestSaveSucceeded,
                 lockSummaryLabel,
+                locale = locale,
             ),
             runStatus = runStatus,
             recovery = buildRecoveryProjection(
@@ -96,26 +106,37 @@ class CockpitUiStateAssembler(
                 lockSummaryLabel,
                 closureValidationEnabledAfterAcknowledgement = closureValidationEnabledByActionPolicy,
                 recoveryDiagnostics = recoveryDiagnostics,
+                locale = locale,
             ),
             registryProjects = registryProjects.map { project ->
                 RegistryProjectItem(
                     id = project.id,
                     label = project.displayName,
                     isActive = project.id == activeProjectId,
-                    runtimeSourceLabel = when (project.runtimeSource) {
-                        RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
-                        is RuntimeSource.ExternalKit -> "외부 Harness Kit"
+                    runtimeSourceLabel = when (locale) {
+                        AppLocale.Korean -> when (project.runtimeSource) {
+                            RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
+                            is RuntimeSource.ExternalKit -> "외부 Harness Kit"
+                        }
+                        AppLocale.English -> when (project.runtimeSource) {
+                            RuntimeSource.InternalDeveloperSdk -> "Internal developer SDK"
+                            is RuntimeSource.ExternalKit -> "External Harness Kit"
+                        }
                     },
                 )
             },
+            activeProjectName = activeProjectName,
             workspaceDays = availableDates.map { date ->
                 WorkspaceDayItem(
                     date = date,
                     isSelected = date == loaded.daySelection.workspaceDay.date,
                 )
             },
-            activeProjectSourceLabel = activeProjectSource.displayLabel(),
+            todayDate = today,
+            activeProjectSourceLabel = activeProjectSource.displayLabel(locale),
             registryMessage = registryMessage,
+            registrationFeedback = registrationFeedback,
+            needsProjectPreparation = needsProjectPreparation,
         )
     }
 }

@@ -5,7 +5,9 @@ import io.hrns_now.core.domain.model.ExecutionWrapperState
 import io.hrns_now.core.domain.model.QueueBlockedReason
 import io.hrns_now.core.domain.model.QueueStatus
 import io.hrns_now.core.domain.model.RepositoryStatus
+import io.hrns_now.core.domain.model.StateInvalidKind
 import io.hrns_now.core.domain.model.StopReason
+import io.hrns_now.core.domain.model.UnknownDomainKind
 import io.hrns_now.core.domain.model.WorkflowPhase
 import io.hrns_now.core.domain.model.WorkflowState
 import io.hrns_now.core.domain.model.WorkflowStatus
@@ -17,12 +19,14 @@ import io.hrns_now.core.result.StateReadResult
  * `Blocked`는 하나라도 있으면 "마감 검증 실행"을 비활성화해야 하는 필수 선행조건 위반이다.
  * `RequiresExplicitIncompleteHandoff`는 필수 조건은 모두 만족하지만 repository에 아직
  * 커밋되지 않은 변경이 있어 사용자가 "이 상태로 마감함"을 명시적으로 인지해야 하는 경우다 —
- * 자동으로 막거나 자동으로 진행하지 않는다.
+ * 자동으로 막거나 자동으로 진행하지 않는다. 두 결과 모두 문구가 아니라 typed key/raw 변경 경로만
+ * 낸다 — presentation이 locale별 문구로 투영한다(Phase 8 보완 §1).
  */
 sealed interface ClosureDecision {
     data object Allowed : ClosureDecision
-    data class Blocked(val reasons: List<String>) : ClosureDecision
-    data class RequiresExplicitIncompleteHandoff(val items: List<String>) : ClosureDecision
+    data class Blocked(val reasons: List<ClosureBlockReasonKey>) : ClosureDecision
+    /** [changedPaths]는 repository의 원문 상대 경로다 — 표시 문구 접두어는 presentation이 붙인다. */
+    data class RequiresExplicitIncompleteHandoff(val changedPaths: List<String>) : ClosureDecision
 }
 
 data class ClosureContext(
@@ -44,34 +48,34 @@ data class ClosureContext(
 class ClosurePolicy {
     fun evaluate(context: ClosureContext): ClosureDecision {
         val state = (context.stateRead as? StateReadResult.Success)?.state
-            ?: return ClosureDecision.Blocked(listOf(stateInvalidReason(context.stateRead)))
+            ?: return ClosureDecision.Blocked(listOf(ClosureBlockReasonKey.StateInvalid(stateInvalidKind(context.stateRead))))
 
         val reasons = buildList {
             addAll(unknownDomainReasons(state))
 
             if (requiredArtifacts(state).any { it !is ArtifactReadinessState.Ready }) {
-                add("필수 daily 파일(REQUEST_INBOX/TODAY_STRATEGY/DAILY_HANDOFF/WORKFLOW_STATE)이 모두 준비되지 않았습니다.")
+                add(ClosureBlockReasonKey.RequiredArtifactsNotReady)
             }
             if (!state.opsValidation.passed) {
-                add("운영 검증(ops validation)을 통과하지 못했습니다.")
+                add(ClosureBlockReasonKey.OpsValidationFailed)
             }
             if (!state.queue.active.cardId.isNullOrBlank() || !state.queue.active.sliceId.isNullOrBlank()) {
-                add("아직 활성 slice가 남아 있습니다.")
+                add(ClosureBlockReasonKey.ActiveSliceRemaining)
             }
             if (!state.resumeFromStepId.isNullOrBlank()) {
-                add("재개해야 할 step이 남아 있습니다.")
+                add(ClosureBlockReasonKey.ResumeStepRemaining)
             }
             if (state.closure.validated != state.closureValidated) {
-                add("closure 검증 상태와 상위 완료 flag가 서로 일치하지 않습니다.")
+                add(ClosureBlockReasonKey.ClosureValidationFlagMismatch)
             }
             if (state.closure.validated != state.closure.isCleanHandoff) {
-                add("closure 필드(validated/is_clean_handoff) 간 정합성이 맞지 않습니다.")
+                add(ClosureBlockReasonKey.ClosureFieldConsistencyMismatch)
             }
             if (state.cleanHandoff != state.closure.isCleanHandoff) {
-                add("clean_handoff와 closure.is_clean_handoff 간 정합성이 맞지 않습니다.")
+                add(ClosureBlockReasonKey.CleanHandoffConsistencyMismatch)
             }
             if (context.lockHeld) {
-                add("다른 실행이 이 프로젝트·날짜의 잠금을 보유하고 있습니다.")
+                add(ClosureBlockReasonKey.LockHeldByOtherRun)
             }
         }
         if (reasons.isNotEmpty()) {
@@ -80,9 +84,7 @@ class ClosurePolicy {
 
         val repositoryDirty = context.repositoryStatus as? RepositoryStatus.Dirty
         return if (repositoryDirty != null && repositoryDirty.changedPaths.isNotEmpty()) {
-            ClosureDecision.RequiresExplicitIncompleteHandoff(
-                repositoryDirty.changedPaths.map { "커밋되지 않은 변경: $it" },
-            )
+            ClosureDecision.RequiresExplicitIncompleteHandoff(repositoryDirty.changedPaths)
         } else {
             ClosureDecision.Allowed
         }
@@ -95,24 +97,26 @@ class ClosurePolicy {
         state.artifacts.workflowState,
     )
 
-    private fun stateInvalidReason(stateRead: StateReadResult): String =
+    private fun stateInvalidKind(stateRead: StateReadResult): StateInvalidKind =
         when (stateRead) {
-            is StateReadResult.Missing -> "상태 파일이 없습니다."
-            is StateReadResult.Malformed -> "상태 파일을 해석할 수 없습니다."
-            is StateReadResult.EncodingError -> "상태 파일 인코딩을 해석할 수 없습니다."
-            is StateReadResult.UnsupportedSchema -> "지원하지 않는 schema 버전입니다."
-            is StateReadResult.AccessDenied -> "상태 파일에 접근할 수 없습니다."
+            is StateReadResult.Missing -> StateInvalidKind.Missing
+            is StateReadResult.Malformed -> StateInvalidKind.Malformed
+            is StateReadResult.EncodingError -> StateInvalidKind.EncodingError
+            is StateReadResult.UnsupportedSchema -> StateInvalidKind.UnsupportedSchema
+            is StateReadResult.AccessDenied -> StateInvalidKind.AccessDenied
             is StateReadResult.Success -> error("unreachable — Success는 호출 전에 걸러진다")
         }
 
-    private fun unknownDomainReasons(state: WorkflowState): List<String> = buildList {
-        (state.phase as? WorkflowPhase.Unknown)?.let { add("알 수 없는 workflow phase입니다.") }
-        (state.status as? WorkflowStatus.Unknown)?.let { add("알 수 없는 workflow status입니다.") }
-        (state.queue.status as? QueueStatus.Unknown)?.let { add("알 수 없는 queue status입니다.") }
-        (state.queue.blockedReason as? QueueBlockedReason.Other)?.let { add("알 수 없는 queue 차단 사유가 있습니다.") }
-        (state.stopReason as? StopReason.Unknown)?.let { add("알 수 없는 stop reason입니다.") }
+    private fun unknownDomainReasons(state: WorkflowState): List<ClosureBlockReasonKey> = buildList {
+        (state.phase as? WorkflowPhase.Unknown)?.let { add(ClosureBlockReasonKey.UnknownDomainValue(UnknownDomainKind.Phase)) }
+        (state.status as? WorkflowStatus.Unknown)?.let { add(ClosureBlockReasonKey.UnknownDomainValue(UnknownDomainKind.Status)) }
+        (state.queue.status as? QueueStatus.Unknown)?.let { add(ClosureBlockReasonKey.UnknownDomainValue(UnknownDomainKind.QueueStatus)) }
+        (state.queue.blockedReason as? QueueBlockedReason.Other)?.let {
+            add(ClosureBlockReasonKey.UnknownDomainValue(UnknownDomainKind.QueueBlockedReason))
+        }
+        (state.stopReason as? StopReason.Unknown)?.let { add(ClosureBlockReasonKey.UnknownDomainValue(UnknownDomainKind.StopReason)) }
         (state.executionWrapper as? ExecutionWrapperState.Unknown)?.let {
-            add("알 수 없는 execution wrapper입니다.")
+            add(ClosureBlockReasonKey.UnknownDomainValue(UnknownDomainKind.ExecutionWrapper))
         }
     }
 }

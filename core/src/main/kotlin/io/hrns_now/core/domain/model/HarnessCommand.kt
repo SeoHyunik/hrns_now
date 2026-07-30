@@ -10,6 +10,7 @@ import java.time.LocalDate
 enum class HarnessCommandKind {
     Doctor,
     ValidateOps,
+    OnboardProject,
     Bootstrap,
     Planning,
     Replan,
@@ -83,6 +84,24 @@ sealed interface HarnessCommand {
         val date: LocalDate,
     ) : HarnessCommand {
         override val kind: HarnessCommandKind = HarnessCommandKind.ValidateOps
+    }
+
+    /**
+     * `scripts/enter-project.ps1`에 대응한다(Phase 10). repository bridge(`.claude/settings.local.json`,
+     * `.claude/CLAUDE.md`, `tools/run-cycle.ps1`)와 external workspace(오늘 day root 포함 daily
+     * 4-file)를 준비하는 명시적 온보딩 명령이다 — `-Force`/`-RunDoctor`/`-MaterializeSubagents`/
+     * `-AgentNames`는 전달하지 않는다. 기존 bridge 파일은 덮어쓰지 않는다(live 계약: `enter-project.ps1`이
+     * `-Force` 없이는 기존 파일을 보존함). `run-cycle.ps1` 기반 daily command와는 별개의 typed
+     * 명령이며 boolean/switch로 뭉개지 않는다.
+     */
+    data class OnboardProject(
+        val workspaceRoot: Path,
+        val projectRoot: Path,
+        val kitRoot: Path,
+        val profile: String?,
+        val date: LocalDate,
+    ) : HarnessCommand {
+        override val kind: HarnessCommandKind = HarnessCommandKind.OnboardProject
     }
 
     /** `scripts/run-cycle.ps1 -UsePythonSidecars`(wrapper 인자 없음)에 대응한다. */

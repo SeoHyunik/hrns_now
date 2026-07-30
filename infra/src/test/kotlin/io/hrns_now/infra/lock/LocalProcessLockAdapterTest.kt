@@ -30,15 +30,18 @@ class LocalProcessLockAdapterTest {
 
     @Test
     fun `동시에 여러 acquire를 경쟁시키면 정확히 하나만 성공한다`(): Unit = runBlocking {
-        val locksRoot = tempLocksRoot()
-        val adapter = LocalProcessLockAdapter(locksRoot = locksRoot, pidAlive = { true })
+        repeat(10) {
+            val locksRoot = tempLocksRoot()
+            val adapter = LocalProcessLockAdapter(locksRoot = locksRoot, pidAlive = { true })
 
-        val results = (1..20).map {
-            async(Dispatchers.Default) { adapter.acquire(projectId, date, HarnessCommandKind.Doctor) }
-        }.awaitAll()
+            val results = (1..20).map {
+                async(Dispatchers.Default) { adapter.acquire(projectId, date, HarnessCommandKind.Doctor) }
+            }.awaitAll()
 
-        assertEquals(1, results.count { it is LockAcquireResult.Acquired })
-        assertEquals(19, results.count { it is LockAcquireResult.Busy })
+            assertEquals(1, results.count { it is LockAcquireResult.Acquired })
+            assertEquals(19, results.count { it is LockAcquireResult.Busy })
+            assertEquals(0, results.count { it is LockAcquireResult.Failed })
+        }
     }
 
     @Test

@@ -306,6 +306,90 @@ class JsonProjectRegistryAdapterTest {
     }
 
     @Test
+    fun `clearActive는 project entry를 보존하고 lastActiveProjectId만 지운다`() = runTest {
+        val path = tempRegistryPath()
+        val adapter = JsonProjectRegistryAdapter(path)
+        val a = project("a")
+        val b = project("b")
+        adapter.save(a)
+        adapter.save(b)
+        adapter.markActive(a.id)
+
+        assertEquals(RegistrySaveResult.Success, adapter.clearActive())
+
+        val loaded = assertIs<RegistryLoadResult.Success>(adapter.findAll())
+        assertNull(loaded.lastActiveProjectId)
+        assertEquals(setOf(a, b), loaded.projects.toSet())
+    }
+
+    @Test
+    fun `clearActive는 UTF-8 no BOM atomic write를 그대로 유지한다`() = runTest {
+        val path = tempRegistryPath()
+        val adapter = JsonProjectRegistryAdapter(path)
+        adapter.save(project("a", displayName = "한글 프로젝트"))
+        adapter.markActive(ProjectId("a"))
+
+        assertEquals(RegistrySaveResult.Success, adapter.clearActive())
+
+        val bytes = Files.readAllBytes(path)
+        assertFalse(bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte())
+        val text = String(bytes, StandardCharsets.UTF_8)
+        assertTrue(text.contains("한글 프로젝트"))
+        assertTrue(Files.list(path.parent).use { files -> files.noneMatch { it.fileName.toString().endsWith(".tmp") } })
+    }
+
+    @Test
+    fun `부분 손상 Registry에서 clearActive는 손상 entry를 먼저 격리한 뒤 유효 entry만으로 반영된다`() = runTest {
+        val path = tempRegistryPath()
+        Files.writeString(
+            path,
+            """
+            {
+              "schema_version": "1.0",
+              "projects": [
+                {"id":"valid","display_name":"정상","kit_root":"S:\\k","project_workspace_root":"S:\\w","repository_root":"S:\\r","profile_id":"기본"},
+                {"id":"broken","display_name":"누락"}
+              ],
+              "last_active_project_id": "valid"
+            }
+            """.trimIndent(),
+        )
+        val adapter = JsonProjectRegistryAdapter(path, clock = { Instant.EPOCH })
+
+        val result = adapter.clearActive()
+
+        assertEquals(RegistrySaveResult.Success, result)
+        val quarantine = Files.list(path.parent).use { files ->
+            files.filter { it.fileName.toString().contains(".corrupt-") }.findFirst().orElseThrow()
+        }
+        assertTrue(Files.readString(quarantine).contains("\"id\":\"broken\""))
+        val loaded = assertIs<RegistryLoadResult.Success>(adapter.findAll())
+        assertEquals(listOf("valid"), loaded.projects.map { it.id.value })
+        assertNull(loaded.lastActiveProjectId)
+    }
+
+    @Test
+    fun `기존 등록 project root 아래에 놓인 Registry에서는 clearActive도 차단한다`() = runTest {
+        val workspace = Files.createDirectories(Files.createTempDirectory("hrns-existing-boundary-clear").resolve("workspace"))
+        val path = workspace.resolve("appdata/hrns-now/projects.json")
+        Files.createDirectories(path.parent)
+        val existing = project("existing", workspaceRoot = workspace)
+        val envelope = ProjectRegistryFileDto(
+            schemaVersion = REGISTRY_SCHEMA_VERSION,
+            lastActiveProjectId = existing.id.value,
+            projects = listOf(existing.toDto()),
+        )
+        Files.writeString(path, Json.encodeToString(ProjectRegistryFileDto.serializer(), envelope))
+        val before = Files.readAllBytes(path)
+        val adapter = JsonProjectRegistryAdapter(path)
+
+        val result = adapter.clearActive()
+
+        assertIs<RegistrySaveResult.Failed>(result)
+        assertEquals(before.toList(), Files.readAllBytes(path).toList())
+    }
+
+    @Test
     fun `동시 save가 서로의 프로젝트를 잃지 않는다`() = runTest {
         val path = tempRegistryPath()
         val adapter = JsonProjectRegistryAdapter(path)

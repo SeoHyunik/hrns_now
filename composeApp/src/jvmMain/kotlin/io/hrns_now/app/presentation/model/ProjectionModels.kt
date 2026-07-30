@@ -25,6 +25,12 @@ data class ActionButtonModel(
     val helperText: String? = null,
     /** 표시 label과 분리된 typed 실행 식별자다. null이면 정보를 보여 주는 비실행 버튼이다. */
     val action: UiAction? = null,
+    /**
+     * enabled 여부와 무관하게 항상 보여 줄 목적 설명이다(새 Phase 8 §5.2) — `연결 점검`/
+     * `작업 준비 점검`처럼 이름만으로 목적이 드러나지 않는 action에 붙인다. [helperText]는 비활성
+     * 사유 전용으로 남긴다.
+     */
+    val description: String? = null,
 )
 
 data class InfoCardModel(
@@ -48,10 +54,21 @@ data class SetupProjection(
     val note: String
 )
 
+/**
+ * 사람이 읽는 `TODAY_STRATEGY.md` 원문 카드 전용 read model이다(새 Phase 8 §3) — 일반
+ * `InfoCardModel` 목록과 분리해 안전한 Markdown 렌더링과 문서 날짜/읽기 전용 배지를 붙인다.
+ */
+data class DevelopmentStrategyCardModel(
+    val text: String?,
+    val dateLabel: String,
+    val isReadOnlyDay: Boolean,
+)
+
 data class TodayWorkProjection(
     val title: String,
     val subtitle: String,
     val statusChip: StatusChipModel,
+    val developmentStrategy: DevelopmentStrategyCardModel,
     val sections: List<InfoCardModel>,
     val actions: List<ActionButtonModel>,
     val note: String,
@@ -63,6 +80,16 @@ data class TodayWorkProjection(
     val requestEditingEnabled: Boolean = false,
     /** 마지막 요청 저장이 성공했는지 나타내며, 편집기는 이 값이 true일 때만 draft를 비운다. */
     val requestSaveSucceeded: Boolean = false,
+    /**
+     * 오늘 State가 Missing이고 `ActionPolicy`가 실제로 `BootstrapDay`를 primary로 허용할 때만
+     * true다(Phase 8 보완 §2.1) — 이 값이 true인 동안만 요구사항 카드가 "오늘 작업 시작" 단일
+     * CTA로 전환된다. `actions`에는 이 typed action을 중복 포함하지 않는다.
+     */
+    val bootstrapEligible: Boolean = false,
+    /** [bootstrapEligible]일 때만 채워지는 실제 실행 가능한 `BootstrapDay` 버튼 모델이다. */
+    val bootstrapAction: ActionButtonModel? = null,
+    /** 요구사항 편집이 막혀 있고 Bootstrap도 열려 있지 않을 때 보여줄 typed 차단 사유 문구다. */
+    val blockedReasonLabel: String? = null,
 )
 
 /** stop reason/blocked marker 하나의 3분리 표시다: 최근 작업 기록 / 보존된 기록 / 현재 허용 행동. */
@@ -115,7 +142,7 @@ data class RunStatusProjection(
     /** 현재 lock을 강제 해제할 수 있는 상태인가(Phase 3). */
     val forceReleaseEnabled: Boolean = false,
     /**
-     * 환경 점검/작업 기준 점검을 화면 어디서나(프로젝트 관리·작업 계획) 인라인으로 보여주기 위한
+     * 연결 점검/작업 준비 점검을 화면 어디서나(프로젝트 관리·작업 계획) 인라인으로 보여주기 위한
      * 최근 실행 요약이다(새 Phase 6 UI/UX). raw stdout/session은 담지 않고 이미 typed/label 처리된
      * 값만 담는다 — [io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler]가 조립한다.
      */

@@ -11,6 +11,7 @@ import io.hrns_now.core.domain.model.QueueStatus
 import io.hrns_now.core.domain.model.RepositoryStatus
 import io.hrns_now.core.domain.model.SchemaVersion
 import io.hrns_now.core.domain.model.StopReason
+import io.hrns_now.core.domain.model.UnknownDomainKind
 import io.hrns_now.core.domain.model.WorkflowPhase
 import io.hrns_now.core.domain.model.WorkflowQueue
 import io.hrns_now.core.domain.model.WorkflowState
@@ -143,14 +144,14 @@ class ClosurePolicyTest {
     fun `필수 daily 파일이 준비되지 않으면 Blocked다`() {
         val decision = policy.evaluate(context(closureEligibleState(artifactsAllReady = false)))
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("daily 파일") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.RequiredArtifactsNotReady))
     }
 
     @Test
     fun `ops validation 미통과는 Blocked다`() {
         val decision = policy.evaluate(context(closureEligibleState(opsValidationPassed = false)))
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("운영 검증") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.OpsValidationFailed))
     }
 
     @Test
@@ -159,14 +160,14 @@ class ClosurePolicyTest {
             context(closureEligibleState(activeCardId = "card-1", activeSliceId = "slice-1")),
         )
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("활성 slice") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.ActiveSliceRemaining))
     }
 
     @Test
     fun `resume_from_step_id가 남아있으면 Blocked다`() {
         val decision = policy.evaluate(context(closureEligibleState(resumeFromStepId = "step-3")))
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("재개") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.ResumeStepRemaining))
     }
 
     @Test
@@ -175,7 +176,7 @@ class ClosurePolicyTest {
             context(closureEligibleState(closureValidated = true, topLevelClosureValidated = false)),
         )
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("일치하지") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.ClosureValidationFlagMismatch))
     }
 
     @Test
@@ -193,7 +194,7 @@ class ClosurePolicyTest {
             context(closureEligibleState(closureIsCleanHandoff = true, topLevelCleanHandoff = false)),
         )
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("clean_handoff") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.CleanHandoffConsistencyMismatch))
     }
 
     @Test
@@ -214,7 +215,7 @@ class ClosurePolicyTest {
     fun `다른 실행이 lock을 보유하면 Blocked다`() {
         val decision = policy.evaluate(context(closureEligibleState(), lockHeld = true))
         val blocked = assertIs<ClosureDecision.Blocked>(decision)
-        assertTrue(blocked.reasons.any { it.contains("잠금") })
+        assertTrue(blocked.reasons.contains(ClosureBlockReasonKey.LockHeldByOtherRun))
     }
 
     @Test
@@ -223,7 +224,7 @@ class ClosurePolicyTest {
             context(closureEligibleState(), repositoryStatus = RepositoryStatus.Dirty(listOf("src/Foo.kt"))),
         )
         val requiresAck = assertIs<ClosureDecision.RequiresExplicitIncompleteHandoff>(decision)
-        assertTrue(requiresAck.items.any { it.contains("src/Foo.kt") })
+        assertTrue(requiresAck.changedPaths.any { it.contains("src/Foo.kt") })
     }
 
     @Test

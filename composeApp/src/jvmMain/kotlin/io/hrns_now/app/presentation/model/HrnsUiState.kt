@@ -45,8 +45,23 @@ sealed interface HrnsUiState {
         val runStatus: RunStatusProjection,
         val recovery: RecoveryProjection,
         val registryProjects: List<RegistryProjectItem>,
+        /**
+         * Registry가 해석한 현재 활성 프로젝트의 표시명이다. 아직 State가 없거나 bridge가
+         * 준비되지 않았어도 활성 선택 자체는 유지되므로, 상단 리본은 이 값을 우선 사용한다.
+         */
+        val activeProjectName: String? = null,
         val workspaceDays: List<WorkspaceDayItem>,
+        /** 오늘 날짜다(새 Phase 8 §6) — 아직 daily directory가 없어도 오늘 시작을 안내하는 데 쓴다. */
+        val todayDate: LocalDate,
         val activeProjectSourceLabel: String,
         val registryMessage: String?,
+        /** "진단 후 등록"의 진행/결과다(새 Phase 8 §1) — modal 안에서 직접 렌더링한다. */
+        val registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
+        /**
+         * 활성 프로젝트가 있지만 repository bridge 또는 오늘 external workspace 준비가 누락됐을
+         * 때만 true다(Phase 10). 이 값이 true인 동안만 Setup 화면이 Health Check와 구분되는
+         * 단일 "프로젝트 준비" CTA를 보여준다.
+         */
+        val needsProjectPreparation: Boolean = false,
     ) : HrnsUiState
 }

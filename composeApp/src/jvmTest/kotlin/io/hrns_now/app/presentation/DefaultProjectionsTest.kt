@@ -9,13 +9,27 @@ import io.hrns_now.core.config.RuntimeConfig
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.config.WorkspaceProbeSummary
 import io.hrns_now.core.config.WorkspaceRoots
+import io.hrns_now.core.domain.model.AppLocale
+import io.hrns_now.app.ui.appStrings
 import io.hrns_now.core.domain.model.UiAction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DefaultProjectionsTest {
+    @Test
+    fun `diagnostics eyebrows follow the selected locale`() {
+        val korean = appStrings(AppLocale.Korean)
+        val english = appStrings(AppLocale.English)
+
+        assertEquals("상태 진단", korean.cockpit.diagnosticsEyebrow)
+        assertEquals("Diagnostics", english.cockpit.diagnosticsEyebrow)
+        assertEquals("상태 진단", korean.recovery.diagnosticsEyebrow)
+        assertEquals("Diagnostics", english.recovery.diagnosticsEyebrow)
+    }
 
     @Test
     fun `Setup 진단 버튼은 typed action과 Cockpit 허용 상태를 사용한다`() {
@@ -111,23 +125,30 @@ class DefaultProjectionsTest {
         assertEquals("잠금" to "Ops Validation (PID 4242, 마지막 heartbeat 3초 전)", confirmation.rows.last())
     }
 
+    /**
+     * 새 Phase 8 §3: "개발 전략"은 더 이상 일반 `InfoCardModel` 목록에 섞이지 않고, 원문을 그대로
+     * 담는 별도 [io.hrns_now.app.presentation.model.DevelopmentStrategyCardModel]로 분리된다 —
+     * "없으면 안내 문구"는 이제 mapper가 아니라 Compose 카드가 렌더링 시점에 보여준다.
+     */
     @Test
-    fun `Strategy 섹션은 사람용 원문이 없으면 안내 문구를 보인다`() {
+    fun `개발 전략 카드는 원문 텍스트와 날짜·읽기 전용 여부를 그대로 투영한다`() {
         val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
 
         val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
 
-        assertEquals("내용" to "아직 없습니다.", projection.sections.first().rows.single())
+        assertEquals(null, projection.developmentStrategy.text)
+        assertEquals(cockpit.dateLabel, projection.developmentStrategy.dateLabel)
+        assertEquals(cockpit.isReadOnlyDay, projection.developmentStrategy.isReadOnlyDay)
     }
 
     @Test
-    fun `작업 계획의 전략과 대기열 제목은 설명 괄호 없이 한국어 표시명만 사용한다`() {
+    fun `작업 계획의 대기열 제목은 설명 괄호 없이 한국어 표시명만 사용한다`() {
         val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
 
         val projection = buildTodayWorkProjection(cockpit, strategyText = "전략", requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
 
-        assertEquals("개발 전략", projection.sections[0].title)
-        assertEquals("작업 대기열", projection.sections[1].title)
+        assertEquals("전략", projection.developmentStrategy.text)
+        assertEquals("작업 대기열", projection.sections[0].title)
     }
 
     @Test
@@ -144,5 +165,87 @@ class DefaultProjectionsTest {
 
         assertEquals("요청을 저장했습니다.", projection.requestInboxNotice)
         assertTrue(projection.requestSaving)
+    }
+
+    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 화면 본문에도 실제로 적용되는지 확인한다. */
+    @Test
+    fun `English locale은 작업 계획 제목과 대기열 섹션 제목을 영어로 투영한다`() {
+        val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
+
+        val projection = buildTodayWorkProjection(
+            cockpit,
+            strategyText = null,
+            requestInboxNotice = null,
+            requestSaving = false,
+            lockSummaryLabel = "None",
+            locale = AppLocale.English,
+        )
+
+        assertEquals("Plan", projection.title)
+        assertEquals("Task queue", projection.sections[0].title)
+    }
+
+    @Test
+    fun `English locale의 Setup projection도 영어 제목을 낸다`() {
+        val projection = buildSetupProjection(
+            config = WorkspaceConfig(
+                workspaceName = null,
+                profileName = "test",
+                roots = WorkspaceRoots(null, null, null),
+                runtime = RuntimeConfig(null, null, "en"),
+            ),
+            probeSummary = probeSummary(),
+            locale = AppLocale.English,
+        )
+
+        assertEquals("Project setup", projection.title)
+    }
+
+    /**
+     * 새 Phase 8 보완 §2.1: BootstrapDay가 primary일 때만 [io.hrns_now.app.presentation.model.
+     * TodayWorkProjection.bootstrapEligible]/[bootstrapAction]이 채워지고, 일반 `actions` 목록에는
+     * BootstrapDay가 중복 포함되지 않는다 — 화면당 실제 실행 CTA는 한 곳(요구사항 카드)뿐이어야 한다.
+     */
+    @Test
+    fun `BootstrapDay가 primary면 bootstrapAction만 채워지고 actions에는 중복되지 않는다`() {
+        val cockpit = cockpitProjection(
+            primaryAction = CockpitActionItem(UiAction.BootstrapDay, "오늘 작업 시작", enabled = true),
+            allowedActions = listOf(
+                CockpitActionItem(UiAction.BootstrapDay, "오늘 작업 시작", enabled = true),
+                CockpitActionItem(UiAction.Refresh, "새로고침", enabled = true),
+            ),
+        )
+
+        val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
+
+        assertTrue(projection.bootstrapEligible)
+        val bootstrapAction = assertNotNull(projection.bootstrapAction)
+        assertEquals(UiAction.BootstrapDay, bootstrapAction.action)
+        assertTrue(bootstrapAction.enabled)
+        assertFalse(projection.actions.any { it.action == UiAction.BootstrapDay })
+    }
+
+    @Test
+    fun `BootstrapDay가 아니면 bootstrapEligible은 false이고 bootstrapAction은 null이다`() {
+        val cockpit = cockpitProjection(
+            primaryAction = CockpitActionItem(UiAction.EditRequest, "요구사항 작성", enabled = true),
+            allowedActions = listOf(CockpitActionItem(UiAction.EditRequest, "요구사항 작성", enabled = true)),
+        )
+
+        val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
+
+        assertFalse(projection.bootstrapEligible)
+        assertNull(projection.bootstrapAction)
+    }
+
+    @Test
+    fun `blockedReasonLabel은 cockpit의 typed 차단 사유 문구를 그대로 옮긴다`() {
+        val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList()).copy(
+            blockedReasonLabel = "과거 날짜는 읽기 전용입니다.",
+        )
+
+        val projection = buildTodayWorkProjection(cockpit, strategyText = null, requestInboxNotice = null, requestSaving = false, lockSummaryLabel = "없음")
+
+        assertEquals("과거 날짜는 읽기 전용입니다.", projection.blockedReasonLabel)
     }
 }

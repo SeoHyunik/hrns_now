@@ -37,6 +37,7 @@ class RegisterProjectUseCaseTest {
         }
         override suspend fun delete(id: ProjectId): RegistrySaveResult = RegistrySaveResult.Success
         override suspend fun markActive(id: ProjectId): RegistrySaveResult = RegistrySaveResult.Success
+        override suspend fun clearActive(): RegistrySaveResult = RegistrySaveResult.Success
     }
 
     private fun candidate(
@@ -118,7 +119,9 @@ class RegisterProjectUseCaseTest {
 
         val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
 
-        assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        val reason = assertIs<RegistrationRejectionReason.RuntimeMissing>(invalid.reason)
+        assertEquals(RuntimeSource.InternalDeveloperSdk, reason.source)
         assertEquals(0, registry.saveCallCount)
     }
 
@@ -133,7 +136,9 @@ class RegisterProjectUseCaseTest {
 
         val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
 
-        assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        val reason = assertIs<RegistrationRejectionReason.RuntimeInvalid>(invalid.reason)
+        assertEquals(RuntimeIssue.MissingEntrypoint, reason.issue)
         assertEquals(0, registry.saveCallCount)
     }
 
@@ -148,7 +153,30 @@ class RegisterProjectUseCaseTest {
 
         val result = useCase(candidate(useInternalDeveloperSdk = false, kitRoot = "/missing-kit"))
 
-        assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
+        val reason = assertIs<RegistrationRejectionReason.RuntimeMissing>(invalid.reason)
+        assertIs<RuntimeSource.ExternalKit>(reason.source)
+        assertEquals(0, registry.saveCallCount)
+    }
+
+    @Test
+    fun `표시명·profile·외부 Kit 경로 공백은 서로 구분된 typed reason으로 거부한다`() = runTest {
+        val registry = SpyRegistryPort()
+        val useCase = RegisterProjectUseCase(
+            pathResolver = alwaysValidResolver(),
+            runtimeSourceResolver = alwaysResolvedRuntimeResolver(),
+            registry = registry,
+        )
+
+        val blankName = assertIs<RegisterProjectResult.InvalidCandidate>(useCase(candidate().copy(displayName = " ")))
+        assertEquals(RegistrationRejectionReason.BlankDisplayName, blankName.reason)
+
+        val blankProfile = assertIs<RegisterProjectResult.InvalidCandidate>(useCase(candidate().copy(profileId = " ")))
+        assertEquals(RegistrationRejectionReason.BlankProfile, blankProfile.reason)
+
+        val blankKit = assertIs<RegisterProjectResult.InvalidCandidate>(useCase(candidate(kitRoot = " ")))
+        assertEquals(RegistrationRejectionReason.BlankExternalKitPath, blankKit.reason)
+
         assertEquals(0, registry.saveCallCount)
     }
 

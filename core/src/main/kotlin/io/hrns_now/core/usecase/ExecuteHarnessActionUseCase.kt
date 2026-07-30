@@ -1,6 +1,7 @@
 package io.hrns_now.core.usecase
 
 import io.hrns_now.core.domain.model.ActionContext
+import io.hrns_now.core.domain.model.BlockedReasonKey
 import io.hrns_now.core.domain.model.ExecutionWrapper
 import io.hrns_now.core.domain.model.HarnessCommand
 import io.hrns_now.core.domain.model.HarnessProject
@@ -55,9 +56,7 @@ class ExecuteHarnessActionUseCase(
     ): ExecuteHarnessActionOutcome {
         val recommended = actionPolicy.recommend(context.actionContext)
         if (action !in recommended.allowed) {
-            return ExecuteHarnessActionOutcome.Rejected(
-                recommended.blockedReason ?: "현재 상태에서 허용되지 않은 실행입니다.",
-            )
+            return ExecuteHarnessActionOutcome.Rejected(recommended.reasonKey)
         }
 
         val command = commandMapper.map(action, context.project, context.resolvedKitRoot, context.day)
@@ -86,7 +85,8 @@ sealed interface ExecuteHarnessActionOutcome {
         val refreshedState: StateReadResult,
     ) : ExecuteHarnessActionOutcome
 
-    data class Rejected(val reason: String) : ExecuteHarnessActionOutcome
+    /** 문구가 아니라 typed key다 — presentation이 locale별 문구로 투영한다(Phase 8 보완 §1). */
+    data class Rejected(val reasonKey: BlockedReasonKey?) : ExecuteHarnessActionOutcome
     data class Failed(val processResult: ProcessRunResult) : ExecuteHarnessActionOutcome
     data class LockUnavailable(val result: LockAcquireResult) : ExecuteHarnessActionOutcome
     data class UnsupportedAction(val action: UiAction) : ExecuteHarnessActionOutcome

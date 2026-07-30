@@ -29,9 +29,23 @@ data class RegisterProjectCandidate(
     val profileId: String,
 )
 
+/**
+ * `InvalidCandidate`의 typed 원인이다(새 Phase 8 §1) — presentation 계층이 사람이 읽는
+ * [ProjectRegistrationInspection.InvalidCandidate.message] 문자열 일부를 비교해 원인을 추정하지
+ * 않고, 이 sealed 값만으로 UI 처리(예: "고급 설정" 안내 노출 여부)를 분기할 수 있게 한다.
+ */
+sealed interface RegistrationRejectionReason {
+    data object BlankDisplayName : RegistrationRejectionReason
+    data object BlankProfile : RegistrationRejectionReason
+    data object BlankExternalKitPath : RegistrationRejectionReason
+    data object InvalidExternalKitPathFormat : RegistrationRejectionReason
+    data class RuntimeMissing(val source: RuntimeSource) : RegistrationRejectionReason
+    data class RuntimeInvalid(val source: RuntimeSource, val issue: RuntimeIssue) : RegistrationRejectionReason
+}
+
 sealed interface RegisterProjectResult {
     data class Registered(val project: HarnessProject) : RegisterProjectResult
-    data class InvalidCandidate(val message: String) : RegisterProjectResult
+    data class InvalidCandidate(val reason: RegistrationRejectionReason, val message: String) : RegisterProjectResult
     data class BoundaryRejected(val boundary: ProjectBoundaryResult) : RegisterProjectResult
     data class SaveFailed(val message: String) : RegisterProjectResult
 }
@@ -44,7 +58,10 @@ sealed interface RegisterProjectResult {
  */
 sealed interface ProjectRegistrationInspection {
     data class Ready(val project: HarnessProject, val resolvedKitRoot: Path) : ProjectRegistrationInspection
-    data class InvalidCandidate(val message: String) : ProjectRegistrationInspection
+    data class InvalidCandidate(
+        val reason: RegistrationRejectionReason,
+        val message: String,
+    ) : ProjectRegistrationInspection
     data class BoundaryRejected(val boundary: ProjectBoundaryResult) : ProjectRegistrationInspection
 }
 
@@ -71,19 +88,31 @@ class RegisterProjectUseCase(
      */
     fun inspect(candidate: RegisterProjectCandidate): ProjectRegistrationInspection {
         val displayName = candidate.displayName.trim().takeIf(String::isNotEmpty)
-            ?: return ProjectRegistrationInspection.InvalidCandidate("표시명을 입력하세요.")
+            ?: return ProjectRegistrationInspection.InvalidCandidate(
+                RegistrationRejectionReason.BlankDisplayName,
+                "표시명을 입력하세요.",
+            )
         val profileId = candidate.profileId.trim().takeIf(String::isNotEmpty)
-            ?: return ProjectRegistrationInspection.InvalidCandidate("Profile을 입력하세요.")
+            ?: return ProjectRegistrationInspection.InvalidCandidate(
+                RegistrationRejectionReason.BlankProfile,
+                "Profile을 입력하세요.",
+            )
 
         val runtimeSourceCandidate: RuntimeSource = if (candidate.useInternalDeveloperSdk) {
             RuntimeSource.InternalDeveloperSdk
         } else {
             val raw = candidate.kitRootRaw?.trim()?.takeIf(String::isNotEmpty)
-                ?: return ProjectRegistrationInspection.InvalidCandidate("외부 Harness Kit 경로를 입력하세요.")
+                ?: return ProjectRegistrationInspection.InvalidCandidate(
+                    RegistrationRejectionReason.BlankExternalKitPath,
+                    "외부 Harness Kit 경로를 입력하세요.",
+                )
             val parsed = try {
                 Path.of(raw)
             } catch (_: InvalidPathException) {
-                return ProjectRegistrationInspection.InvalidCandidate("Kit 경로 형식이 올바르지 않습니다.")
+                return ProjectRegistrationInspection.InvalidCandidate(
+                    RegistrationRejectionReason.InvalidExternalKitPathFormat,
+                    "Kit 경로 형식이 올바르지 않습니다.",
+                )
             }
             RuntimeSource.ExternalKit(parsed)
         }
@@ -92,9 +121,15 @@ class RegisterProjectUseCase(
         val resolvedKitRoot = when (runtimeResolution) {
             is RuntimeResolution.Resolved -> runtimeResolution.root
             is RuntimeResolution.Missing ->
-                return ProjectRegistrationInspection.InvalidCandidate(missingRuntimeMessage(runtimeResolution.source))
+                return ProjectRegistrationInspection.InvalidCandidate(
+                    RegistrationRejectionReason.RuntimeMissing(runtimeResolution.source),
+                    missingRuntimeMessage(runtimeResolution.source),
+                )
             is RuntimeResolution.Invalid ->
-                return ProjectRegistrationInspection.InvalidCandidate(invalidRuntimeMessage(runtimeResolution))
+                return ProjectRegistrationInspection.InvalidCandidate(
+                    RegistrationRejectionReason.RuntimeInvalid(runtimeResolution.source, runtimeResolution.reason),
+                    invalidRuntimeMessage(runtimeResolution),
+                )
         }
 
         val kit = pathResolver(resolvedKitRoot.toString())
@@ -140,7 +175,8 @@ class RegisterProjectUseCase(
     suspend operator fun invoke(candidate: RegisterProjectCandidate): RegisterProjectResult =
         when (val inspection = inspect(candidate)) {
             is ProjectRegistrationInspection.Ready -> save(inspection)
-            is ProjectRegistrationInspection.InvalidCandidate -> RegisterProjectResult.InvalidCandidate(inspection.message)
+            is ProjectRegistrationInspection.InvalidCandidate ->
+                RegisterProjectResult.InvalidCandidate(inspection.reason, inspection.message)
             is ProjectRegistrationInspection.BoundaryRejected -> RegisterProjectResult.BoundaryRejected(inspection.boundary)
         }
 

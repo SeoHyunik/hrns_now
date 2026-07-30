@@ -1,6 +1,7 @@
 package io.hrns_now.app.presentation.mapper
 
 import io.hrns_now.app.presentation.viewmodel.HarnessRunViewState
+import io.hrns_now.core.domain.model.AppLocale
 import io.hrns_now.core.domain.model.HarnessCommandKind
 import io.hrns_now.core.domain.model.LockPayload
 import io.hrns_now.core.domain.model.LockState
@@ -108,7 +109,7 @@ class RunStatusProjectionAssemblerTest {
         assertTrue(projection.forceReleaseEnabled)
         val ownerRow = projection.stageDetailRows.single { it.first == "잠금 소유자" }
         assertTrue(ownerRow.second.contains("4242"))
-        assertTrue(ownerRow.second.contains("환경 점검"))
+        assertTrue(ownerRow.second.contains("연결 점검"))
         assertFalse(ownerRow.second.contains("stale"), "Active 상태에서는 stale 표시가 없어야 한다")
     }
 
@@ -134,8 +135,8 @@ class RunStatusProjectionAssemblerTest {
     fun `stage chip은 환경 점검 작업 기준 점검 두 항목을 항상 보여준다`() {
         val projection = assembler.assemble(HarnessRunViewState(), null, now)
 
-        assertTrue(projection.stages.any { it.label == "환경 점검" })
-        assertTrue(projection.stages.any { it.label == "작업 기준 점검" })
+        assertTrue(projection.stages.any { it.label == "연결 점검" })
+        assertTrue(projection.stages.any { it.label == "작업 준비 점검" })
     }
     @Test
     fun `외부 실행 가능성은 새 실행 보류 안내로 먼저 표시한다`() {
@@ -181,7 +182,7 @@ class RunStatusProjectionAssemblerTest {
         val projection = assembler.assemble(runView, lockInspection = null, now = completedAt)
 
         assertFalse(projection.isRunning)
-        assertEquals("환경 점검", projection.lastOutcome?.label)
+        assertEquals("연결 점검", projection.lastOutcome?.label)
         assertEquals("정상", projection.lastOutcome?.value)
         assertEquals("success", projection.lastOutcome?.tone)
         assertEquals("모든 점검을 통과했습니다.", projection.lastSummaryLine)
@@ -213,5 +214,30 @@ class RunStatusProjectionAssemblerTest {
         assertEquals(UiAction.RunOpsValidation, HarnessCommandKind.ValidateOps.toRetryAction())
         assertEquals("다시 검증", HarnessCommandKind.ValidateOps.retryLabel())
         assertNull(HarnessCommandKind.Bootstrap.toRetryAction())
+    }
+
+    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 실행 기록 화면에도 실제로 적용되는지 확인한다. */
+    @Test
+    fun `English locale은 제목과 stage label과 outcome을 영어로 투영한다`() {
+        val contract = HarnessDiagnosticContract(
+            contractVersion = "1.0",
+            overall = HarnessOverallStatus.Ok,
+            checks = listOf(HarnessCheckResult("check_001", HarnessCheckSeverity.Info, "ok")),
+        )
+        val runView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.Doctor,
+            isRunning = false,
+            runStartedAt = now,
+            lastResult = ProcessRunResult.Completed(0, contract, null, false, false),
+        )
+
+        val projection = assembler.assemble(runView, lockInspection = null, now = now, locale = AppLocale.English)
+
+        assertEquals("Run history", projection.title)
+        assertTrue(projection.stages.any { it.label == "Check connection" })
+        assertEquals("Check connection", projection.lastOutcome?.label)
+        assertEquals("OK", projection.lastOutcome?.value)
+        assertEquals("All checks passed.", projection.lastSummaryLine)
+        assertEquals("Check again", HarnessCommandKind.Doctor.retryLabel(AppLocale.English))
     }
 }

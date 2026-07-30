@@ -21,9 +21,20 @@ class WorkspacePathProbe {
             claudeCommand = probeFileOrCommand("Claude 명령", config.runtime.claudeCommand),
         )
 
+    /**
+     * 새 Phase 8 §5.1: `engineLabel`/`doctorLabel`이 항상 고정된 "오프라인"/"대기"였던 이전
+     * placeholder를 제거했다 — Kit이 실제로 등록·해석돼도 리본이 "오프라인"으로 모순되게
+     * 보이는 문제였다. `engineLabel`은 다른 root와 동일하게 실제 kit root 경로 확인 결과를
+     * 반영한다. `doctorLabel`은 이 계층에 실제 Doctor 실행 이력이 없으므로(그 정보는
+     * `RunStatusProjection`이 별도로 갖는다) 거짓 "대기/실행 중" 인상을 주지 않는 중립 문구로
+     * 고정한다 — 실제 실행 결과와의 통합은 이후 Phase 과제로 남긴다.
+     */
     fun readiness(config: WorkspaceConfig, summary: WorkspaceProbeSummary): WorkspaceReadiness =
         WorkspaceReadiness(
-            engineLabel = "오프라인",
+            engineLabel = rootReadiness(
+                result = summary.kitRoot,
+                notConfiguredLabel = "미설정",
+            ),
             workspaceLabel = rootReadiness(
                 result = summary.workspaceRoot,
                 notConfiguredLabel = "미선택",
@@ -33,7 +44,7 @@ class WorkspacePathProbe {
                 notConfiguredLabel = "미확인",
             ),
             profileLabel = config.profileName,
-            doctorLabel = "대기",
+            doctorLabel = "미확인",
         )
 
     private fun rootReadiness(result: PathProbeResult, notConfiguredLabel: String): String =

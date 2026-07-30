@@ -40,13 +40,15 @@ val PretendardFamily: FontFamily = runCatching {
 fun hrnsTypography(): Typography {
     val base = TextStyle(fontFamily = PretendardFamily)
     return Typography(
-        displayLarge = base.copy(fontSize = 48.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-1.2).sp, lineHeight = 56.sp),
-        displayMedium = base.copy(fontSize = 40.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-1.0).sp, lineHeight = 48.sp),
-        displaySmall = base.copy(fontSize = 32.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp, lineHeight = 40.sp),
+        // 새 Phase 8 §7: 큰 제목의 negative letter spacing을 완만하게 낮췄다 — 한글 음절 블록은
+        // Latin만큼 negative tracking을 견디지 못해 겹침처럼 보일 위험이 있었다.
+        displayLarge = base.copy(fontSize = 48.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, lineHeight = 56.sp),
+        displayMedium = base.copy(fontSize = 40.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp, lineHeight = 48.sp),
+        displaySmall = base.copy(fontSize = 32.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp, lineHeight = 40.sp),
 
-        headlineLarge = base.copy(fontSize = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.7).sp, lineHeight = 38.sp),
-        headlineMedium = base.copy(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 32.sp),
-        headlineSmall = base.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp, lineHeight = 28.sp),
+        headlineLarge = base.copy(fontSize = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp, lineHeight = 38.sp),
+        headlineMedium = base.copy(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp, lineHeight = 32.sp),
+        headlineSmall = base.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp, lineHeight = 28.sp),
 
         titleLarge = base.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp, lineHeight = 26.sp),
         titleMedium = base.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.1).sp, lineHeight = 22.sp),

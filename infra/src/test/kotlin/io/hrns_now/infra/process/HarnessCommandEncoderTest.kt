@@ -123,6 +123,49 @@ class HarnessCommandEncoderTest {
     }
 
     @Test
+    fun `OnboardProject는 enter-project 스크립트에 ProjectRoot WorkspaceRoot KitRoot Profile Date만 인자로 만든다`() {
+        val command = HarnessCommand.OnboardProject(
+            workspaceRoot = Path.of("D:/harness-workspaces/sample"),
+            projectRoot = Path.of("S:/repo/sample"),
+            kitRoot = Path.of("D:/harness-kit"),
+            profile = "corp-default",
+            date = LocalDate.of(2026, 7, 27),
+        )
+
+        val invocation = encoder.encode(command)
+
+        assertEquals(Path.of("D:/harness-kit/scripts/enter-project.ps1").toString(), invocation.arguments[4])
+        assertEquals(
+            listOf(
+                "-ProjectRoot", "S:\\repo\\sample",
+                "-WorkspaceRoot", "D:\\harness-workspaces\\sample",
+                "-KitRoot", "D:\\harness-kit",
+                "-Profile", "corp-default",
+                "-Date", "2026-07-27",
+            ),
+            invocation.arguments.drop(5),
+        )
+        listOf("-Force", "-RunDoctor", "-MaterializeSubagents", "-AgentNames").forEach { forbidden ->
+            assertTrue(forbidden !in invocation.arguments, "금지된 스위치 $forbidden 가 포함되면 안 된다")
+        }
+    }
+
+    @Test
+    fun `OnboardProject는 profile이 공백이면 Profile 인자를 생략한다`() {
+        val command = HarnessCommand.OnboardProject(
+            workspaceRoot = Path.of("D:/harness-workspaces/sample"),
+            projectRoot = Path.of("S:/repo/sample"),
+            kitRoot = Path.of("D:/harness-kit"),
+            profile = "   ",
+            date = LocalDate.of(2026, 7, 27),
+        )
+
+        val invocation = encoder.encode(command)
+
+        assertTrue("-Profile" !in invocation.arguments)
+    }
+
+    @Test
     fun `BootstrapDay는 run-cycle 스크립트에 UsePythonSidecars만 붙이고 wrapper 인자를 만들지 않는다`() {
         val command = HarnessCommand.BootstrapDay(
             workspaceRoot = Path.of("D:/harness-workspaces/sample"),

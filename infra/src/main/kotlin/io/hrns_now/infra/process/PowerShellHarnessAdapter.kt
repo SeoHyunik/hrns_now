@@ -96,6 +96,7 @@ class PowerShellHarnessAdapter(
         when (command) {
             is HarnessCommand.Doctor -> command.kitRoot
             is HarnessCommand.ValidateOps -> command.kitRoot
+            is HarnessCommand.OnboardProject -> command.kitRoot
             is HarnessCommand.BootstrapDay -> command.kitRoot
             is HarnessCommand.RunPlanning -> command.kitRoot
             is HarnessCommand.RunReplan -> command.kitRoot
