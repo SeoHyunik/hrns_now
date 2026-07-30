@@ -3,7 +3,7 @@ package io.hrns_now.app.presentation.viewmodel
 import io.hrns_now.app.presentation.model.HrnsUiEvent
 import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.app.presentation.model.RegistrationFeedback
-import io.hrns_now.app.presentation.model.WorkspacePreparationOutcome
+import io.hrns_now.app.presentation.model.ProjectOnboardingOutcome
 import io.hrns_now.app.presentation.model.NotificationTone
 import io.hrns_now.core.config.PathProbeKind
 import io.hrns_now.core.config.PathProbeResult
@@ -19,6 +19,7 @@ import io.hrns_now.core.domain.model.ArtifactProbeResult
 import io.hrns_now.core.domain.model.ArtifactProbeState
 import io.hrns_now.core.domain.model.ArtifactRequirement
 import io.hrns_now.core.domain.model.ArtifactsState
+import io.hrns_now.core.domain.model.BridgeFileState
 import io.hrns_now.core.domain.model.ClosureState
 import io.hrns_now.core.domain.model.ContractVersion
 import io.hrns_now.core.domain.model.ExecutionWrapper
@@ -42,6 +43,7 @@ import io.hrns_now.core.domain.model.ProjectId
 import io.hrns_now.core.domain.model.QueuePointer
 import io.hrns_now.core.domain.model.QueueStatus
 import io.hrns_now.core.domain.model.ReplanReason
+import io.hrns_now.core.domain.model.RepositoryBridgeSummary
 import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.RequestEntryPriority
 import io.hrns_now.core.domain.model.RequestEntrySource
@@ -65,6 +67,7 @@ import io.hrns_now.core.port.LoadedRequest
 import io.hrns_now.core.port.LockInspection
 import io.hrns_now.core.port.ProcessLockPort
 import io.hrns_now.core.port.ProjectRegistryPort
+import io.hrns_now.core.port.RepositoryBridgeProbePort
 import io.hrns_now.core.port.RequestSaveResult
 import io.hrns_now.core.port.RuntimeSourceResolverPort
 import io.hrns_now.core.port.RequestWriterPort
@@ -85,6 +88,7 @@ import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
 import io.hrns_now.core.usecase.HarnessCommandMapper
 import io.hrns_now.core.usecase.LoadCockpitUseCase
 import io.hrns_now.core.usecase.LoadProjectsUseCase
+import io.hrns_now.core.usecase.OnboardProjectUseCase
 import io.hrns_now.core.usecase.RegisterProjectCandidate
 import io.hrns_now.core.usecase.RegisterProjectUseCase
 import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
@@ -159,6 +163,17 @@ class AppViewModelTest {
         },
     )
 
+    private fun missingBridgeSummary(): RepositoryBridgeSummary = RepositoryBridgeSummary(
+        settingsLocalJson = BridgeFileState.Missing,
+        projectClaudeMd = BridgeFileState.Missing,
+        toolsRunCycle = BridgeFileState.Missing,
+    )
+
+    private fun readyBridgeSummary(): RepositoryBridgeSummary = RepositoryBridgeSummary(
+        settingsLocalJson = BridgeFileState.Ready,
+        projectClaudeMd = BridgeFileState.Ready,
+        toolsRunCycle = BridgeFileState.Ready,
+    )
     private fun workspaceConfig(workspaceRoot: String? = "S:\\workspace"): WorkspaceConfig = WorkspaceConfig(
         workspaceName = null,
         profileName = "테스트",
@@ -444,6 +459,14 @@ class AppViewModelTest {
         runtimeSourceResolver: RuntimeSourceResolverPort = identityRuntimeSourceResolver(),
         harnessRunner: HarnessRunnerPort = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
         processLock: ProcessLockPort = FakeProcessLockPort(clock = { fixedInstant }),
+        bridgeProbe: RepositoryBridgeProbePort = RepositoryBridgeProbePort { missingBridgeSummary() },
+        onboardProject: OnboardProjectUseCase = OnboardProjectUseCase(
+            processLock = processLock,
+            harnessRunner = harnessRunner,
+            workflowState = statePort,
+            bridgeProbe = bridgeProbe,
+            artifactProbe = { _, _ -> workspaceArtifactSummary },
+        ),
         requestWriter: RequestWriterPort = FakeRequestWriterPort(),
         todayStrategyReader: TodayStrategyReaderPort = TodayStrategyReaderPort { null },
         gitStatusPort: GitStatusPort = GitStatusPort { RepositoryStatus.Clean },
@@ -478,6 +501,8 @@ class AppViewModelTest {
             harnessRunner = harnessRunner,
             workflowState = statePort,
         ),
+        onboardProject = onboardProject,
+        bridgeProbe = bridgeProbe,
         saveRequest = SaveRequestUseCase(requestWriter),
         todayStrategyReader = todayStrategyReader,
         gitStatusPort = gitStatusPort,
@@ -665,7 +690,15 @@ class AppViewModelTest {
                 harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
                 workflowState = statePort,
             ),
-            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            onboardProject = OnboardProjectUseCase(
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            workflowState = statePort,
+            bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+        ),
+        bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+        saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
             gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
@@ -747,7 +780,15 @@ class AppViewModelTest {
                 harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
                 workflowState = statePort,
             ),
-            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            onboardProject = OnboardProjectUseCase(
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            workflowState = statePort,
+            bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+        ),
+        bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+        saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
             gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
@@ -896,7 +937,15 @@ class AppViewModelTest {
                 harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
                 workflowState = statePort,
             ),
-            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            onboardProject = OnboardProjectUseCase(
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            workflowState = statePort,
+            bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+        ),
+        bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+        saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
             gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
@@ -1002,7 +1051,15 @@ class AppViewModelTest {
                 harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
                 workflowState = statePort,
             ),
-            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            onboardProject = OnboardProjectUseCase(
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            workflowState = statePort,
+            bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+        ),
+        bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+        saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
             gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
@@ -1129,7 +1186,7 @@ class AppViewModelTest {
 
         val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
         val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
-        assertEquals(WorkspacePreparationOutcome.NotAttempted, feedback.workspacePreparation)
+        assertEquals(ProjectOnboardingOutcome.NotAttempted, feedback.onboarding)
         assertEquals(listOf(HarnessCommandKind.Doctor), executedKinds)
         assertTrue(ready.registryProjects.single().isActive)
         viewModel.dispose()
@@ -1165,6 +1222,7 @@ class AppViewModelTest {
             dispatcher = dispatcher,
             registry = registry,
             workspaceArtifactSummary = requiredDailyArtifactSummary(),
+            bridgeProbe = RepositoryBridgeProbePort { readyBridgeSummary() },
             boundaryResolver = resolver,
             compatibilityPort = { KitVersionReadResult.Success(supportedManifest()) },
             harnessRunner = HarnessRunnerPort { command, _, _ ->
@@ -1191,8 +1249,8 @@ class AppViewModelTest {
 
         val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
         val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
-        assertEquals(WorkspacePreparationOutcome.Prepared, feedback.workspacePreparation)
-        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.Bootstrap), executedKinds)
+        assertEquals(ProjectOnboardingOutcome.Ready, feedback.onboarding)
+        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.OnboardProject, HarnessCommandKind.ValidateOps), executedKinds)
         assertTrue(ready.registryProjects.single().isActive)
         viewModel.dispose()
     }
@@ -1249,8 +1307,8 @@ class AppViewModelTest {
 
         val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
         val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
-        assertIs<WorkspacePreparationOutcome.NotPrepared>(feedback.workspacePreparation)
-        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.Bootstrap), executedKinds)
+        assertIs<ProjectOnboardingOutcome.Blocked>(feedback.onboarding)
+        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.OnboardProject, HarnessCommandKind.ValidateOps), executedKinds)
         assertTrue(ready.registryProjects.single().isActive)
         viewModel.dispose()
     }
@@ -1302,8 +1360,8 @@ class AppViewModelTest {
 
         val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
         val feedback = assertIs<RegistrationFeedback.Success>(ready.registrationFeedback)
-        assertIs<WorkspacePreparationOutcome.NotPrepared>(feedback.workspacePreparation)
-        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.Bootstrap), executedKinds)
+        assertIs<ProjectOnboardingOutcome.Blocked>(feedback.onboarding)
+        assertEquals(listOf(HarnessCommandKind.Doctor, HarnessCommandKind.OnboardProject, HarnessCommandKind.ValidateOps), executedKinds)
         assertEquals(1, ready.registryProjects.size)
         assertTrue(ready.registryProjects.single().isActive)
         // Bootstrap 실행 결과 알림에도 raw workspace 경로가 노출되지 않는다(typed notice만 사용).
@@ -1702,7 +1760,15 @@ class AppViewModelTest {
                 harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
                 workflowState = statePort,
             ),
-            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            onboardProject = OnboardProjectUseCase(
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            workflowState = statePort,
+            bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+        ),
+        bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+        saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
             gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
@@ -2124,7 +2190,15 @@ class AppViewModelTest {
                 harnessRunner = runner,
                 workflowState = statePort,
             ),
-            saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
+            onboardProject = OnboardProjectUseCase(
+            processLock = FakeProcessLockPort(clock = { fixedInstant }),
+            harnessRunner = HarnessRunnerPort { _, _, _ -> ProcessRunResult.StartFailed("not configured") },
+            workflowState = statePort,
+            bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+            artifactProbe = { _, _ -> WorkspaceArtifactSummary(emptyList()) },
+        ),
+        bridgeProbe = RepositoryBridgeProbePort { missingBridgeSummary() },
+        saveRequest = SaveRequestUseCase(FakeRequestWriterPort()),
             todayStrategyReader = TodayStrategyReaderPort { null },
             gitStatusPort = GitStatusPort { RepositoryStatus.Clean },
             ioDispatcher = ioDispatcher,
@@ -2422,6 +2496,48 @@ class AppViewModelTest {
 
         val ready = viewModel.state.value as HrnsUiState.Ready
         assertEquals(true, ready.registryMessage?.contains("Selected project"))
+        viewModel.dispose()
+    }
+    @Test
+    fun `프로젝트 준비 CTA의 빠른 연속 클릭은 온보딩을 한 번만 실행한다`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val project = harnessProject("repair", "S:\\workspace-repair")
+        val registry = FakeProjectRegistryPort(initialProjects = listOf(project), initialActiveId = project.id)
+        val statePort = FakeStatePort { callIndex ->
+            if (callIndex == 1) {
+                StateReadResult.Missing(Path.of("WORKFLOW_STATE.json"))
+            } else {
+                StateReadResult.Success(workflowState("repaired"), FileVersion(fixedInstant, 10L, "hash"))
+            }
+        }
+        val bridgeProbeCalls = AtomicInteger(0)
+        val bridgeProbe = RepositoryBridgeProbePort {
+            if (bridgeProbeCalls.incrementAndGet() == 1) missingBridgeSummary() else readyBridgeSummary()
+        }
+        val executedKinds = mutableListOf<HarnessCommandKind>()
+        val viewModel = newViewModel(
+            statePort = statePort,
+            dispatcher = dispatcher,
+            registry = registry,
+            workspaceArtifactSummary = requiredDailyArtifactSummary(),
+            bridgeProbe = bridgeProbe,
+            harnessRunner = HarnessRunnerPort { command, _, _ ->
+                executedKinds += command.kind
+                successfulDoctorResult()
+            },
+        )
+        runCurrent()
+
+        assertTrue(assertIs<HrnsUiState.Ready>(viewModel.state.value).needsProjectPreparation)
+        viewModel.onEvent(HrnsUiEvent.ProjectOnboardingRequested)
+        viewModel.onEvent(HrnsUiEvent.ProjectOnboardingRequested)
+        runCurrent()
+
+        assertEquals(
+            listOf(HarnessCommandKind.OnboardProject, HarnessCommandKind.ValidateOps),
+            executedKinds,
+        )
+        assertFalse(assertIs<HrnsUiState.Ready>(viewModel.state.value).needsProjectPreparation)
         viewModel.dispose()
     }
 }

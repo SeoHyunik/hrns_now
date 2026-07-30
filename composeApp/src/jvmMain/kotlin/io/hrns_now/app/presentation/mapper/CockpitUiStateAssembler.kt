@@ -54,6 +54,7 @@ class CockpitUiStateAssembler(
         runtimeResolution: RuntimeResolution? = null,
         today: LocalDate = LocalDate.now(),
         registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
+        needsProjectPreparation: Boolean = false,
         locale: AppLocale = AppLocale.Korean,
     ): HrnsUiState.Ready {
         val actionPolicyCockpit = cockpitAssembler.assemble(
@@ -133,6 +134,7 @@ class CockpitUiStateAssembler(
             activeProjectSourceLabel = activeProjectSource.displayLabel(locale),
             registryMessage = registryMessage,
             registrationFeedback = registrationFeedback,
+            needsProjectPreparation = needsProjectPreparation,
         )
     }
 }

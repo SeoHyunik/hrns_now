@@ -16,7 +16,7 @@ import io.hrns_now.app.presentation.model.HrnsUiState
 import io.hrns_now.app.presentation.model.NotificationItem
 import io.hrns_now.app.presentation.model.NotificationTone
 import io.hrns_now.app.presentation.model.RegistrationFeedback
-import io.hrns_now.app.presentation.model.WorkspacePreparationOutcome
+import io.hrns_now.app.presentation.model.ProjectOnboardingOutcome
 import io.hrns_now.app.presentation.NotificationCenter
 import io.hrns_now.core.config.WorkspaceConfig
 import io.hrns_now.core.domain.model.ActionContext
@@ -45,6 +45,7 @@ import io.hrns_now.core.domain.model.WorkspaceDay
 import io.hrns_now.core.domain.model.SelectedDayKind
 import io.hrns_now.core.domain.model.toActiveSliceKind
 import io.hrns_now.core.domain.model.toCompatibilityStatus
+import io.hrns_now.core.port.RepositoryBridgeProbePort
 import io.hrns_now.core.domain.policy.BoundaryPolicy
 import io.hrns_now.core.domain.policy.ClosureBlockReasonKey
 import io.hrns_now.core.domain.policy.ClosureContext
@@ -65,6 +66,9 @@ import io.hrns_now.core.port.UiPreferencesPort
 import io.hrns_now.core.usecase.ExecuteHarnessActionOutcome
 import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
 import io.hrns_now.core.usecase.HarnessExecutionContext
+import io.hrns_now.core.usecase.OnboardProjectContext
+import io.hrns_now.core.usecase.OnboardProjectOutcome
+import io.hrns_now.core.usecase.OnboardProjectUseCase
 import io.hrns_now.core.usecase.SaveRequestOutcome
 import io.hrns_now.core.usecase.SaveRequestUseCase
 import io.hrns_now.core.result.RegistryLoadResult
@@ -133,6 +137,8 @@ class AppViewModel(
     /** 프로젝트 등록 전 Doctor gate는 아직 selected ActionContext가 없으므로 별도 진단 경로로 남긴다. */
     private val harnessRunner: HarnessRunnerPort,
     private val executeHarnessAction: ExecuteHarnessActionUseCase,
+    private val onboardProject: OnboardProjectUseCase,
+    private val bridgeProbe: RepositoryBridgeProbePort,
     private val saveRequest: SaveRequestUseCase,
     private val todayStrategyReader: TodayStrategyReaderPort,
     private val gitStatusPort: GitStatusPort,
@@ -205,6 +211,8 @@ class AppViewModel(
 
     private var harnessRunView: HarnessRunViewState = HarnessRunViewState()
     private var harnessRunJob: Job? = null
+    /** runtime 해석 전에 들어오는 빠른 연속 '프로젝트 준비' 클릭도 한 번만 수락한다. */
+    private var projectOnboardingJob: Job? = null
     private var harnessRunCancellationToken: ProcessCancellationToken? = null
     private var currentLockHandle: LockHandle? = null
     private var lockHeartbeatJob: Job? = null
@@ -269,6 +277,7 @@ class AppViewModel(
             HrnsUiEvent.RegistrationFeedbackDismissed -> pushRegistrationFeedback(RegistrationFeedback.Idle)
             is HrnsUiEvent.ProjectDeletionRequested -> viewModelScope.launch { onProjectDeletionRequested(event.id) }
             HrnsUiEvent.ActiveProjectReleaseRequested -> viewModelScope.launch { onActiveProjectReleaseRequested() }
+            HrnsUiEvent.ProjectOnboardingRequested -> requestProjectOnboarding()
             is HrnsUiEvent.WorkspaceDaySelected -> viewModelScope.launch { onWorkspaceDaySelected(event.date) }
             HrnsUiEvent.HarnessRunCancelRequested -> harnessRunCancellationToken?.requestCancel()
             HrnsUiEvent.LockForceReleaseRequested -> viewModelScope.launch { onLockForceReleaseRequested() }
@@ -331,10 +340,13 @@ class AppViewModel(
         val project = prepared.project
         val resolvedKitRoot = prepared.resolvedKitRoot
         val date = todayLocalDate()
+        // Phase 10: 등록 전 Doctor는 Kit 자체만 점검한다 — candidate workspace/repository는
+        // enter-project(온보딩) 이전에는 아직 bridge/daily surface가 없으므로, 이 경로에 넘기면
+        // 정상적인 미생성 상태를 오류처럼 만든다.
         val command = HarnessCommand.Doctor(
             kitRoot = resolvedKitRoot,
-            workspaceRoot = project.projectWorkspaceRoot,
-            projectRoot = project.repositoryRoot,
+            workspaceRoot = null,
+            projectRoot = null,
             date = date,
         )
         harnessRunCancellationToken = ProcessCancellationToken()
@@ -416,18 +428,18 @@ class AppViewModel(
                     is SelectProjectResult.Selected -> {
                         applyActiveProject(selected.project)
                         refreshRegistryProjects(projectRegisteredRefreshMessage(selected.project.displayName, currentLocale))
-                        // §B: 등록·선택·context 재조회까지 끝난 뒤에만 오늘 workspace 준비 여부를
-                        // 판단한다 — ActionPolicy가 최신 재조회 결과로 다시 계산한 뒤여야 한다.
+                        // §B: 등록·선택·context 재조회까지 끝난 뒤에만 온보딩을 시도한다 — 해석된
+                        // Kit root가 이 시점 이후에야 확정되기 때문이다.
                         loadOnce(forceRead = true)
-                        val preparation = if (prepareWorkspace) {
+                        val onboarding = if (prepareWorkspace) {
                             pushRegistrationFeedback(
-                                RegistrationFeedback.Success(result.project.displayName, WorkspacePreparationOutcome.InProgress),
+                                RegistrationFeedback.Success(result.project.displayName, ProjectOnboardingOutcome.InProgress),
                             )
-                            attemptWorkspacePreparationAfterRegistration()
+                            attemptOnboardingAfterRegistration(selected.project, resolvedKitRoot, date)
                         } else {
-                            WorkspacePreparationOutcome.NotAttempted
+                            ProjectOnboardingOutcome.NotAttempted
                         }
-                        registrationFeedback = RegistrationFeedback.Success(result.project.displayName, preparation)
+                        registrationFeedback = RegistrationFeedback.Success(result.project.displayName, onboarding)
                         pushRegistrationFeedback(registrationFeedback)
                         return
                     }
@@ -665,11 +677,19 @@ class AppViewModel(
         val loadedRecoveryDiagnostics = withContext(ioDispatcher) {
             recoveryDiagnosticsPort.read(daySelection.workspaceDay)
         }
+        val bridgeSummary = activeProject?.let { project ->
+            withContext(ioDispatcher) { bridgeProbe.probe(project.repositoryRoot) }
+        }
         if (sequence != loadSequence || contextGeneration != loadContextGeneration) return
         lastLockInspection = lockInspection
         lastStateRead = loaded.stateRead
         lastRequiredArtifactsReady = loaded.workspaceArtifactSummary.isRequiredReady
         recoveryDiagnostics = loadedRecoveryDiagnostics
+        // Phase 10: 활성 프로젝트인데 bridge 또는 오늘 workspace 준비가 누락되면 Setup 화면에
+        // 단일 "프로젝트 준비" CTA를 보인다. 과거 날짜 조회는 온보딩 대상이 아니다.
+        val needsProjectPreparation = activeProject != null &&
+            !daySelection.isReadOnly &&
+            (bridgeSummary?.isReady != true || !lastRequiredArtifactsReady)
         closureDecision = closurePolicy.evaluate(
             ClosureContext(
                 stateRead = loaded.stateRead,
@@ -748,6 +768,7 @@ class AppViewModel(
             runtimeResolution = runtimeResolution,
             today = todayLocalDate(),
             registrationFeedback = registrationFeedback,
+            needsProjectPreparation = needsProjectPreparation,
             locale = currentLocale,
         )
     }
@@ -991,43 +1012,159 @@ class AppViewModel(
     }
 
     /**
-     * 등록+선택+context 재조회가 끝난 뒤, ActionPolicy가 실제로 `BootstrapDay`를 primary로 허용할
-     * 때만 [runHarnessAction]을 그대로 재사용해 오늘 workspace를 준비한다(Phase 9 QA03-B §B).
-     * 등록 자체의 성공 여부와 분리된 결과만 돌려주며, 이 결과가 Registry를 되돌리는 이유가 되지
-     * 않는다. stdout 성공 문구가 아니라 재조회한 State로 준비 성공을 판단한다.
+     * 등록+선택+context 재조회가 끝난 뒤 typed `HarnessCommand.OnboardProject`(= `enter-project.ps1`)로
+     * repository bridge와 오늘 external workspace를 준비한다(Phase 10). daily `ActionPolicy`는
+     * 전혀 거치지 않는다 — 온보딩은 하루 단위 CTA 정책과 분리된 별도 lifecycle이다. 등록 직후
+     * `BootstrapDay`/`run-cycle`을 자동 호출하지 않는다.
      */
-    private suspend fun attemptWorkspacePreparationAfterRegistration(): WorkspacePreparationOutcome {
-        val ready = _state.value as? HrnsUiState.Ready
-        val eligible = ready?.todayWork?.bootstrapEligible == true
-        if (!eligible) {
-            return ready?.cockpit?.blockedReasonLabel
-                ?.let { WorkspacePreparationOutcome.NotPrepared(it) }
-                ?: WorkspacePreparationOutcome.NotAttempted
-        }
-        return when (val outcome = runHarnessAction(UiAction.BootstrapDay, HarnessCommandKind.Bootstrap)) {
-            is ExecuteHarnessActionOutcome.Completed ->
-                if (lastStateRead is StateReadResult.Success && lastRequiredArtifactsReady) {
-                    WorkspacePreparationOutcome.Prepared
-                } else {
-                    WorkspacePreparationOutcome.NotPrepared(workspacePreparationNotConfirmedNotice(currentLocale))
-                }
-            is ExecuteHarnessActionOutcome.Rejected ->
-                WorkspacePreparationOutcome.NotPrepared(
-                    outcome.reasonKey?.toDisplayText(currentLocale) ?: rejectedFallbackNotice(currentLocale),
-                )
-            is ExecuteHarnessActionOutcome.Failed ->
-                WorkspacePreparationOutcome.NotPrepared(workspacePreparationFailedNotice(currentLocale))
-            is ExecuteHarnessActionOutcome.LockUnavailable -> {
-                val lockResult = outcome.result
-                val notice = when (lockResult) {
-                    is LockAcquireResult.Busy -> lockBusyNotice(currentLocale)
-                    is LockAcquireResult.Failed -> lockFailedNotice(lockResult.reason, currentLocale)
-                    is LockAcquireResult.Acquired -> error("획득한 잠금은 LockUnavailable이 될 수 없습니다.")
-                }
-                WorkspacePreparationOutcome.NotPrepared(notice)
+    private suspend fun attemptOnboardingAfterRegistration(
+        project: HarnessProject,
+        resolvedKitRoot: Path,
+        date: LocalDate,
+    ): ProjectOnboardingOutcome {
+        val day = WorkspaceDay(project.projectWorkspaceRoot, date)
+        return runOnboarding(OnboardProjectContext(project = project, resolvedKitRoot = resolvedKitRoot, day = day))
+    }
+
+    /**
+     * 이미 등록된 활성 프로젝트의 bridge/오늘 workspace 준비가 누락됐을 때 다시 시도하는
+     * "프로젝트 준비" 단일 CTA다(Phase 10). Health Check(Doctor)와 달리 실제로 파일을 만들
+     * 수 있는 쓰기 행동이며, 그 사실은 UI 확인 절차에서 이미 사용자에게 알려졌다.
+     */
+    /**
+     * daily action과 달리 runtime root 해석을 먼저 해야 하는 온보딩 CTA의 launch 경계다. Job을
+     * 동기적으로 기록해 해석 coroutine이 suspend하기 전후의 빠른 연속 클릭도 중복 실행하지 않는다.
+     */
+    private fun requestProjectOnboarding() {
+        if (harnessRunView.isRunning || projectOnboardingJob?.isActive == true) return
+        projectOnboardingJob = viewModelScope.launch {
+            try {
+                onProjectOnboardingRequested()
+            } finally {
+                projectOnboardingJob = null
             }
-            is ExecuteHarnessActionOutcome.UnsupportedAction ->
-                WorkspacePreparationOutcome.NotPrepared(unsupportedActionNotice(currentLocale))
+        }
+    }
+
+    private suspend fun onProjectOnboardingRequested() {
+        if (harnessRunView.isRunning) return
+        val project = activeProject ?: return
+        val runtimeResolution = withContext(ioDispatcher) { runtimeSourceResolver.resolve(project.runtimeSource) }
+        val resolvedKitRoot = (runtimeResolution as? RuntimeResolution.Resolved)?.root
+        if (resolvedKitRoot == null) {
+            harnessRunView = HarnessRunViewState(
+                lastCommand = HarnessCommandKind.OnboardProject,
+                notice = harnessRunNotAllowedNotice(currentLocale),
+            )
+            refreshRunProjectionOnly()
+            return
+        }
+        val date = todayLocalDate()
+        val day = WorkspaceDay(project.projectWorkspaceRoot, date)
+        runOnboarding(OnboardProjectContext(project = project, resolvedKitRoot = resolvedKitRoot, day = day))
+    }
+
+    /**
+     * `OnboardProjectUseCase`를 실제로 실행하고(lock 보유 → enter-project → validate-ops →
+     * bridge/4-file probe → State 재조회 → lock 해제), 화면에는 기존 `harnessRunView`/
+     * `RunStatusProjection` 인라인 피드백을 그대로 재사용해 진행/완료를 보여준다 — 등록 흐름과
+     * "프로젝트 준비" 재시도 흐름이 동일한 lifecycle을 공유한다.
+     */
+    private suspend fun runOnboarding(context: OnboardProjectContext): ProjectOnboardingOutcome {
+        val cancellationToken = ProcessCancellationToken()
+        harnessRunCancellationToken = cancellationToken
+        val capturedGeneration = loadContextGeneration
+        harnessRunView = HarnessRunViewState(
+            lastCommand = HarnessCommandKind.OnboardProject,
+            isRunning = true,
+            runStartedAt = clock(),
+            lastResult = null,
+        )
+        refreshRunProjectionOnly()
+
+        val outcome = try {
+            withContext(ioDispatcher) {
+                onboardProject.invoke(
+                    context = context,
+                    timeout = runTimeout,
+                    cancellationToken = cancellationToken,
+                    onLockAcquired = { handle ->
+                        withContext(mainDispatcher) {
+                            currentLockHandle = handle
+                            startHeartbeat(handle)
+                        }
+                    },
+                    onBeforeLockRelease = {
+                        withContext(mainDispatcher) {
+                            stopHeartbeat()
+                            currentLockHandle = null
+                        }
+                    },
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            val result = ProjectOnboardingOutcome.Blocked(projectOnboardingProcessObserveFailedNotice(currentLocale))
+            harnessRunView = harnessRunView.copy(isRunning = false, runCompletedAt = clock(), notice = result.reasonText)
+            refreshRunProjectionOnly()
+            return result
+        } finally {
+            stopHeartbeat()
+            currentLockHandle = null
+            lastLockInspection = withContext(ioDispatcher) { inspectLock(context.project.id, context.day.date) }
+        }
+
+        if (capturedGeneration != loadContextGeneration) {
+            val result = ProjectOnboardingOutcome.Blocked(onboardingIncompleteNotice(currentLocale))
+            harnessRunView = harnessRunView.copy(isRunning = false, runCompletedAt = clock(), notice = result.reasonText)
+            refreshRunProjectionOnly()
+            return result
+        }
+
+        val result: ProjectOnboardingOutcome = when (outcome) {
+            is OnboardProjectOutcome.Completed -> {
+                localStateRefreshPending = true
+                loadOnce(forceRead = true)
+                interpretOnboardingCompletion(outcome)
+            }
+            is OnboardProjectOutcome.LockUnavailable -> {
+                val lockResult = outcome.result
+                ProjectOnboardingOutcome.Blocked(
+                    when (lockResult) {
+                        is LockAcquireResult.Busy -> lockBusyNotice(currentLocale)
+                        is LockAcquireResult.Failed -> lockFailedNotice(lockResult.reason, currentLocale)
+                        is LockAcquireResult.Acquired -> error("획득한 잠금은 LockUnavailable이 될 수 없습니다.")
+                    },
+                )
+            }
+        }
+
+        harnessRunView = harnessRunView.copy(
+            isRunning = false,
+            runCompletedAt = clock(),
+            notice = (result as? ProjectOnboardingOutcome.Blocked)?.reasonText,
+        )
+        refreshRunProjectionOnly()
+        return result
+    }
+
+    /**
+     * 성공 판단은 stdout 문구 하나가 아니라 5가지 근거의 교집합이다(Phase 10 §3): enter-project
+     * 정상 종료(exitCode 0), validate-ops `-Json` overall=ok, repository bridge 3종 ready,
+     * required daily 4-file ready, `WORKFLOW_STATE.json` 재조회 Success.
+     */
+    private fun interpretOnboardingCompletion(outcome: OnboardProjectOutcome.Completed): ProjectOnboardingOutcome {
+        val onboardOk = outcome.onboardResult.let { it is ProcessRunResult.Completed && it.exitCode == 0 }
+        val validateOpsOk = (outcome.validateOpsResult as? ProcessRunResult.Completed)
+            ?.contract?.overall is HarnessOverallStatus.Ok
+        val bridgeReady = outcome.bridgeSummary.isReady
+        val artifactsReady = outcome.artifactSummary.isRequiredReady
+        val stateReady = outcome.refreshedState is StateReadResult.Success
+        return if (onboardOk && validateOpsOk && bridgeReady && artifactsReady && stateReady) {
+            ProjectOnboardingOutcome.Ready
+        } else {
+            ProjectOnboardingOutcome.Blocked(onboardingIncompleteNotice(currentLocale))
         }
     }
 
@@ -1262,6 +1399,8 @@ class AppViewModel(
         pollingJob = null
         harnessRunJob?.cancel()
         harnessRunJob = null
+        projectOnboardingJob?.cancel()
+        projectOnboardingJob = null
         lockHeartbeatJob?.cancel()
         lockHeartbeatJob = null
         viewModelScope.cancel()

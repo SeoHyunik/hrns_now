@@ -50,7 +50,7 @@ import io.hrns_now.app.presentation.model.RegistrationFeedback
 import io.hrns_now.app.presentation.model.RunStatusProjection
 import io.hrns_now.app.presentation.model.SetupProjection
 import io.hrns_now.app.presentation.model.TodayWorkProjection
-import io.hrns_now.app.presentation.model.WorkspacePreparationOutcome
+import io.hrns_now.app.presentation.model.ProjectOnboardingOutcome
 import io.hrns_now.core.domain.model.RequestEntryDraft
 import io.hrns_now.core.domain.model.RequestEntryPriority
 import io.hrns_now.core.domain.model.RequestEntrySource
@@ -81,6 +81,7 @@ fun ScreenRoute(
     activeProjectSourceLabel: String,
     registryMessage: String?,
     registrationFeedback: RegistrationFeedback,
+    needsProjectPreparation: Boolean,
     onUiEvent: (HrnsUiEvent) -> Unit,
 ) {
     when (route) {
@@ -101,6 +102,7 @@ fun ScreenRoute(
             activeProjectIsStale = cockpitProjection.isStale,
             activeProjectRuntimeSourceLabel = cockpitProjection.runtimeSourceLabel,
             activeProjectRuntimeDiagnostics = cockpitProjection.runtimeSourceDiagnostics,
+            needsProjectPreparation = needsProjectPreparation,
             runStatusProjection = runStatusProjection,
             onUiEvent = onUiEvent,
         )
@@ -201,6 +203,7 @@ fun SetupScreen(
     activeProjectIsStale: Boolean = false,
     activeProjectRuntimeSourceLabel: String = "",
     activeProjectRuntimeDiagnostics: CockpitDiagnostics? = null,
+    needsProjectPreparation: Boolean = false,
     runStatusProjection: RunStatusProjection? = null,
     onUiEvent: (HrnsUiEvent) -> Unit = {},
 ) {
@@ -221,6 +224,7 @@ fun SetupScreen(
             isStale = activeProjectIsStale,
             runtimeSourceLabel = activeProjectRuntimeSourceLabel,
             runtimeSourceDiagnostics = activeProjectRuntimeDiagnostics,
+            needsProjectPreparation = needsProjectPreparation,
             workspaceConfig = workspaceConfig,
             strings = strings,
             onUiEvent = onUiEvent,
@@ -317,6 +321,7 @@ private fun ActiveProjectSummaryCard(
     isStale: Boolean,
     runtimeSourceLabel: String,
     runtimeSourceDiagnostics: CockpitDiagnostics?,
+    needsProjectPreparation: Boolean = false,
     workspaceConfig: WorkspaceConfig,
     strings: AppStrings,
     onUiEvent: (HrnsUiEvent) -> Unit = {},
@@ -344,11 +349,28 @@ private fun ActiveProjectSummaryCard(
                         tone = if (isStale) "warning" else "success",
                     )
                     Spacer(Modifier.width(8.dp))
+                    if (needsProjectPreparation) {
+                        // Phase 10: bridge/오늘 workspace 준비가 누락된 활성 프로젝트를 위한 단일
+                        // 복구 CTA다 — Health Check와 구분되고, 재등록을 요구하지 않는다.
+                        PlaceholderActionButton(
+                            text = strings.setup.prepareProjectButton,
+                            enabled = true,
+                            onClick = { onUiEvent(HrnsUiEvent.ProjectOnboardingRequested) },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
                     // Phase 9 QA03-A: Registry의 활성 선택만 지운다 — 등록 정보는 그대로 남긴다.
                     PlaceholderActionButton(
                         text = strings.setup.releaseActiveProjectButton,
                         enabled = true,
                         onClick = { onUiEvent(HrnsUiEvent.ActiveProjectReleaseRequested) },
+                    )
+                }
+                if (needsProjectPreparation) {
+                    Text(
+                        text = strings.setup.prepareProjectNeededNotice,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                        color = colors.danger,
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -411,7 +433,7 @@ private fun ProjectManagementSection(
     LaunchedEffect(registrationFeedback) {
         val feedback = registrationFeedback
         if (feedback is RegistrationFeedback.Success &&
-            feedback.workspacePreparation !is WorkspacePreparationOutcome.InProgress
+            feedback.onboarding !is ProjectOnboardingOutcome.InProgress
         ) {
             showManagementModal = false
         }
@@ -743,13 +765,15 @@ private fun ProjectRegistrationForm(
         )
         val submissionInProgress = registrationFeedback is RegistrationFeedback.Running ||
             (registrationFeedback is RegistrationFeedback.Success &&
-                registrationFeedback.workspacePreparation is WorkspacePreparationOutcome.InProgress)
+                registrationFeedback.onboarding is ProjectOnboardingOutcome.InProgress)
         val formValid = displayName.isNotBlank() && workspaceRoot.isNotBlank() &&
             repositoryRoot.isNotBlank() && profileId.isNotBlank() &&
             (!useExternalKit || kitRoot.isNotBlank())
+        var showOnboardingConfirm by remember { mutableStateOf(false) }
 
-        // Phase 9 QA03-B: 신규 프로젝트의 기본 primary 흐름은 등록에 이어 오늘 workspace까지
-        // 준비하는 것이다. 등록만 원하는 경우는 보조 행동으로 별도 제공한다.
+        // Phase 10: 신규 프로젝트의 기본 primary 흐름은 등록에 이어 repository bridge/외부
+        // workspace까지 준비하는 것이다(enter-project). 등록만 원하는 경우는 보조 행동으로
+        // 별도 제공한다. primary는 실제로 무엇이 만들어지는지 보여주는 확인을 먼저 거친다.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             PlaceholderActionButton(
                 text = if (registrationFeedback is RegistrationFeedback.Running) {
@@ -759,9 +783,7 @@ private fun ProjectRegistrationForm(
                 },
                 primary = true,
                 enabled = !submissionInProgress && formValid,
-                onClick = {
-                    onUiEvent(HrnsUiEvent.ProjectRegistrationRequested(candidate, prepareWorkspace = true))
-                },
+                onClick = { showOnboardingConfirm = true },
             )
             PlaceholderActionButton(
                 text = strings.setup.registerOnlyButton,
@@ -773,7 +795,68 @@ private fun ProjectRegistrationForm(
             )
         }
 
+        if (showOnboardingConfirm) {
+            OnboardingConfirmDialog(
+                workspaceRoot = workspaceRoot,
+                strings = strings,
+                onDismiss = { showOnboardingConfirm = false },
+                onConfirm = {
+                    showOnboardingConfirm = false
+                    onUiEvent(HrnsUiEvent.ProjectRegistrationRequested(candidate, prepareWorkspace = true))
+                },
+            )
+        }
+
         RegistrationFeedbackRow(registrationFeedback, strings)
+    }
+}
+
+/**
+ * primary 등록 전 "무엇이 만들어지는지" 확인시킨다(Phase 10) — bridge 3종, external workspace
+ * 경로, "기존 bridge는 덮어쓰지 않음"을 명시한다. 이 modal 자체는 아무 파일도 만들지 않는다 —
+ * 확인 뒤 typed `HrnsUiEvent.ProjectRegistrationRequested(prepareWorkspace = true)`만 올린다.
+ */
+@Composable
+private fun OnboardingConfirmDialog(
+    workspaceRoot: String,
+    strings: AppStrings,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val colors = LocalHrnsColors.current
+    ModalDialog(title = strings.setup.onboardingConfirmTitle, onDismissRequest = onDismiss) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(
+                text = strings.setup.onboardingConfirmIntro,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 19.sp),
+                color = colors.secondaryText,
+            )
+            KeyValueGrid(
+                rows = listOf(
+                    strings.setup.onboardingConfirmBridgeLabel to strings.setup.onboardingConfirmBridgeFiles,
+                    strings.setup.onboardingConfirmWorkspaceLabel to workspaceRoot,
+                ),
+            )
+            Text(
+                text = strings.setup.onboardingConfirmKeepExistingNote,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = colors.tertiaryText,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlaceholderActionButton(
+                    text = strings.setup.onboardingConfirmCancelButton,
+                    primary = false,
+                    enabled = true,
+                    onClick = onDismiss,
+                )
+                PlaceholderActionButton(
+                    text = strings.setup.onboardingConfirmProceedButton,
+                    primary = true,
+                    enabled = true,
+                    onClick = onConfirm,
+                )
+            }
+        }
     }
 }
 
@@ -807,8 +890,8 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: App
                     color = colors.primaryText,
                 )
             }
-            // Phase 9 QA03-B: 등록 완료 사실과 오늘 workspace 준비 결과를 분리해서 보여준다.
-            WorkspacePreparationRow(feedback.workspacePreparation, strings)
+            // Phase 10: 등록 완료 사실과 프로젝트 준비(bridge/외부 workspace) 결과를 분리해서 보여준다.
+            ProjectOnboardingRow(feedback.onboarding, strings)
         }
 
         is RegistrationFeedback.Failure -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -830,37 +913,38 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: App
 }
 
 /**
- * 등록 직후 자동 Bootstrap 시도 결과를 등록 성공 사실과 분리해서 보여준다(Phase 9 QA03-B).
- * [WorkspacePreparationOutcome.NotPrepared.reasonText]는 이미 typed 값에서 조립된 안전한 문구다.
+ * 등록 직후(또는 "프로젝트 준비" 재시도) 온보딩 결과를 등록 성공 사실과 분리해서 보여준다
+ * (Phase 10). [ProjectOnboardingOutcome.Blocked.reasonText]는 이미 typed 값에서 조립된
+ * 안전한 문구다.
  */
 @Composable
-private fun WorkspacePreparationRow(outcome: WorkspacePreparationOutcome, strings: AppStrings) {
+private fun ProjectOnboardingRow(outcome: ProjectOnboardingOutcome, strings: AppStrings) {
     val colors = LocalHrnsColors.current
     when (outcome) {
-        WorkspacePreparationOutcome.NotAttempted -> Unit
+        ProjectOnboardingOutcome.NotAttempted -> Unit
 
-        WorkspacePreparationOutcome.InProgress -> Row(verticalAlignment = Alignment.CenterVertically) {
+        ProjectOnboardingOutcome.InProgress -> Row(verticalAlignment = Alignment.CenterVertically) {
             InlineSpinner()
             Spacer(Modifier.width(10.dp))
             Text(
-                text = strings.setup.workspacePreparationInProgressNotice,
+                text = strings.setup.projectPreparationInProgressNotice,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 color = colors.secondaryText,
             )
         }
 
-        WorkspacePreparationOutcome.Prepared -> Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusChip(text = strings.setup.workspacePreparedChip, tone = "success")
+        ProjectOnboardingOutcome.Ready -> Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusChip(text = strings.setup.projectPreparedChip, tone = "success")
             Spacer(Modifier.width(8.dp))
             Text(
-                text = strings.setup.workspacePreparedNotice,
+                text = strings.setup.projectPreparedNotice,
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 color = colors.primaryText,
             )
         }
 
-        is WorkspacePreparationOutcome.NotPrepared -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            StatusChip(text = strings.setup.workspaceNotPreparedChip, tone = "warning")
+        is ProjectOnboardingOutcome.Blocked -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            StatusChip(text = strings.setup.projectNotPreparedChip, tone = "warning")
             Text(
                 text = outcome.reasonText,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),

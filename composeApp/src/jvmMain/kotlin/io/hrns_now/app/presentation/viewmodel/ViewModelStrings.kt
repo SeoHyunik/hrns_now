@@ -145,6 +145,24 @@ fun onboardingProcessObserveFailed(locale: AppLocale): String = when (locale) {
     AppLocale.English -> "Couldn't safely observe the onboarding diagnostic process."
 }
 
+/** Phase 10: `enter-project`(프로젝트 준비) 실행 자체를 관찰하지 못했을 때 쓴다. */
+fun projectOnboardingProcessObserveFailedNotice(locale: AppLocale): String = when (locale) {
+    AppLocale.Korean -> "프로젝트 준비 프로세스를 안전하게 관찰하지 못했습니다."
+    AppLocale.English -> "Couldn't safely observe the project preparation process."
+}
+
+/**
+ * Phase 10: enter-project 종료·validate-ops overall·bridge probe·4-file probe·State 재조회 중
+ * 하나 이상이 충족되지 않아 "준비됨"으로 판정할 수 없을 때 쓰는 안전한 안내다. 어떤 근거가
+ * 부족했는지의 raw 세부사항은 담지 않는다 — 재시도 CTA로 안내한다.
+ */
+fun onboardingIncompleteNotice(locale: AppLocale): String = when (locale) {
+    AppLocale.Korean ->
+        "프로젝트 준비가 아직 완전히 끝나지 않았습니다. 프로젝트 관리 화면에서 \"프로젝트 준비\"를 다시 시도하세요."
+    AppLocale.English ->
+        "Project preparation hasn't finished completely yet. Try \"Prepare project\" again from project management."
+}
+
 fun doctorFailedRegistryMessage(locale: AppLocale): String = when (locale) {
     AppLocale.Korean -> "연결 점검을 통과하지 못해 Registry를 저장하지 않았습니다. 실행 기록에서 결과를 확인하세요."
     AppLocale.English -> "Didn't save to the registry because the connection check didn't pass. Check the result in run history."

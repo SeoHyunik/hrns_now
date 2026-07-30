@@ -52,5 +52,11 @@ sealed interface HrnsUiState {
         val registryMessage: String?,
         /** "진단 후 등록"의 진행/결과다(새 Phase 8 §1) — modal 안에서 직접 렌더링한다. */
         val registrationFeedback: RegistrationFeedback = RegistrationFeedback.Idle,
+        /**
+         * 활성 프로젝트가 있지만 repository bridge 또는 오늘 external workspace 준비가 누락됐을
+         * 때만 true다(Phase 10). 이 값이 true인 동안만 Setup 화면이 Health Check와 구분되는
+         * 단일 "프로젝트 준비" CTA를 보여준다.
+         */
+        val needsProjectPreparation: Boolean = false,
     ) : HrnsUiState
 }

@@ -11,12 +11,12 @@ sealed interface RegistrationFeedback {
     data object Running : RegistrationFeedback
 
     /**
-     * [workspacePreparation]은 등록 자체의 성공과 분리된 결과다(Phase 9 QA03-B) — "등록은
-     * 완료됨"과 "오늘 workspace 준비는 실패/차단됨"을 서로 다른 사실로 보여줄 수 있다.
+     * [onboarding]은 등록 자체의 성공과 분리된 결과다(Phase 10) — "등록은 완료됨"과 "프로젝트
+     * 준비(bridge/외부 workspace)는 실패/차단됨"을 서로 다른 사실로 보여줄 수 있다.
      */
     data class Success(
         val projectName: String,
-        val workspacePreparation: WorkspacePreparationOutcome = WorkspacePreparationOutcome.NotAttempted,
+        val onboarding: ProjectOnboardingOutcome = ProjectOnboardingOutcome.NotAttempted,
     ) : RegistrationFeedback
 
     /**
@@ -31,14 +31,19 @@ sealed interface RegistrationFeedback {
 }
 
 /**
- * 등록 직후 자동으로 시도한 오늘 workspace 준비(typed `BootstrapDay` 실행)의 결과다(Phase 9 QA03-B).
- * [reasonText]는 이미 typed 값(`BlockedReasonKey`/`ExecuteHarnessActionOutcome`)에서 locale별로
- * 조립된 안전한 문구이며, raw process 출력이나 경로 원문을 담지 않는다.
+ * 등록 직후(또는 기존 활성 프로젝트의 "프로젝트 준비" 재시도) 시도한 온보딩(typed
+ * `HarnessCommand.OnboardProject` = `enter-project.ps1` + `validate-ops.ps1 -Json` + bridge/4-file
+ * probe + State 재조회)의 결과다(Phase 10). 이 값은 새 Phase 9의 `WorkspacePreparationOutcome`(=
+ * `BootstrapDay` 실행 결과)과 의미가 다르다 — 온보딩은 오늘 daily 작업을 시작하지 않는다.
+ * [Blocked.reasonText]는 이미 typed 값에서 locale별로 조립된 안전한 문구이며, raw process
+ * 출력이나 경로 원문·secret·session ID를 담지 않는다.
  */
-sealed interface WorkspacePreparationOutcome {
-    /** 등록만 선택했거나, 이미 오늘 workspace가 준비돼 있어 Bootstrap이 필요하지 않았다. */
-    data object NotAttempted : WorkspacePreparationOutcome
-    data object InProgress : WorkspacePreparationOutcome
-    data object Prepared : WorkspacePreparationOutcome
-    data class NotPrepared(val reasonText: String) : WorkspacePreparationOutcome
+sealed interface ProjectOnboardingOutcome {
+    /** 등록만 선택했거나, 이미 bridge와 오늘 workspace가 준비돼 있어 onboarding이 필요하지 않았다. */
+    data object NotAttempted : ProjectOnboardingOutcome
+    data object InProgress : ProjectOnboardingOutcome
+
+    /** enter-project 정상 종료 + validate-ops overall=ok + bridge 3종 ready + 4-file ready + State Success 교집합. */
+    data object Ready : ProjectOnboardingOutcome
+    data class Blocked(val reasonText: String) : ProjectOnboardingOutcome
 }

@@ -242,6 +242,59 @@ class PowerShellHarnessAdapterTest {
         }
     }
 
+    // ── Phase 10: enter-project.ps1 기반 onboarding command (JSON 계약 없음) ──────
+
+    private fun writeEnterProjectStub(kitRoot: Path, body: String) {
+        val script = """
+            param([string]${'$'}ProjectRoot,[string]${'$'}WorkspaceRoot,[string]${'$'}KitRoot,[string]${'$'}Profile,[string]${'$'}Date)
+            $body
+        """.trimIndent()
+        Files.write(kitRoot.resolve("scripts/enter-project.ps1"), script.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    @Test
+    fun `OnboardProject는 enter-project 스크립트를 실행하고 working directory는 kitRoot다`() = runBlocking {
+        withTimeout(15_000) {
+            val kitRoot = tempKitRoot()
+            writeEnterProjectStub(kitRoot, "Write-Output ('cwd=' + (Get-Location).Path)\nexit 0")
+            val command = HarnessCommand.OnboardProject(
+                workspaceRoot = kitRoot.resolve("workspace"),
+                projectRoot = kitRoot.resolve("repo"),
+                kitRoot = kitRoot,
+                profile = "corp-default",
+                date = LocalDate.of(2026, 7, 27),
+            )
+
+            val result = adapter.execute(command, Duration.ofSeconds(10), ProcessCancellationToken())
+
+            val completed = assertIs<ProcessRunResult.Completed>(result)
+            assertEquals(0, completed.exitCode)
+            assertNull(completed.contract)
+            assertTrue(completed.rawOutputSnippet?.contains(kitRoot.toRealPath().toString()) == true)
+        }
+    }
+
+    @Test
+    fun `OnboardProject는 exit code를 그대로 반영하고 완료 판단을 stdout 문구에 의존하지 않는다`() = runBlocking {
+        withTimeout(15_000) {
+            val kitRoot = tempKitRoot()
+            writeEnterProjectStub(kitRoot, "Write-Output 'bridge looks fine'\nexit 1")
+            val command = HarnessCommand.OnboardProject(
+                workspaceRoot = kitRoot.resolve("workspace"),
+                projectRoot = kitRoot.resolve("repo"),
+                kitRoot = kitRoot,
+                profile = null,
+                date = LocalDate.of(2026, 7, 27),
+            )
+
+            val result = adapter.execute(command, Duration.ofSeconds(10), ProcessCancellationToken())
+
+            val completed = assertIs<ProcessRunResult.Completed>(result)
+            assertEquals(1, completed.exitCode)
+            assertNull(completed.contract)
+        }
+    }
+
     @Test
     fun `RunExecution code doc은 각각 working directory와 exit code를 정확히 관측한다`() = runBlocking {
         withTimeout(15_000) {

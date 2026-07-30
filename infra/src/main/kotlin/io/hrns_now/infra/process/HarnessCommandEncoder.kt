@@ -34,6 +34,7 @@ class HarnessCommandEncoder(
         when (command) {
             is HarnessCommand.Doctor -> command.kitRoot.resolve("scripts/doctor.ps1").toString()
             is HarnessCommand.ValidateOps -> command.kitRoot.resolve("scripts/validate-ops.ps1").toString()
+            is HarnessCommand.OnboardProject -> command.kitRoot.resolve("scripts/enter-project.ps1").toString()
             is HarnessCommand.BootstrapDay,
             is HarnessCommand.RunPlanning,
             is HarnessCommand.RunReplan,
@@ -72,6 +73,21 @@ class HarnessCommandEncoder(
                 add("-Date")
                 add(command.date.format(DateTimeFormatter.ISO_LOCAL_DATE))
                 add("-Json")
+            }
+
+            is HarnessCommand.OnboardProject -> buildList {
+                add("-ProjectRoot")
+                add(command.projectRoot.toString())
+                add("-WorkspaceRoot")
+                add(command.workspaceRoot.toString())
+                add("-KitRoot")
+                add(command.kitRoot.toString())
+                command.profile?.takeIf(String::isNotBlank)?.let {
+                    add("-Profile")
+                    add(it)
+                }
+                add("-Date")
+                add(command.date.format(DateTimeFormatter.ISO_LOCAL_DATE))
             }
 
             is HarnessCommand.BootstrapDay -> runCycleBaseArguments(
@@ -141,6 +157,7 @@ class HarnessCommandEncoder(
         when (this) {
             is HarnessCommand.Doctor -> kitRoot
             is HarnessCommand.ValidateOps -> kitRoot
+            is HarnessCommand.OnboardProject -> kitRoot
             is HarnessCommand.BootstrapDay -> kitRoot
             is HarnessCommand.RunPlanning -> kitRoot
             is HarnessCommand.RunReplan -> kitRoot

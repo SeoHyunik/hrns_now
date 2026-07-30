@@ -323,6 +323,7 @@ internal fun HarnessCommandKind.displayLabel(locale: AppLocale = AppLocale.Korea
         AppLocale.Korean -> when (this) {
             HarnessCommandKind.Doctor -> "연결 점검"
             HarnessCommandKind.ValidateOps -> "작업 준비 점검"
+            HarnessCommandKind.OnboardProject -> "프로젝트 준비"
             HarnessCommandKind.Bootstrap -> "오늘 작업 시작"
             HarnessCommandKind.Planning -> "계획 실행"
             HarnessCommandKind.Replan -> "재계획 실행"
@@ -333,6 +334,7 @@ internal fun HarnessCommandKind.displayLabel(locale: AppLocale = AppLocale.Korea
         AppLocale.English -> when (this) {
             HarnessCommandKind.Doctor -> "Check connection"
             HarnessCommandKind.ValidateOps -> "Check readiness"
+            HarnessCommandKind.OnboardProject -> "Prepare project"
             HarnessCommandKind.Bootstrap -> "Start today's work"
             HarnessCommandKind.Planning -> "Run planning"
             HarnessCommandKind.Replan -> "Run replanning"

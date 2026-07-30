@@ -18,9 +18,11 @@ sealed interface HrnsUiEvent {
     data class ProjectSelected(val id: ProjectId) : HrnsUiEvent
 
     /**
-     * [prepareWorkspace]가 true(기본값)면 등록·선택·context 재조회에 이어 오늘 workspace 준비까지
-     * 한 흐름으로 시도한다(Phase 9 QA03-B). 등록만 원하면 false를 보낸다 — 이 경우에도 등록 자체의
-     * 검증·경계·Doctor·compatibility 절차는 동일하다.
+     * [prepareWorkspace]가 true(기본값)면 등록·선택·context 재조회에 이어 프로젝트 준비
+     * (`enter-project` bridge/외부 workspace 온보딩)까지 한 흐름으로 시도한다(Phase 10). 등록만
+     * 원하면 false를 보낸다 — 이 경우에도 등록 자체의 검증·경계·Doctor·compatibility 절차는
+     * 동일하다. 이 이벤트는 사용자가 확인 UI(bridge 3종·external workspace path·"기존 bridge는
+     * 덮어쓰지 않음")를 거친 뒤에만 `prepareWorkspace = true`로 올라온다.
      */
     data class ProjectRegistrationRequested(
         val candidate: RegisterProjectCandidate,
@@ -36,6 +38,13 @@ sealed interface HrnsUiEvent {
      * entry, workspace, repository, Harness Kit, State/daily 파일은 건드리지 않는다.
      */
     data object ActiveProjectReleaseRequested : HrnsUiEvent
+
+    /**
+     * 이미 등록된 활성 프로젝트의 repository bridge 또는 오늘 external workspace 준비가
+     * 누락됐을 때 다시 시도하는 단일 CTA다(Phase 10). Health Check(Doctor)와 구분되는 쓰기
+     * 행동이며, daily `ActionPolicy`를 거치지 않고 현재 활성 프로젝트에 바로 적용된다.
+     */
+    data object ProjectOnboardingRequested : HrnsUiEvent
     data class WorkspaceDaySelected(val date: LocalDate) : HrnsUiEvent
 
     /** 진행 중인 Doctor/ValidateOps 실행 취소를 요청한다(Phase 3). 실행 중이 아니면 무시된다. */

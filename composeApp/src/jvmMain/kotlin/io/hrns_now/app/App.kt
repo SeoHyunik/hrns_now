@@ -42,6 +42,7 @@ import io.hrns_now.core.usecase.ExecuteHarnessActionUseCase
 import io.hrns_now.core.usecase.HarnessCommandMapper
 import io.hrns_now.core.usecase.LoadCockpitUseCase
 import io.hrns_now.core.usecase.LoadProjectsUseCase
+import io.hrns_now.core.usecase.OnboardProjectUseCase
 import io.hrns_now.core.usecase.RegisterProjectUseCase
 import io.hrns_now.core.usecase.ResolveActiveProjectUseCase
 import io.hrns_now.core.usecase.SaveRequestUseCase
@@ -52,6 +53,7 @@ import io.hrns_now.infra.WorkflowStateChangeProbe
 import io.hrns_now.infra.WorkspaceArtifactProbe
 import io.hrns_now.infra.WorkspaceDayDiscovery
 import io.hrns_now.infra.WorkspacePathProbe
+import io.hrns_now.infra.bridge.RepositoryBridgeProbe
 import io.hrns_now.infra.kitversion.JsonKitVersionManifestAdapter
 import io.hrns_now.infra.lock.LocalProcessLockAdapter
 import io.hrns_now.infra.process.PowerShellHarnessAdapter
@@ -246,6 +248,7 @@ private fun createProductionViewModel(): AppViewModel {
     )
     val registry = JsonProjectRegistryAdapter(registryPath = resolveRegistryPath())
     val realPathGateway = RealPathGateway()
+    val bridgeProbe = RepositoryBridgeProbe()
     // 새 Phase 7: HRNS-NOW source checkout 상대 `.local/harness-kit` 개발용 SDK와 명시적 외부
     // Kit을 모두 이 하나의 resolver로 해석한다 — internal/external 분기는 여기 한 곳에만 있다
     // (`doc/hrns_now_design_pattern.md` §20.1).
@@ -279,6 +282,14 @@ private fun createProductionViewModel(): AppViewModel {
             harnessRunner = harnessRunner,
             workflowState = workflowState,
         ),
+        onboardProject = OnboardProjectUseCase(
+            processLock = processLock,
+            harnessRunner = harnessRunner,
+            workflowState = workflowState,
+            bridgeProbe = bridgeProbe,
+            artifactProbe = artifactProbe::probe,
+        ),
+        bridgeProbe = bridgeProbe,
         saveRequest = SaveRequestUseCase(requestWriter),
         todayStrategyReader = TodayStrategyFileReaderAdapter(),
         gitStatusPort = CommandLineGitStatusAdapter(),

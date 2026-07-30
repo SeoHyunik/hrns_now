@@ -198,6 +198,7 @@ private fun ReadyShell(
                     activeProjectSourceLabel = state.activeProjectSourceLabel,
                     registryMessage = state.registryMessage,
                     registrationFeedback = state.registrationFeedback,
+                    needsProjectPreparation = state.needsProjectPreparation,
                     onUiEvent = onUiEvent,
                 )
             }
