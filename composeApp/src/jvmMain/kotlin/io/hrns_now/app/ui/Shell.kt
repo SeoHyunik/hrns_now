@@ -234,6 +234,11 @@ private fun TopRibbon(
 ) {
     val colors = LocalHrnsColors.current
     val strings = chromeStrings(locale)
+    val ribbonMutedText = if (themeMode == HrnsThemeMode.Dark) {
+        Color(0xFFFFE9A6)
+    } else {
+        Color(0xFF765414)
+    }
 
     Row(
         modifier = Modifier
@@ -247,16 +252,16 @@ private fun TopRibbon(
         // 즉시 식별할 수 있어야 한다(새 Phase 6 제품 목표 1).
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.widthIn(min = 220.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.widthIn(min = 280.dp),
         ) {
             BrandMark()
             Column {
                 Text(
                     text = projection.title,
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 15.sp,
-                        letterSpacing = (-0.2).sp,
+                        fontSize = 20.sp,
+                        letterSpacing = (-0.1).sp,
                     ),
                     fontWeight = FontWeight.SemiBold,
                     color = colors.primaryText,
@@ -264,16 +269,16 @@ private fun TopRibbon(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = strings.projectLabel,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = colors.tertiaryText,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp),
+                        color = ribbonMutedText,
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = activeProjectName ?: strings.notSelected,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 15.sp),
                         fontWeight = FontWeight.SemiBold,
                         color = when {
-                            activeProjectName == null -> colors.tertiaryText
+                            activeProjectName == null -> ribbonMutedText
                             activeProjectStale -> colors.warning
                             else -> colors.primaryText
                         },
@@ -285,7 +290,7 @@ private fun TopRibbon(
         Spacer(modifier = Modifier.weight(1f))
 
         // 준비 상태 요약 (1행, 가운데)
-        ReadinessRibbon(readiness, strings)
+        ReadinessRibbon(readiness, strings, ribbonMutedText)
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -515,7 +520,7 @@ private fun NotificationToastHost(
 private fun BrandMark() {
     Box(
         modifier = Modifier
-            .size(64.dp),
+            .size(76.dp),
         contentAlignment = Alignment.Center,
     ) {
         Image(
@@ -528,7 +533,7 @@ private fun BrandMark() {
 }
 
 @Composable
-private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeStrings) {
+private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeStrings, mutedTextColor: Color) {
     val colors = LocalHrnsColors.current
     val locale = LocalAppLocale.current
     val items = listOf(
@@ -564,23 +569,23 @@ private fun ReadinessRibbon(readiness: WorkspaceReadiness, strings: ChromeString
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(6.dp)
+                        .size(8.dp)
                         .background(readinessDotColor(value), CircleShape),
                 )
                 Spacer(Modifier.width(7.dp))
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.5.sp,
+                        fontSize = 13.sp,
                         letterSpacing = 0.1.sp,
                     ),
-                    color = colors.tertiaryText,
+                    color = mutedTextColor,
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = localizeInfraLabel(value, locale),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.5.sp,
+                        fontSize = 14.sp,
                         letterSpacing = 0.1.sp,
                     ),
                     color = colors.primaryText,
