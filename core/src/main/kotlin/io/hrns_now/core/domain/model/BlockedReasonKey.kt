@@ -2,9 +2,8 @@ package io.hrns_now.core.domain.model
 
 /**
  * [io.hrns_now.core.domain.policy.ActionPolicy]가 판정한 차단/안내 사유의 typed key다.
- * 사용자에게 보일 문구 자체는 만들지 않는다 — presentation 계층이 locale별 문구로 투영한다
- * (Phase 8 보완, `doc/claude_prompts/phase8-completion-localization-native-qa.md` §1). `core`는
- * Compose나 `AppLocale`에 의존하지 않는다.
+ * 사용자에게 보일 문구 자체는 만들지 않는다 — presentation 계층이 locale별 문구로 투영한다.
+ * `core`는 Compose나 `AppLocale`에 의존하지 않는다.
  */
 sealed interface BlockedReasonKey {
     data object ProjectNotConnected : BlockedReasonKey

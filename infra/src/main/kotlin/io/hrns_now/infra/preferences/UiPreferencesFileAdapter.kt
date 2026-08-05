@@ -19,8 +19,8 @@ private data class UiPreferencesFileDto(val locale: String? = null)
 private val UTF8_BOM = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
 
 /**
- * `%APPDATA%\hrns-now\ui-preferences.json`을 저장소로 쓰는 [UiPreferencesPort] 구현이다(새 Phase 8
- * §7). `WORKFLOW_STATE.json`/Harness workspace/project Registry와 완전히 분리된 파일이다.
+ * `%APPDATA%\hrns-now\ui-preferences.json`을 저장소로 쓰는 [UiPreferencesPort] 구현이다.
+ * `WORKFLOW_STATE.json`/Harness workspace/project Registry와 완전히 분리된 파일이다.
  * UTF-8 without BOM, 같은 디렉터리 temp + atomic move를 쓴다. 손상되거나 해석할 수 없는 파일은
  * 조용히 `null`(=기본 locale)로 fail-closed하고 quarantine하지 않는다 — 다음 저장이 정본을
  * 자연스럽게 재작성하므로 Registry 수준의 복구 절차가 필요할 만큼 위험도가 높지 않다.

@@ -389,8 +389,8 @@ Composable은 파일·프로세스·Registry를 직접 다루지 않는다. `App
 **작업**:
 
 1. HRNS-NOW repository-relative `.local\harness-kit\`을 canonical **개발용 내장 SDK checkout** 위치로 정의하고 `.gitignore`로 제외한다. 앱·Claude·빌드가 `D:\harness-kit`을 자동 복사·junction 생성·zip backup 생성·수정하지 않는다. SDK checkout은 사용자가 별도로 제공한다.
-2. raw `kitRoot: Path`만으로 프로젝트마다 runtime을 표현하던 모델을 typed runtime source로 정리한다. 새 프로젝트의 기본은 `InternalDeveloperSdk`, 외부 path는 명시적인 advanced override만 사용한다. Registry에는 내장 SDK의 절대 경로를 저장하지 않는다.
-3. composition root와 small resolver/port가 `InternalDeveloperSdk → repository-relative local SDK root`, `ExternalKit → registered path`를 해석한다. 실행·호환성·경계 검사는 **해석된 root** 하나만 사용하며 UI가 Program Files·SDK path·PowerShell 인자를 조립하지 않는다.
+2. raw `kitRoot: Path`만으로 프로젝트마다 runtime을 표현하던 모델을 typed runtime source로 정리한다. 새 프로젝트의 기본은 `DefaultKit`, 외부 path는 명시적인 advanced override만 사용한다. Registry에는 내장 SDK의 절대 경로를 저장하지 않는다.
+3. composition root와 small resolver/port가 `DefaultKit → repository-relative local SDK root`, `ExternalKit → registered path`를 해석한다. 실행·호환성·경계 검사는 **해석된 root** 하나만 사용하며 UI가 Program Files·SDK path·PowerShell 인자를 조립하지 않는다.
 4. 기존 Registry의 `kit_root`만 가진 entry는 안전하게 `ExternalKit`으로 migration한다. 내장 SDK 선택을 환경변수나 과거 external path가 묵시적으로 덮어쓰지 않으며, missing/malformed SDK는 demo fallback 없이 fail-closed로 진단·실행 잠금한다.
 5. 표준 프로젝트 관리 화면에서는 Kit root 입력을 제거하고 선택된 runtime source/가용성/호환성만 표시한다. `외부 Harness Kit 사용`은 advanced modal에서 명시 선택했을 때만 path 입력을 보인다.
 6. Runtime root·target repository·workspace의 normalized/real path 양방향 BoundaryPolicy를 유지한다. SDK/runtime에서 logs, lock, Registry, workspace, daily 4-file을 만들거나 저장하지 않는다.

@@ -7,8 +7,8 @@ import io.hrns_now.core.domain.model.WorkflowState
 /**
  * Reader의 정밀 실패 결과를 기존 화면 projection 메타 계약으로 변환한다.
  *
- * 이 함수는 UI 문구나 실행 정책을 판단하지 않는다. Phase 1A의 last-known-good을
- * `malformed + stale`로 전달해 Phase 1B 정책과 Phase 1C presentation이 fail-closed
+ * 이 함수는 UI 문구나 실행 정책을 판단하지 않는다. last-known-good을
+ * `malformed + stale`로 전달해 policy와 presentation이 fail-closed
  * 상태를 잃지 않도록 하는 Result/Projection 경계다.
  */
 fun StateReadResult.toProjection(source: String): Projection<WorkflowState> =

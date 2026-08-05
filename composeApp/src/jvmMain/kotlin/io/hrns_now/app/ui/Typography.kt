@@ -40,8 +40,8 @@ val PretendardFamily: FontFamily = runCatching {
 fun hrnsTypography(): Typography {
     val base = TextStyle(fontFamily = PretendardFamily)
     return Typography(
-        // 새 Phase 8 §7: 큰 제목의 negative letter spacing을 완만하게 낮췄다 — 한글 음절 블록은
-        // Latin만큼 negative tracking을 견디지 못해 겹침처럼 보일 위험이 있었다.
+        // 큰 제목의 negative letter spacing은 완만한 값을 사용한다 — 한글 음절 블록은
+        // Latin만큼 negative tracking을 견디지 못해 겹침처럼 보일 위험이 있다.
         displayLarge = base.copy(fontSize = 48.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, lineHeight = 56.sp),
         displayMedium = base.copy(fontSize = 40.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp, lineHeight = 48.sp),
         displaySmall = base.copy(fontSize = 32.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp, lineHeight = 40.sp),

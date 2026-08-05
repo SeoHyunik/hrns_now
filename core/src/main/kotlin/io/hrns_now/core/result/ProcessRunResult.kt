@@ -31,7 +31,7 @@ data class HarnessCheckResult(
 )
 
 /**
- * `{contract_version, overall, checks}` JSON 계약을 그대로 표현한 typed 값이다(Phase 2).
+ * `{contract_version, overall, checks}` JSON 계약을 그대로 표현한 typed 값이다.
  */
 data class HarnessDiagnosticContract(
     val contractVersion: String,

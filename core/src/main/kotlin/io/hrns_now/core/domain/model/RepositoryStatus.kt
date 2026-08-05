@@ -2,7 +2,7 @@ package io.hrns_now.core.domain.model
 
 /**
  * `git status --short`의 read-only typed 결과다. UI는 이 값을 만들기 위해 어떤 git 명령도
- * 쓰지 않는다(add/commit/reset/checkout/stash 전부 금지, `doc/claude_prompts/phase5-closure-recovery.md` §4).
+ * 쓰지 않는다(add/commit/reset/checkout/stash 전부 금지).
  */
 sealed interface RepositoryStatus {
     data object Clean : RepositoryStatus

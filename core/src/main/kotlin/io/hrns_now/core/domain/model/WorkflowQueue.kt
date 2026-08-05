@@ -25,7 +25,7 @@ fun String.toQueueStatus(): QueueStatus =
 
 /**
  * `queue.blocked_reason`은 대부분 진단 문구지만, planning이 실행을 잠글 때 사용하는
- * `dispatch_metadata_conflict`는 Phase 1B CTA에서 재계획으로 분기해야 하는 typed marker다.
+ * `dispatch_metadata_conflict`는 CTA가 재계획으로 분기해야 하는 typed marker다.
  */
 sealed interface QueueBlockedReason {
     data object DispatchMetadataConflict : QueueBlockedReason

@@ -194,14 +194,14 @@ class AppViewModelTest {
     )
 
     /**
-     * `ExternalKit`은 그대로, `InternalDeveloperSdk`는 고정된 fixture 경로로 항상 `Resolved`를
+     * `ExternalKit`은 그대로, `DefaultKit`는 고정된 fixture 경로로 항상 `Resolved`를
      * 반환하는 테스트 전용 resolver다 — 기존 `project.kitRoot` 직접 참조 테스트를 그대로 보존한다.
      */
     private fun identityRuntimeSourceResolver(
         internalRoot: Path = Path.of("S:\\internal-sdk-default"),
     ): RuntimeSourceResolverPort = RuntimeSourceResolverPort { source ->
         val root = when (source) {
-            RuntimeSource.InternalDeveloperSdk -> internalRoot
+            RuntimeSource.DefaultKit -> internalRoot
             is RuntimeSource.ExternalKit -> source.root
         }
         RuntimeResolution.Resolved(source, root)
@@ -270,7 +270,7 @@ class AppViewModelTest {
                 status = WorkflowStatus.ExecutionCompleted,
                 executionCompleted = true,
             )
-            else -> error("Phase 4/5 harness action expected")
+            else -> error("stateForAllowedHarnessAction에서 지원하지 않는 action이다: $action")
         }
 
     private fun executionReadyState(wrapper: ExecutionWrapperState, target: String): WorkflowState =
@@ -301,7 +301,7 @@ class AppViewModelTest {
         override fun read(day: WorkspaceDay): StateReadResult = result(callCount.incrementAndGet())
     }
 
-    /** 인메모리 [UiPreferencesPort] 테스트 대역이다(새 Phase 8 §7) — 실제 %APPDATA%를 건드리지 않는다. */
+    /** 인메모리 [UiPreferencesPort] 테스트 대역이다 — 실제 %APPDATA%를 건드리지 않는다. */
     private class FakeUiPreferencesPort(private var stored: AppLocale? = null) : UiPreferencesPort {
         val writeCalls = mutableListOf<AppLocale>()
         override fun readLocale(): AppLocale? = stored
@@ -311,7 +311,7 @@ class AppViewModelTest {
         }
     }
 
-    /** 항상 파일이 없는 것처럼 동작하는 [RequestWriterPort] 테스트 대역이다(Phase 4). */
+    /** 항상 파일이 없는 것처럼 동작하는 [RequestWriterPort] 테스트 대역이다. */
     private class FakeRequestWriterPort : RequestWriterPort {
         override fun load(day: WorkspaceDay): LoadedRequest? = null
         override fun save(day: WorkspaceDay, content: String, expectedVersion: FileVersion): RequestSaveResult =
@@ -1123,7 +1123,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "신규 프로젝트",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit-new",
                     projectWorkspaceRootRaw = "S:\\workspace-new",
                     repositoryRootRaw = "S:\\repo-new",
@@ -1142,7 +1142,7 @@ class AppViewModelTest {
         viewModel.dispose()
     }
 
-    /** Phase 9 QA03-B: 등록만 원하면(prepareWorkspace=false) Bootstrap을 자동 실행하지 않는다. */
+    /** 등록만 원하면(prepareWorkspace=false) Bootstrap을 자동 실행하지 않는다. */
     @Test
     fun `등록만 하기(prepareWorkspace false)는 오늘 workspace를 준비하지 않는다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -1174,7 +1174,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "등록만",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit-only",
                     projectWorkspaceRootRaw = "S:\\workspace-only",
                     repositoryRootRaw = "S:\\repo-only",
@@ -1194,7 +1194,7 @@ class AppViewModelTest {
     }
 
     /**
-     * Phase 9 QA03-B §B: 등록+선택+context 재조회 뒤 ActionPolicy가 실제로 BootstrapDay를
+     * 등록+선택+context 재조회 뒤 ActionPolicy가 실제로 BootstrapDay를
      * 허용하면(Missing+오늘+boundary Valid+compatibility Supported+Idle) 자동으로 실행하고, 재조회한
      * State가 Success가 되면 Prepared로 표시한다.
      */
@@ -1237,7 +1237,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "결합 흐름",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit-combined",
                     projectWorkspaceRootRaw = "S:\\workspace-combined",
                     repositoryRootRaw = "S:\\repo-combined",
@@ -1257,7 +1257,7 @@ class AppViewModelTest {
     }
 
     /**
-     * Codex 보정: Bootstrap 프로세스와 State 재조회가 성공해도 실제 filesystem probe의 required
+     * Bootstrap 프로세스와 State 재조회가 성공해도 실제 filesystem probe의 required
      * 4-file이 완성되지 않았으면 준비 완료로 오인하지 않는다.
      */
     @Test
@@ -1296,7 +1296,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "표면 미완성",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit-state-only",
                     projectWorkspaceRootRaw = "S:\\workspace-state-only",
                     repositoryRootRaw = "S:\\repo-state-only",
@@ -1314,7 +1314,7 @@ class AppViewModelTest {
         viewModel.dispose()
     }
     /**
-     * Phase 9 QA03-B: stdout 성공 문구가 아니라 재조회한 State로 준비 성공을 판단한다 — 프로세스가
+     * stdout 성공 문구가 아니라 재조회한 State로 준비 성공을 판단한다 — 프로세스가
      * 완료를 보고해도 재조회한 State가 여전히 Missing이면 NotPrepared로 표시하고, 등록 자체는
      * Registry에 그대로 유지한다(롤백하지 않는다).
      */
@@ -1349,7 +1349,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "미확정 준비",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit-unconfirmed",
                     projectWorkspaceRootRaw = "S:\\workspace-unconfirmed",
                     repositoryRootRaw = "S:\\repo-unconfirmed",
@@ -1370,7 +1370,7 @@ class AppViewModelTest {
         viewModel.dispose()
     }
 
-    /** Phase 9 QA03-A: 해제는 활성 선택만 지우고 등록된 project entry는 그대로 남긴다. */
+    /** 해제는 활성 선택만 지우고 등록된 project entry는 그대로 남긴다. */
     @Test
     fun `프로젝트 해제는 활성 선택만 지우고 등록 목록은 보존한다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -1412,7 +1412,7 @@ class AppViewModelTest {
     }
 
     @Test
-    fun `useInternalDeveloperSdk가 true고 SDK가 Missing이면 Registry에 저장하지 않고 사유를 보여준다`() = runTest {
+    fun `useDefaultKit가 true고 SDK가 Missing이면 Registry에 저장하지 않고 사유를 보여준다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val registry = FakeProjectRegistryPort()
         val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
@@ -1432,7 +1432,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "내장 SDK 프로젝트",
-                    useInternalDeveloperSdk = true,
+                    useDefaultKit = true,
                     kitRootRaw = null,
                     projectWorkspaceRootRaw = "S:\\workspace-internal",
                     repositoryRootRaw = "S:\\repo-internal",
@@ -1449,7 +1449,7 @@ class AppViewModelTest {
     }
 
     @Test
-    fun `useInternalDeveloperSdk가 true고 SDK가 Resolved면 InternalDeveloperSdk source로 등록된다`() = runTest {
+    fun `useDefaultKit가 true고 SDK가 Resolved면 DefaultKit source로 등록된다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val registry = FakeProjectRegistryPort()
         val statePort = FakeStatePort { StateReadResult.Missing(Path.of("WORKFLOW_STATE.json")) }
@@ -1472,7 +1472,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "내장 SDK 프로젝트",
-                    useInternalDeveloperSdk = true,
+                    useDefaultKit = true,
                     kitRootRaw = null,
                     projectWorkspaceRootRaw = "S:\\workspace-internal",
                     repositoryRootRaw = "S:\\repo-internal",
@@ -1484,7 +1484,7 @@ class AppViewModelTest {
 
         val ready = assertIs<HrnsUiState.Ready>(viewModel.state.value)
         assertEquals(1, ready.registryProjects.size)
-        assertEquals("개발용 내장 SDK", ready.cockpit.runtimeSourceLabel)
+        assertEquals("기본 Harness Kit", ready.cockpit.runtimeSourceLabel)
         viewModel.dispose()
     }
 
@@ -1533,7 +1533,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "실패 프로젝트",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit-fail",
                     projectWorkspaceRootRaw = "S:\\workspace-fail",
                     repositoryRootRaw = "S:\\repo-fail",
@@ -1609,7 +1609,7 @@ class AppViewModelTest {
     }
 
     /**
-     * 새 Phase 8 §2.3/§6: 오늘 폴더가 아직 없어 과거 날짜로 fallback된 화면에서 `OpenToday`는
+     * 오늘 폴더가 아직 없어 과거 날짜로 fallback된 화면에서 `OpenToday`는
      * 순수 navigation이 아니라 실제로 오늘 날짜를 선택해야 한다 — discovery 목록에 오늘이 없어도
      * 항상 허용된다(UI가 폴더를 만들지는 않는다).
      */
@@ -2387,7 +2387,7 @@ class AppViewModelTest {
     }
 
     /**
-     * 새 Phase 8 §7: locale은 `UiPreferencesPort`에만 저장되고 `WORKFLOW_STATE.json`/Registry와
+     * locale은 `UiPreferencesPort`에만 저장되고 `WORKFLOW_STATE.json`/Registry와
      * 무관하다. 저장된 값이 없으면 한국어로 fail-closed하고, 저장된 값이 있으면 그대로 복원한다.
      */
     @Test
@@ -2428,7 +2428,7 @@ class AppViewModelTest {
         viewModel.dispose()
     }
 
-    /** 새 Phase 8 §4.2: 사용자가 결과를 기다린 등록 성공은 typed 알림으로 남는다. */
+    /** 사용자가 결과를 기다린 등록 성공은 typed 알림으로 남는다. */
     @Test
     fun `프로젝트 등록 성공은 전역 알림함에 성공 알림을 남긴다`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -2458,7 +2458,7 @@ class AppViewModelTest {
             HrnsUiEvent.ProjectRegistrationRequested(
                 RegisterProjectCandidate(
                     displayName = "새 프로젝트",
-                    useInternalDeveloperSdk = false,
+                    useDefaultKit = false,
                     kitRootRaw = "S:\\kit",
                     projectWorkspaceRootRaw = "S:\\workspace",
                     repositoryRootRaw = "S:\\repo",
@@ -2474,7 +2474,7 @@ class AppViewModelTest {
     }
 
     /**
-     * 새 Phase 8 보완 §1: locale은 assembler 단위테스트뿐 아니라 ViewModel이 실제로 조립하는
+     * locale은 assembler 단위테스트뿐 아니라 ViewModel이 실제로 조립하는
      * registryMessage/알림 문구에도 적용돼야 한다 — `currentLocale` 배선이 끝까지 이어지는지
      * end-to-end로 확인한다.
      */

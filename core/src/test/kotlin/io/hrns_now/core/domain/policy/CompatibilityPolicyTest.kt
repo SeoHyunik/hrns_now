@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * `doc/claude_prompts/phase2-harness-json-contract.md` §B.1의 결정표를 표 기반으로 검증한다.
+ * `CompatibilityPolicy`의 결정표를 표 기반으로 검증한다.
  * supported major → 정상, 상위 minor + 같은 major → tolerate, 미지원 major → 원인 표시,
  * manifest 없음 → legacy/unknown 잠금, malformed → fail-closed.
  */

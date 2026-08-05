@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 /**
  * AWT `Window.minimumSize` 자체는 실제 native 창 없이 단위 테스트로 검증할 수 없다 — 이 테스트는
  * 그 부분을 mock으로 성공한 것처럼 꾸미지 않고, 실제로 단위 테스트 가능한 부분(dp 상수와 dp→px
- * 변환)만 검증한다. native 창 적용 자체는 수동 GUI QA로 확인한다(Phase 9 QA01).
+ * 변환)만 검증한다. native 창 적용 자체는 수동 GUI QA로 확인한다.
  */
 class WindowConstraintsTest {
     @Test

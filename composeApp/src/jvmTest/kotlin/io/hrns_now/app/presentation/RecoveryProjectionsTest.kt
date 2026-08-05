@@ -206,7 +206,7 @@ class RecoveryProjectionsTest {
         assertEquals(setOf(UiAction.Refresh, UiAction.RunReplan, UiAction.RunClosureValidation), projection.actions.map { it.action }.toSet())
     }
 
-    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 복구 센터 화면 본문에도 실제로 적용되는지 확인한다. */
+    /** locale이 Shell chrome을 넘어 복구 센터 화면 본문에도 실제로 적용되는지 확인한다. */
     @Test
     fun `English locale은 제목과 usage_limit_blocked 카드를 영어로 투영한다`() {
         val projection = buildRecoveryProjection(

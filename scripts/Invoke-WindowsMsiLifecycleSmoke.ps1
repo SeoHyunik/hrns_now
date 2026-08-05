@@ -21,9 +21,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Phase 6A의 clean Windows 증빙 수집 도구다. Harness를 수정하거나 UI flow를 자동으로
-# 성공 처리하지 않는다. Install/Reinstall 뒤에는 앱 UI에서 Kit 등록 → Doctor → State 조회 →
-# 허용된 daily cycle을 실제로 수행한 다음 Snapshot을 실행한다.
+# clean Windows(재설치 포함) MSI 배포 증빙 수집 도구다. Harness를 수정하거나 UI flow를
+# 자동으로 성공 처리하지 않는다. Install/Reinstall 뒤에는 앱 UI에서 Kit 등록 → Doctor →
+# State 조회 → 허용된 daily cycle을 실제로 수행한 다음 Snapshot을 실행한다.
 
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -182,7 +182,7 @@ switch ($Stage) {
     'Baseline' {
         $common.product = Get-ProductEvidence
         $common.daily_artifacts = Get-DailyArtifactEvidence $ProjectWorkspaceRoot $WorkDate
-        Write-Evidence "phase6a-baseline-$timestamp.json" $common
+        Write-Evidence "msi-lifecycle-baseline-$timestamp.json" $common
     }
     'Install' {
         $logPath = Join-Path $EvidenceRoot "msi-install-$timestamp.log"
@@ -190,13 +190,13 @@ switch ($Stage) {
         $common.msiexec_exit_code = $process.ExitCode
         $common.msi_log = $logPath
         $common.product = Get-ProductEvidence
-        Write-Evidence "phase6a-install-$timestamp.json" $common
+        Write-Evidence "msi-lifecycle-install-$timestamp.json" $common
         if ($process.ExitCode -ne 0) { throw "MSI install failed with exit code $($process.ExitCode)." }
     }
     'Snapshot' {
         $common.product = Get-ProductEvidence
         $common.daily_artifacts = Get-DailyArtifactEvidence $ProjectWorkspaceRoot $WorkDate
-        Write-Evidence "phase6a-snapshot-$timestamp.json" $common
+        Write-Evidence "msi-lifecycle-snapshot-$timestamp.json" $common
     }
     'Uninstall' {
         $logPath = Join-Path $EvidenceRoot "msi-uninstall-$timestamp.log"
@@ -205,7 +205,7 @@ switch ($Stage) {
         $common.msi_log = $logPath
         $common.product = Get-ProductEvidence
         $common.daily_artifacts = Get-DailyArtifactEvidence $ProjectWorkspaceRoot $WorkDate
-        Write-Evidence "phase6a-uninstall-$timestamp.json" $common
+        Write-Evidence "msi-lifecycle-uninstall-$timestamp.json" $common
         if ($process.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($process.ExitCode)." }
     }
     'Reinstall' {
@@ -215,7 +215,7 @@ switch ($Stage) {
         $common.msi_log = $logPath
         $common.product = Get-ProductEvidence
         $common.daily_artifacts = Get-DailyArtifactEvidence $ProjectWorkspaceRoot $WorkDate
-        Write-Evidence "phase6a-reinstall-$timestamp.json" $common
+        Write-Evidence "msi-lifecycle-reinstall-$timestamp.json" $common
         if ($process.ExitCode -ne 0) { throw "MSI reinstall failed with exit code $($process.ExitCode)." }
     }
 }

@@ -7,7 +7,7 @@ import io.hrns_now.core.usecase.RegistrationRejectionReason
 import java.time.LocalDate
 
 /**
- * [AppViewModel]이 조립하는 registryMessage/알림/실행 notice 문구다(Phase 8 보완 §1). `core`가
+ * [AppViewModel]이 조립하는 registryMessage/알림/실행 notice 문구다. `core`가
  * 낸 typed 값(예: [RegistrationRejectionReason])만 소비하고, 이미 사람이 읽는 문자열로 굳어진
  * `message: String` 필드(예: `RegisterProjectResult.SaveFailed.message`)는 파일시스템/Registry
  * 어댑터가 이미 안전하게 만든 하위 오류 상세로만 그대로 이어붙인다 — session ID/secret/raw
@@ -16,11 +16,11 @@ import java.time.LocalDate
 
 private fun runtimeSourceLabel(source: RuntimeSource, locale: AppLocale): String = when (locale) {
     AppLocale.Korean -> when (source) {
-        RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
+        RuntimeSource.DefaultKit -> "기본 Harness Kit"
         is RuntimeSource.ExternalKit -> "외부 Harness Kit"
     }
     AppLocale.English -> when (source) {
-        RuntimeSource.InternalDeveloperSdk -> "internal developer SDK"
+        RuntimeSource.DefaultKit -> "default Harness Kit"
         is RuntimeSource.ExternalKit -> "external Harness Kit"
     }
 }
@@ -34,7 +34,7 @@ fun registrationWhatHappenedText(reason: RegistrationRejectionReason, locale: Ap
             RegistrationRejectionReason.BlankExternalKitPath -> "외부 Harness Kit 경로를 입력하세요."
             RegistrationRejectionReason.InvalidExternalKitPathFormat -> "Kit 경로 형식이 올바르지 않습니다."
             is RegistrationRejectionReason.RuntimeMissing -> when (val source = reason.source) {
-                RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK(.local\\harness-kit)를 찾을 수 없습니다."
+                RuntimeSource.DefaultKit -> "기본 Harness Kit(.local\\harness-kit)을 찾을 수 없습니다."
                 is RuntimeSource.ExternalKit -> "지정한 외부 Harness Kit 경로를 찾을 수 없습니다: ${source.root}"
             }
             is RegistrationRejectionReason.RuntimeInvalid -> {
@@ -53,7 +53,7 @@ fun registrationWhatHappenedText(reason: RegistrationRejectionReason, locale: Ap
             RegistrationRejectionReason.BlankExternalKitPath -> "Enter the external Harness Kit path."
             RegistrationRejectionReason.InvalidExternalKitPathFormat -> "The Kit path format is invalid."
             is RegistrationRejectionReason.RuntimeMissing -> when (val source = reason.source) {
-                RuntimeSource.InternalDeveloperSdk -> "The internal developer SDK (.local\\harness-kit) couldn't be found."
+                RuntimeSource.DefaultKit -> "The default Harness Kit (.local\\harness-kit) couldn't be found."
                 is RuntimeSource.ExternalKit -> "The specified external Harness Kit path couldn't be found: ${source.root}"
             }
             is RegistrationRejectionReason.RuntimeInvalid -> {
@@ -80,13 +80,13 @@ fun registrationNextStepGuidance(reason: RegistrationRejectionReason, locale: Ap
             RegistrationRejectionReason.BlankProfile -> "Profile을 입력하세요."
             RegistrationRejectionReason.BlankExternalKitPath -> "고급 설정에서 외부 Harness Kit 경로를 입력하세요."
             RegistrationRejectionReason.InvalidExternalKitPathFormat -> "고급 설정에서 Kit 경로 형식을 다시 확인하세요."
-            is RegistrationRejectionReason.RuntimeMissing -> if (reason.source == RuntimeSource.InternalDeveloperSdk) {
-                "개발용 SDK(.local\\harness-kit)를 준비하거나 고급 설정을 열어 외부 Harness Kit을 선택하세요."
+            is RegistrationRejectionReason.RuntimeMissing -> if (reason.source == RuntimeSource.DefaultKit) {
+                "기본 Harness Kit(.local\\harness-kit)를 준비하거나 고급 설정을 열어 외부 Harness Kit을 선택하세요."
             } else {
                 "고급 설정에서 외부 Harness Kit 경로를 다시 확인하세요."
             }
-            is RegistrationRejectionReason.RuntimeInvalid -> if (reason.source == RuntimeSource.InternalDeveloperSdk) {
-                "개발용 SDK 내용을 확인하거나 고급 설정을 열어 외부 Harness Kit을 선택하세요."
+            is RegistrationRejectionReason.RuntimeInvalid -> if (reason.source == RuntimeSource.DefaultKit) {
+                "기본 Harness Kit 내용을 확인하거나 고급 설정을 열어 외부 Harness Kit을 선택하세요."
             } else {
                 "고급 설정에서 외부 Harness Kit 경로 내용을 다시 확인하세요."
             }
@@ -97,13 +97,13 @@ fun registrationNextStepGuidance(reason: RegistrationRejectionReason, locale: Ap
             RegistrationRejectionReason.BlankProfile -> "Enter a profile."
             RegistrationRejectionReason.BlankExternalKitPath -> "Enter the external Harness Kit path in advanced settings."
             RegistrationRejectionReason.InvalidExternalKitPathFormat -> "Recheck the Kit path format in advanced settings."
-            is RegistrationRejectionReason.RuntimeMissing -> if (reason.source == RuntimeSource.InternalDeveloperSdk) {
-                "Prepare the developer SDK (.local\\harness-kit), or open advanced settings to select an external Harness Kit."
+            is RegistrationRejectionReason.RuntimeMissing -> if (reason.source == RuntimeSource.DefaultKit) {
+                "Prepare the default Harness Kit (.local\\harness-kit), or open advanced settings to select an external Harness Kit."
             } else {
                 "Recheck the external Harness Kit path in advanced settings."
             }
-            is RegistrationRejectionReason.RuntimeInvalid -> if (reason.source == RuntimeSource.InternalDeveloperSdk) {
-                "Check the developer SDK contents, or open advanced settings to select an external Harness Kit."
+            is RegistrationRejectionReason.RuntimeInvalid -> if (reason.source == RuntimeSource.DefaultKit) {
+                "Check the default Harness Kit contents, or open advanced settings to select an external Harness Kit."
             } else {
                 "Recheck the external Harness Kit path contents in advanced settings."
             }
@@ -145,14 +145,14 @@ fun onboardingProcessObserveFailed(locale: AppLocale): String = when (locale) {
     AppLocale.English -> "Couldn't safely observe the onboarding diagnostic process."
 }
 
-/** Phase 10: `enter-project`(프로젝트 준비) 실행 자체를 관찰하지 못했을 때 쓴다. */
+/** `enter-project`(프로젝트 준비) 실행 자체를 관찰하지 못했을 때 쓴다. */
 fun projectOnboardingProcessObserveFailedNotice(locale: AppLocale): String = when (locale) {
     AppLocale.Korean -> "프로젝트 준비 프로세스를 안전하게 관찰하지 못했습니다."
     AppLocale.English -> "Couldn't safely observe the project preparation process."
 }
 
 /**
- * Phase 10: enter-project 종료·validate-ops overall·bridge probe·4-file probe·State 재조회 중
+ * enter-project 종료·validate-ops overall·bridge probe·4-file probe·State 재조회 중
  * 하나 이상이 충족되지 않아 "준비됨"으로 판정할 수 없을 때 쓰는 안전한 안내다. 어떤 근거가
  * 부족했는지의 raw 세부사항은 담지 않는다 — 재시도 CTA로 안내한다.
  */
@@ -253,7 +253,7 @@ fun projectDeleteFailedMessage(detail: String, locale: AppLocale): String = when
     AppLocale.English -> "Couldn't delete the project: $detail"
 }
 
-/** Phase 9 QA03-A: 해제는 등록된 project entry를 지우지 않는다 — 문구도 삭제와 분명히 구분한다. */
+/** 해제는 등록된 project entry를 지우지 않는다 — 문구도 삭제와 분명히 구분한다. */
 fun activeProjectReleasedMessage(projectName: String, locale: AppLocale): String = when (locale) {
     AppLocale.Korean -> "'$projectName' 프로젝트를 해제했습니다. 등록 정보는 그대로 남아 있습니다."
     AppLocale.English -> "Released '$projectName'. Its registry entry is still there."
@@ -264,7 +264,7 @@ fun activeProjectReleaseFailedMessage(detail: String, locale: AppLocale): String
     AppLocale.English -> "Couldn't save the project release: $detail"
 }
 
-/** Phase 9 QA03-B: Bootstrap이 끝났지만 재조회한 State가 Success가 아닐 때 쓰는 안전한 안내다. */
+/** Bootstrap이 끝났지만 재조회한 State가 Success가 아닐 때 쓰는 안전한 안내다. */
 fun workspacePreparationNotConfirmedNotice(locale: AppLocale): String = when (locale) {
     AppLocale.Korean -> "등록은 완료됐지만, 오늘 작업공간 준비 결과를 아직 확인하지 못했습니다. 작업 계획 화면에서 다시 확인하세요."
     AppLocale.English -> "Registration is complete, but today's workspace preparation result isn't confirmed yet. Check the Plan screen again."

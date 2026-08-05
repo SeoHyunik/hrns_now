@@ -937,7 +937,7 @@ Phase 7의 `.local\harness-kit`은 **사용자가 제공하는 Git-ignore 개발
 
 ```kotlin
 sealed interface RuntimeSource {
-    data object InternalDeveloperSdk : RuntimeSource
+    data object DefaultKit : RuntimeSource
     data class ExternalKit(val root: Path) : RuntimeSource
 }
 
@@ -948,7 +948,7 @@ sealed interface RuntimeResolution {
 }
 ```
 
-- Registry는 `InternalDeveloperSdk`이라는 선택만 저장한다. repository-relative SDK의 절대 경로를 저장해 source checkout 이동을 깨뜨리지 않는다.
+- Registry는 `DefaultKit`이라는 선택만 저장한다. repository-relative SDK의 절대 경로를 저장해 source checkout 이동을 깨뜨리지 않는다.
 - 기존 `kit_root` Registry entry는 migration 시 `ExternalKit`으로 해석한다. 과거 설정을 내장 SDK로 조용히 바꾸거나 environment variable이 명시적 선택을 덮어쓰면 안 된다.
 - composition root 또는 infra resolver만 repository-relative SDK root를 계산한다. Composable·ViewModel·domain policy가 path 문자열·Program Files·PowerShell 인자를 조립하지 않는다.
 - command encoder, `KitVersionManifestPort`, compatibility, boundary validation은 동일한 `Resolved.root`만 받는다. `if (internal)`, `if (external)` 분기를 각 command에 퍼뜨리지 않는다.

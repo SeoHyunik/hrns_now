@@ -32,8 +32,8 @@ internal data class KitVersionFileDto(
 private const val MANIFEST_FILE_NAME = "kit-version.json"
 
 /**
- * Kit root의 `kit-version.json`을 읽는 [KitVersionManifestPort] 구현이다
- * (`doc/claude_prompts/phase2-harness-json-contract.md` §B.2).
+ * Kit root의 `kit-version.json`을 읽는 [KitVersionManifestPort] 구현이다 — Harness Kit이 게시하는
+ * `kit-version.json` manifest 계약을 그대로 따른다.
  *
  * UTF-8 BOM은 허용하되 그 외 잘못된 인코딩은 malformed로 구분한다. `ignoreUnknownKeys=true`로
  * 향후 필드 확장을 허용하되, 세 필수 field 중 하나라도 없거나 형식이 잘못되면 fail-closed로

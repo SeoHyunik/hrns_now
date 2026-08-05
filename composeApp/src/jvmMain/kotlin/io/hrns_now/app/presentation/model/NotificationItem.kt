@@ -2,7 +2,7 @@ package io.hrns_now.app.presentation.model
 
 import java.time.Instant
 
-/** 알림 카드의 색조다 — 정보성 값만 담고 원문 stdout/세션/경로 전체는 담지 않는다(새 Phase 8 §4.2). */
+/** 알림 카드의 색조다 — 정보성 값만 담고 원문 stdout/세션/경로 전체는 담지 않는다. */
 enum class NotificationTone { Success, Failure, Info }
 
 /**

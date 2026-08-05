@@ -12,8 +12,8 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
- * [BlockedReasonKey]/[ClosureBlockReasonKey]는 typed key이므로 raw 원문을 절대 담을 수 없다
- * (Phase 8 보완 §1) — 이 테스트는 모든 case가 ko/en 둘 다에서 공백이 아닌 실제 문구를 내고,
+ * [BlockedReasonKey]/[ClosureBlockReasonKey]는 typed key이므로 raw 원문을 절대 담을 수 없다 —
+ * 이 테스트는 모든 case가 ko/en 둘 다에서 공백이 아닌 실제 문구를 내고,
  * 두 locale의 문구가 서로 다른지(=실제로 번역됐는지)만 확인한다.
  */
 class ReasonKeyStringsTest {

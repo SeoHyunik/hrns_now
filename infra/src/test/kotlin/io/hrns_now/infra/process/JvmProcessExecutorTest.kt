@@ -11,8 +11,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * 실제 `powershell.exe` 자식 프로세스를 기동해 [JvmProcessExecutor]를 검증한다(mock이 아니라
- * real child fixture, `doc/claude_prompts/phase3-process-adapter-lock.md` §2).
+ * 실제 `powershell.exe` 자식 프로세스를 기동해 [JvmProcessExecutor]를 검증한다 — mock이 아닌
+ * real child fixture로 실제 Windows process 동작을 확인한다.
  */
 class JvmProcessExecutorTest {
 

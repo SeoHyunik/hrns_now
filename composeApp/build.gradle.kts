@@ -40,8 +40,7 @@ compose.desktop {
         mainClass = "io.hrns_now.app.MainKt"
 
         nativeDistributions {
-            // Phase 6A는 외부 Kit MSI MVP만 다룬다 — DMG/DEB는 build하거나 검증하지 않는다
-            // (doc/claude_prompts/phase6-msi-distribution.md).
+            // Windows MSI만 지원·검증 대상이다 — DMG/DEB는 build하거나 검증하지 않는다.
             targetFormats(TargetFormat.Msi)
             // JvmProcessExecutor는 Windows native console charset(예: MS949)을 해석한다.
             // jlink가 이를 제공하는 jdk.charsets를 제거하지 않게 명시한다.
@@ -52,8 +51,7 @@ compose.desktop {
             vendor = "HRNS-NOW"
             // WiX 3.11(jpackage가 내려받아 쓰는 toolchain)의 non-ASCII 인자 처리가 이 Windows
             // host의 native encoding(MS949)과 충돌해 candle/light가 "Input length = 1"로
-            // 실패하는 것을 실측으로 확인했다 — installer 메타데이터는 ASCII로만 채운다
-            // (`doc/phase_reports/phase6-report.md` 참고).
+            // 실패하는 것을 실측으로 확인했다 — installer 메타데이터는 ASCII로만 채운다.
             description = "HRNS-NOW: Windows desktop control panel for harness-kit"
             copyright = "Copyright (C) 2026 HRNS-NOW"
 
@@ -67,8 +65,8 @@ compose.desktop {
                 menu = true
                 console = false
                 // 기본값(true)과 동일하지만, 설치 위치를 사용자가 확인·변경할 수 있어야 한다는
-                // 새 Phase 6 UI/UX 설치 품질 요구를 명시적으로 고정한다(WindowsPlatformSettings
-                // 기본 WiX 마법사가 제공하는 "설치 폴더 선택" 단계를 그대로 유지).
+                // 현재 UX 요구를 명시적으로 고정한다(기본 WiX 마법사가 제공하는 "설치 폴더 선택"
+                // 단계를 그대로 유지).
                 dirChooser = true
                 iconFile.set(project.file("src/jvmMain/resources/hrns-now.ico"))
             }

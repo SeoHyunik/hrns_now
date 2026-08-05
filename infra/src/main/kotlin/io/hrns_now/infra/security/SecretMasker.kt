@@ -3,9 +3,9 @@ package io.hrns_now.infra.security
 /**
  * Harness `Protect-HarnessDiagnosticMessage`(PowerShell)와 동일한 카테고리를 HRNS-NOW 실행
  * 계층 자체가 만드는 메시지(JVM 예외 메시지, JSON 파싱 실패 시 raw stdout/stderr 조각)에
- * 방어적으로 한 번 더 적용한다(`doc/claude_prompts/phase3-process-adapter-lock.md` §2).
- * Harness 쪽 `checks[].message`는 이미 masking된 값이지만, 이 클래스를 통과시켜도 실제
- * secret이 없으면 아무 것도 바뀌지 않는다(단순 치환이므로 결과가 달라지지 않는 한 안전).
+ * 방어적으로 한 번 더 적용한다. Harness 쪽 `checks[].message`는 이미 masking된 값이지만,
+ * 이 클래스를 통과시켜도 실제 secret이 없으면 아무 것도 바뀌지 않는다(단순 치환이므로 결과가
+ * 달라지지 않는 한 안전).
  */
 class SecretMasker {
 

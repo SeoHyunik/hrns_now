@@ -4,8 +4,8 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * UI 소유 lock의 payload다(Phase 3, `doc/claude_prompts/phase3-process-adapter-lock.md` §4).
- * Harness workspace가 아니라 `%LOCALAPPDATA%\hrns-now\locks\<projectId>\<yyyy-MM-dd>.lock.json`에
+ * UI 소유 lock의 payload다. Harness workspace가 아니라
+ * `%LOCALAPPDATA%\hrns-now\locks\<projectId>\<yyyy-MM-dd>.lock.json`에
  * 저장된다. raw command output·secret·raw session/request ID·workspace state는 절대 담지 않는다 —
  * 이 다섯 필드만 담는다.
  */

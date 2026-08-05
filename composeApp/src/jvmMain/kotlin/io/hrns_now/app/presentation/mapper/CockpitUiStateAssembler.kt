@@ -26,7 +26,7 @@ import io.hrns_now.core.usecase.ActiveProjectSource
 import io.hrns_now.core.usecase.CockpitLoadResult
 import java.time.LocalDate
 
-/** Domain/query 결과를 Phase 1C/1D의 단일 immutable UI state로 변환한다. */
+/** Domain/query 결과를 단일 immutable UI state로 변환한다. */
 class CockpitUiStateAssembler(
     private val cockpitAssembler: CockpitProjectionAssembler = CockpitProjectionAssembler(),
 ) {
@@ -115,11 +115,11 @@ class CockpitUiStateAssembler(
                     isActive = project.id == activeProjectId,
                     runtimeSourceLabel = when (locale) {
                         AppLocale.Korean -> when (project.runtimeSource) {
-                            RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
+                            RuntimeSource.DefaultKit -> "기본 Harness Kit"
                             is RuntimeSource.ExternalKit -> "외부 Harness Kit"
                         }
                         AppLocale.English -> when (project.runtimeSource) {
-                            RuntimeSource.InternalDeveloperSdk -> "Internal developer SDK"
+                            RuntimeSource.DefaultKit -> "Default Harness Kit"
                             is RuntimeSource.ExternalKit -> "External Harness Kit"
                         }
                     },
@@ -142,8 +142,8 @@ class CockpitUiStateAssembler(
 }
 
 /**
- * 실행 process 성공(=`ActionPolicy`가 이미 허용한 CTA)과 하루 마감 허용을 분리한다
- * (`doc/claude_prompts/phase5-closure-recovery.md` §1). `ClosureDecision.Blocked`일 때만
+ * 실행 process 성공(=`ActionPolicy`가 이미 허용한 CTA)과 하루 마감 허용을 분리한다.
+ * `ClosureDecision.Blocked`일 때만
  * "마감 검증 실행"을 추가로 비활성화한다 — `RequiresExplicitIncompleteHandoff`는 화면에서
  * 명시적 인지를 요구할 뿐 버튼 자체를 잠그지 않는다.
  */

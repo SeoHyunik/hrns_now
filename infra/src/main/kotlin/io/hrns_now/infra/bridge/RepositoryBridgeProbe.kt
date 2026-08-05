@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * `scripts/enter-project.ps1`이 만드는 repository bridge 3종을 read-only로 확인한다(Phase 10).
+ * `scripts/enter-project.ps1`이 만드는 repository bridge 3종을 read-only로 확인한다.
  * 어떤 경로도 만들거나 쓰지 않는다 — [Files.isRegularFile] 조회만 수행한다.
  */
 class RepositoryBridgeProbe : RepositoryBridgeProbePort {

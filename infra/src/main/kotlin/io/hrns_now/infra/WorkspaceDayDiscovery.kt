@@ -10,7 +10,7 @@ import java.time.format.DateTimeParseException
 /**
  * `projectWorkspaceRoot` 아래 `yyyy-MM-dd` 형식 디렉터리를 열거한다.
  *
- * [WorkspaceArtifactProbe]와 composeApp의 날짜 선택 조립(Phase 1C)이 동일한 탐색 로직을
+ * [WorkspaceArtifactProbe]와 composeApp의 날짜 선택 조립이 동일한 탐색 로직을
  * 공유하기 위해 분리했다 — 두 곳에서 정규식/파싱 규칙이 갈라지면 "오늘 없으면 최신
  * 날짜로 read-only fallback" 정책이 화면마다 다르게 동작할 수 있다.
  */

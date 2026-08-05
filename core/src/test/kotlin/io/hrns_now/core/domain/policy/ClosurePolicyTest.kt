@@ -26,7 +26,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * `ClosurePolicy` decision table을 고정한다(`doc/claude_prompts/phase5-closure-recovery.md` §1).
+ * `ClosurePolicy` decision table을 고정한다.
  * happy path 하나와, 각 checklist 조건을 하나씩 위반하는 fixture를 검증한다.
  */
 class ClosurePolicyTest {

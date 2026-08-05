@@ -150,8 +150,8 @@ private fun ScreenHero(
             text = title,
             style = MaterialTheme.typography.headlineLarge.copy(
                 fontSize = 36.sp,
-                // 새 Phase 8 §7: 과도한 negative tracking(-1.0sp)은 한글 음절 블록에서 글자가
-                // 겹쳐 보일 수 있어 완만한 값으로 낮췄다.
+                // 과도한 negative tracking(-1.0sp)은 한글 음절 블록에서 글자가 겹쳐 보일 수
+                // 있어 완만한 값을 사용한다.
                 letterSpacing = (-0.3).sp,
                 lineHeight = 42.sp,
             ),
@@ -219,7 +219,7 @@ fun SetupScreen(
             subtitle = projection.subtitle,
         )
 
-        // 사용자가 화면을 열자마자 어느 프로젝트를 보고 있는지 알 수 있어야 한다(새 Phase 6 제품 목표 1).
+        // 사용자가 화면을 열자마자 어느 프로젝트를 보고 있는지 알 수 있어야 한다.
         ActiveProjectSummaryCard(
             projectName = activeProjectName,
             profileLabel = activeProjectProfileLabel,
@@ -313,7 +313,7 @@ fun SetupScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 활성 프로젝트 요약 — 이름·상태·핵심 경로를 화면 상단에서 즉시 식별(새 Phase 6)
+// 활성 프로젝트 요약 — 이름·상태·핵심 경로를 화면 상단에서 즉시 식별한다
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -352,17 +352,17 @@ private fun ActiveProjectSummaryCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     if (needsProjectPreparation) {
-                        // Phase 10: bridge/오늘 workspace 준비가 누락된 활성 프로젝트를 위한 단일
-                        // 복구 CTA다 — Health Check와 구분되고, 재등록을 요구하지 않는다.
-                        PlaceholderActionButton(
+                        // bridge/오늘 workspace 준비가 누락된 활성 프로젝트를 위한 단일 복구
+                        // CTA다 — Health Check와 구분되고, 재등록을 요구하지 않는다.
+                        HrnsActionButton(
                             text = strings.setup.prepareProjectButton,
                             enabled = true,
                             onClick = { onUiEvent(HrnsUiEvent.ProjectOnboardingRequested) },
                         )
                         Spacer(Modifier.width(8.dp))
                     }
-                    // Phase 9 QA03-A: Registry의 활성 선택만 지운다 — 등록 정보는 그대로 남긴다.
-                    PlaceholderActionButton(
+                    // Registry의 활성 선택만 지우며 등록된 project entry는 보존한다.
+                    HrnsActionButton(
                         text = strings.setup.releaseActiveProjectButton,
                         enabled = true,
                         onClick = { onUiEvent(HrnsUiEvent.ActiveProjectReleaseRequested) },
@@ -413,7 +413,7 @@ private fun ActiveProjectSummaryCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 프로젝트 관리 — 등록·전환·삭제는 modal에서, 기본 화면은 활성 프로젝트만 보여준다(새 Phase 6)
+// 프로젝트 관리 — 등록·전환·삭제는 modal에서, 기본 화면은 활성 프로젝트만 보여준다
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -431,7 +431,7 @@ private fun ProjectManagementSection(
     // 등록 흐름 전체(오늘 workspace 준비 시도까지)가 끝나면 modal을 자동으로 닫는다 — 다음 등록
     // 시도를 위해 registrationFeedback은 ViewModel이 다음 요청 시작 시점에 다시 Running으로
     // 되돌린다. workspace 준비가 아직 진행 중(InProgress)이면 그 결과를 modal 안에서 계속
-    // 보여줘야 하므로 닫지 않는다(Phase 9 QA03-B).
+    // 보여줘야 하므로 닫지 않는다.
     LaunchedEffect(registrationFeedback) {
         val feedback = registrationFeedback
         if (feedback is RegistrationFeedback.Success &&
@@ -493,9 +493,9 @@ private fun ProjectManagementSection(
                         color = colors.tertiaryText,
                     )
                 }
-                PlaceholderActionButton(
-                    // Phase 9 QA03-A: 활성 프로젝트가 있으면 "새 프로젝트 등록"으로 표시해 이
-                    // 버튼이 현재 활성 프로젝트를 비활성화로 숨기지 않는다는 것을 분명히 한다.
+                HrnsActionButton(
+                    // 활성 프로젝트가 있으면 "새 프로젝트 등록"으로 표시해 이 버튼이 현재
+                    // 활성 프로젝트를 비활성화로 숨기지 않는다는 것을 분명히 한다.
                     text = if (active != null) strings.setup.registerAnotherProjectButton else strings.setup.registerProjectButton,
                     primary = true,
                     enabled = true,
@@ -527,9 +527,9 @@ private fun ProjectManagementSection(
 private const val WORKSPACE_DAY_PAGE_SIZE = 5
 
 /**
- * 날짜를 한 번에 [WORKSPACE_DAY_PAGE_SIZE]개씩만 보여주고 이전/다음으로 탐색한다(새 Phase 8 §6).
+ * 날짜를 한 번에 [WORKSPACE_DAY_PAGE_SIZE]개씩만 보여주고 이전/다음으로 탐색한다.
  * 오늘 날짜가 아직 daily directory 목록에 없어도 이 버튼으로 항상 선택할 수 있다 — 이 Composable은
- * 폴더나 4-file을 직접 만들지 않고 typed event만 올려 보낸다. 새 Phase 8 보완 §2.1: 버튼 문구는
+ * 폴더나 4-file을 직접 만들지 않고 typed event만 올려 보낸다. 버튼 문구는
  * "날짜 선택"임을 분명히 하고, 실제 Bootstrap 실행처럼 보이지 않게 한다 — 그 CTA는 작업 계획
  * 화면 요구사항 카드에만 있다.
  */
@@ -568,7 +568,7 @@ private fun WorkspaceDaySection(
                             color = colors.tertiaryText,
                         )
                     }
-                    PlaceholderActionButton(
+                    HrnsActionButton(
                         text = strings.setup.selectTodayDateButton,
                         primary = false,
                         enabled = true,
@@ -605,10 +605,10 @@ private fun WorkspaceDaySection(
                                 Spacer(Modifier.width(8.dp))
                             }
                             if (day.isSelected) {
-                                // 흐린 disabled 버튼 대신 고대비 chip으로 현재 선택을 명확히 표시한다(새 Phase 8 §6).
+                                // 흐린 disabled 버튼 대신 고대비 chip으로 현재 선택을 명확히 표시한다.
                                 StatusChip(text = strings.setup.selectedChip, tone = "accent")
                             } else {
-                                PlaceholderActionButton(
+                                HrnsActionButton(
                                     text = strings.setup.openButton,
                                     enabled = true,
                                     onClick = { onUiEvent(HrnsUiEvent.WorkspaceDaySelected(day.date)) },
@@ -623,7 +623,7 @@ private fun WorkspaceDaySection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        PlaceholderActionButton(
+                        HrnsActionButton(
                             text = strings.setup.previousButton,
                             enabled = clampedPage > 0,
                             onClick = { page = clampedPage - 1 },
@@ -633,7 +633,7 @@ private fun WorkspaceDaySection(
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                             color = colors.tertiaryText,
                         )
-                        PlaceholderActionButton(
+                        HrnsActionButton(
                             text = strings.setup.nextButton,
                             enabled = clampedPage < pageCount - 1,
                             onClick = { page = clampedPage + 1 },
@@ -667,13 +667,13 @@ private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) ->
                 StatusChip(text = strings.setup.activeLabel, tone = "success")
             }
         }
-        PlaceholderActionButton(
+        HrnsActionButton(
             text = strings.setup.selectButton,
             enabled = !project.isActive,
             onClick = { onUiEvent(HrnsUiEvent.ProjectSelected(project.id)) },
         )
         Spacer(Modifier.width(8.dp))
-        PlaceholderActionButton(
+        HrnsActionButton(
             text = strings.setup.deleteButton,
             enabled = true,
             onClick = { onUiEvent(HrnsUiEvent.ProjectDeletionRequested(project.id)) },
@@ -682,9 +682,9 @@ private fun ProjectRow(project: RegistryProjectItem, onUiEvent: (HrnsUiEvent) ->
 }
 
 /**
- * 표준 등록 흐름은 Kit 경로를 입력받지 않는다 — 기본은 `개발용 내장 SDK`이고, `고급 설정`을
- * 명시적으로 펼쳤을 때만 `외부 Harness Kit 사용` 토글과 경로 입력이 나타난다(새 Phase 7).
- * runtime source 선택 자체가 typed `RegisterProjectCandidate.useInternalDeveloperSdk`로만
+ * 표준 등록 흐름은 Kit 경로를 입력받지 않는다 — 기본은 `기본 Harness Kit`이고, `고급 설정`을
+ * 명시적으로 펼쳤을 때만 `외부 Harness Kit 사용` 토글과 경로 입력이 나타난다.
+ * runtime source 선택 자체가 typed `RegisterProjectCandidate.useDefaultKit`로만
  * 전달되며, 이 화면은 파일 존재 확인이나 경로 조립을 하지 않는다.
  */
 @Composable
@@ -738,7 +738,7 @@ private fun ProjectRegistrationForm(
         )
         LabeledTextField(label = "Profile", value = profileId, onValueChange = { profileId = it })
 
-        PlaceholderActionButton(
+        HrnsActionButton(
             text = if (showAdvanced) strings.setup.hideAdvancedButton else strings.setup.showAdvancedButton,
             enabled = true,
             onClick = { showAdvanced = !showAdvanced },
@@ -761,7 +761,7 @@ private fun ProjectRegistrationForm(
 
         val candidate = RegisterProjectCandidate(
             displayName = displayName,
-            useInternalDeveloperSdk = !useExternalKit,
+            useDefaultKit = !useExternalKit,
             kitRootRaw = if (useExternalKit) kitRoot else null,
             projectWorkspaceRootRaw = workspaceRoot,
             repositoryRootRaw = repositoryRoot,
@@ -775,11 +775,11 @@ private fun ProjectRegistrationForm(
             (!useExternalKit || kitRoot.isNotBlank())
         var showOnboardingConfirm by remember { mutableStateOf(false) }
 
-        // Phase 10: 신규 프로젝트의 기본 primary 흐름은 등록에 이어 repository bridge/외부
+        // 신규 프로젝트의 기본 primary 흐름은 등록에 이어 repository bridge/외부
         // workspace까지 준비하는 것이다(enter-project). 등록만 원하는 경우는 보조 행동으로
         // 별도 제공한다. primary는 실제로 무엇이 만들어지는지 보여주는 확인을 먼저 거친다.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlaceholderActionButton(
+            HrnsActionButton(
                 text = if (registrationFeedback is RegistrationFeedback.Running) {
                     strings.setup.diagnosingButton
                 } else {
@@ -789,7 +789,7 @@ private fun ProjectRegistrationForm(
                 enabled = !submissionInProgress && formValid,
                 onClick = { showOnboardingConfirm = true },
             )
-            PlaceholderActionButton(
+            HrnsActionButton(
                 text = strings.setup.registerOnlyButton,
                 primary = false,
                 enabled = !submissionInProgress && formValid,
@@ -816,7 +816,7 @@ private fun ProjectRegistrationForm(
 }
 
 /**
- * primary 등록 전 "무엇이 만들어지는지" 확인시킨다(Phase 10) — bridge 3종, external workspace
+ * primary 등록 전 "무엇이 만들어지는지" 확인시킨다 — bridge 3종, external workspace
  * 경로, "기존 bridge는 덮어쓰지 않음"을 명시한다. 이 modal 자체는 아무 파일도 만들지 않는다 —
  * 확인 뒤 typed `HrnsUiEvent.ProjectRegistrationRequested(prepareWorkspace = true)`만 올린다.
  */
@@ -847,13 +847,13 @@ private fun OnboardingConfirmDialog(
                 color = colors.tertiaryText,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = strings.setup.onboardingConfirmCancelButton,
                     primary = false,
                     enabled = true,
                     onClick = onDismiss,
                 )
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = strings.setup.onboardingConfirmProceedButton,
                     primary = true,
                     enabled = true,
@@ -865,8 +865,8 @@ private fun OnboardingConfirmDialog(
 }
 
 /**
- * 등록 결과를 modal/인라인 폼 안에서 직접 렌더링한다(새 Phase 8 §1) — 부모 카드에만 남겨
- * 사용자가 놓치는 일이 없어야 한다는 QA 요구를 그대로 반영한다.
+ * 등록 결과를 modal/인라인 폼 안에서 직접 렌더링한다 — 부모 카드에만 남겨
+ * 사용자가 놓치는 일이 없어야 한다는 요구를 그대로 반영한다.
  */
 @Composable
 private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: AppStrings) {
@@ -894,7 +894,7 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: App
                     color = colors.primaryText,
                 )
             }
-            // Phase 10: 등록 완료 사실과 프로젝트 준비(bridge/외부 workspace) 결과를 분리해서 보여준다.
+            // 등록 완료 사실과 프로젝트 준비(bridge/외부 workspace) 결과를 분리해서 보여준다.
             ProjectOnboardingRow(feedback.onboarding, strings)
         }
 
@@ -917,8 +917,8 @@ private fun RegistrationFeedbackRow(feedback: RegistrationFeedback, strings: App
 }
 
 /**
- * 등록 직후(또는 "프로젝트 준비" 재시도) 온보딩 결과를 등록 성공 사실과 분리해서 보여준다
- * (Phase 10). [ProjectOnboardingOutcome.Blocked.reasonText]는 이미 typed 값에서 조립된
+ * 등록 직후(또는 "프로젝트 준비" 재시도) 온보딩 결과를 등록 성공 사실과 분리해서 보여준다.
+ * [ProjectOnboardingOutcome.Blocked.reasonText]는 이미 typed 값에서 조립된
  * 안전한 문구다.
  */
 @Composable
@@ -1021,7 +1021,7 @@ fun CockpitScreen(
         }
 
         SectionCard(title = strings.cockpit.nextActionTitle, eyebrow = "Next action") {
-            // 새 Phase 8 보완 §2.1: BootstrapDay 실행 CTA는 작업 계획 화면에만 둔다 — 여기서는
+            // BootstrapDay 실행 CTA는 작업 계획 화면에만 둔다 — 여기서는
             // 같은 typed action을 다시 실행하지 않고, 순수 navigation(ReviewPlan)으로 대체한다.
             val actions = cockpitActions(projection).map { item ->
                 if (item.action == UiAction.BootstrapDay) {
@@ -1096,7 +1096,7 @@ private fun KeyValueGrid(rows: List<Pair<String, String>>) {
                 )
                 Spacer(Modifier.height(14.dp))
             }
-            PlaceholderRow(label, value)
+            LabelValueRow(label, value)
         }
     }
 }
@@ -1129,7 +1129,7 @@ fun StrategyScreen(
             statusContent = { StatusChip(projection.statusChip) },
         )
 
-        // 새 Phase 8 보완 §2.1: 실제 Bootstrap 실행 CTA는 이 카드 한 곳에만 둔다. Missing state가
+        // 실제 Bootstrap 실행 CTA는 이 카드 한 곳에만 둔다. Missing state가
         // BootstrapDay-eligible이면 비활성 "요구사항 작성" 대신 설명과 활성 "오늘 작업 시작"을
         // 보여주고, 그렇지 않으면 기존 요구사항 작성 흐름을 그대로 보여준다.
         val bootstrapAction = projection.bootstrapAction
@@ -1141,7 +1141,7 @@ fun StrategyScreen(
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
                         color = colors.secondaryText,
                     )
-                    PlaceholderActionButton(
+                    HrnsActionButton(
                         action = bootstrapAction,
                         primary = true,
                         onClick = { onUiEvent(HrnsUiEvent.ActionRequested(UiAction.BootstrapDay)) },
@@ -1150,7 +1150,7 @@ fun StrategyScreen(
             }
         } else {
             // 요구사항을 바로 추가해야 하는 사용자의 주 동작이므로 계획 상세보다 먼저 둔다.
-            // 파일명(REQUEST_INBOX.md)보다 입력 목적을 먼저 설명한다(새 Phase 8 §3).
+            // 파일명(REQUEST_INBOX.md)보다 입력 목적을 먼저 설명한다.
             SectionCard(title = strings.strategy.requestSectionTitle, eyebrow = "Request") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -1165,7 +1165,7 @@ fun StrategyScreen(
                             color = colors.accent,
                         )
                     }
-                    PlaceholderActionButton(
+                    HrnsActionButton(
                         text = strings.strategy.writeRequestButton,
                         primary = true,
                         enabled = projection.requestEditingEnabled,
@@ -1218,7 +1218,7 @@ fun StrategyScreen(
 }
 
 /**
- * 사람이 읽는 `TODAY_STRATEGY.md` 원문 전용 카드다(새 Phase 8 §3). 문서 날짜와 읽기 전용 여부를
+ * 사람이 읽는 `TODAY_STRATEGY.md` 원문 전용 카드다. 문서 날짜와 읽기 전용 여부를
  * 배지로 명확히 보이고, 원문을 안전한 Markdown renderer로만 표시한다 — 과거 날짜 원문을 오늘
  * 계획으로 오인하지 않도록 날짜 배지를 항상 함께 보인다.
  */
@@ -1253,7 +1253,7 @@ private fun DevelopmentStrategyCard(model: DevelopmentStrategyCardModel, strings
 }
 
 /**
- * "요구사항 작성" modal editor다(새 Phase 6). 미저장 변경이 있는 상태에서 ESC/바깥 클릭/닫기
+ * "요구사항 작성" modal editor다. 미저장 변경이 있는 상태에서 ESC/바깥 클릭/닫기
  * 버튼으로 닫으려 하면 먼저 확인을 요구한다 — [RequestInboxWriterAdapter]의 atomic write/optimistic
  * concurrency 계약은 이 화면이 바꾸지 않고 [onSubmit]으로만 위임한다.
  */
@@ -1302,13 +1302,13 @@ private fun RequestEntryModal(
                     color = colors.primaryText,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PlaceholderActionButton(
+                    HrnsActionButton(
                         text = e.continueEditingButton,
                         primary = true,
                         enabled = true,
                         onClick = { showUnsavedConfirm = false },
                     )
-                    PlaceholderActionButton(
+                    HrnsActionButton(
                         text = e.discardAndCloseButton,
                         enabled = true,
                         onClick = onDismiss,
@@ -1363,7 +1363,7 @@ private fun RequestEntryModal(
                     else -> null
                 }
 
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = if (saving) e.savingButton else e.saveButton,
                     primary = true,
                     enabled = editingEnabled && !saving && title.isNotBlank() && summary.isNotBlank(),
@@ -1394,7 +1394,7 @@ private fun RequestEntryModal(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 실행 feedback — 연결 점검/작업 준비 점검 등의 진행 중·성공·실패 인라인 표시(새 Phase 6)
+// 실행 feedback — 연결 점검/작업 준비 점검 등의 진행 중·성공·실패 인라인 표시
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1444,14 +1444,14 @@ private fun HarnessRunFeedback(runStatus: RunStatusProjection, onUiEvent: (HrnsU
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             kind.toRetryAction()?.let { retryAction ->
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = kind.retryLabel(locale),
                     enabled = true,
                     onClick = { onUiEvent(HrnsUiEvent.ActionRequested(retryAction)) },
                 )
             }
             if (runStatus.cancelEnabled) {
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = strings.strategy.cancelRunButton,
                     enabled = true,
                     onClick = { onUiEvent(HrnsUiEvent.HarnessRunCancelRequested) },
@@ -1478,10 +1478,10 @@ fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit)
         )
 
         SectionCard(title = strings.run.detailTitle, eyebrow = "Details") {
-            // 기본 화면에서는 접어 둔다 — 필요할 때만 펼쳐서 보는 저수준 상세 정보다(새 Phase 6).
+            // 기본 화면에서는 접어 둔다 — 필요할 때만 펼쳐서 보는 저수준 상세 정보다.
             var stagesExpanded by remember { mutableStateOf(false) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = if (stagesExpanded) strings.run.hideStagesButton else strings.run.showStagesButton,
                     enabled = true,
                     onClick = { stagesExpanded = !stagesExpanded },
@@ -1508,12 +1508,12 @@ fun RunScreen(projection: RunStatusProjection, onUiEvent: (HrnsUiEvent) -> Unit)
 
         SectionCard(title = strings.actionsSectionTitle, eyebrow = "Actions") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = strings.run.cancelRunButton,
                     enabled = projection.cancelEnabled,
                     onClick = { onUiEvent(HrnsUiEvent.HarnessRunCancelRequested) },
                 )
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = strings.run.forceReleaseLockButton,
                     enabled = projection.forceReleaseEnabled,
                     onClick = { onUiEvent(HrnsUiEvent.LockForceReleaseRequested) },
@@ -1797,7 +1797,7 @@ private fun PathProbeRow(result: PathProbeResult) {
                 color = colors.tertiaryText,
             )
         }
-        // 새 Phase 8 §6: 미설정 상태에는 단순 label만 두지 않고, 무엇이 없고 어디서 채우는지
+        // 미설정 상태에는 단순 label만 두지 않고, 무엇이 없고 어디서 채우는지
         // 안내한다. 등록·경로 지정은 모두 이 화면(프로젝트 관리) 아래 카드에서 이뤄진다.
         if (result.state == PathProbeState.NotConfigured) {
             Text(
@@ -1812,13 +1812,13 @@ private fun PathProbeRow(result: PathProbeResult) {
 private fun PathProbeResult.unsetGuidance(locale: io.hrns_now.core.domain.model.AppLocale): String =
     when (locale) {
         io.hrns_now.core.domain.model.AppLocale.Korean -> when (label) {
-            "KitRoot" -> "기본값은 개발용 내장 SDK입니다. 외부 Harness Kit을 쓰려면 아래 프로젝트 관리 > 고급 설정에서 경로를 지정하세요."
+            "KitRoot" -> "기본값은 기본 Harness Kit입니다. 외부 Harness Kit을 쓰려면 아래 프로젝트 관리 > 고급 설정에서 경로를 지정하세요."
             "WorkspaceRoot" -> "아래 프로젝트 관리에서 프로젝트를 등록하면 Workspace root가 채워집니다."
             "ProjectRoot" -> "아래 프로젝트 관리에서 프로젝트를 등록하면 Repository root가 채워집니다."
             else -> "선택 항목입니다. 필요하면 프로젝트 등록 시 함께 지정하세요."
         }
         io.hrns_now.core.domain.model.AppLocale.English -> when (label) {
-            "KitRoot" -> "The default is the internal developer SDK. To use an external Harness Kit, set the path in project management > advanced settings below."
+            "KitRoot" -> "The default is the Default Harness Kit. To use an external Harness Kit, set the path in project management > advanced settings below."
             "WorkspaceRoot" -> "Registering a project in project management below fills in the workspace root."
             "ProjectRoot" -> "Registering a project in project management below fills in the repository root."
             else -> "This is optional. Set it together when registering a project if needed."

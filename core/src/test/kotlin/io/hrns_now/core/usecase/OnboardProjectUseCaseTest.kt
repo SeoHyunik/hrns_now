@@ -36,7 +36,7 @@ import kotlin.test.assertTrue
 
 /**
  * `enter-project.ps1` → `validate-ops.ps1 -Json` → bridge probe → 4-file probe →
- * State 재조회를 **하나의 lock** 안에서 순서대로 수행하는지 고정한다(Phase 10). daily
+ * State 재조회를 **하나의 lock** 안에서 순서대로 수행하는지 고정한다. daily
  * `ActionPolicy`/`ExecuteHarnessActionUseCase`와 완전히 분리된 별도 lifecycle이다.
  */
 class OnboardProjectUseCaseTest {

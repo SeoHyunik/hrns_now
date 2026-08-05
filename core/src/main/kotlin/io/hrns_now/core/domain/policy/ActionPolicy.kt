@@ -28,7 +28,7 @@ import io.hrns_now.core.result.StateReadResult
  * 외부 문자열의 원문은 진단용 domain 값에 보존하되, 이 정책의 사용자 표시 문구에는
  * 포함하지 않는다. unknown·불일치·불완전한 실행 계약은 모두 fail-closed 처리한다. 차단
  * 사유는 문구가 아니라 typed [BlockedReasonKey]로만 낸다 — presentation이 locale별 문구로
- * 투영한다(Phase 8 보완, `doc/claude_prompts/phase8-completion-localization-native-qa.md` §1).
+ * 투영한다.
  */
 class ActionPolicy {
 
@@ -111,8 +111,7 @@ class ActionPolicy {
      * `scripts/run-cycle.ps1`의 "Fresh-day bootstrap note" 주석 — 새 날짜 폴더에서
      * `WORKFLOW_STATE.json`은 `init-workspace` 이후에 생성된다). Malformed/UnsupportedSchema/
      * EncodingError/AccessDenied나 과거 날짜, compatibility/boundary 미확인, 실행 중/lock 상태는
-     * 모두 fail-closed로 이 경로에서 제외한다(새 Phase 8, `doc/claude_prompts/
-     * phase8-workflow-clarity-feedback.md` §2.2).
+     * 모두 fail-closed로 이 경로에서 제외한다.
      */
     private fun bootstrapEligible(stateRead: StateReadResult?, context: ActionContext): Boolean =
         stateRead is StateReadResult.Missing &&

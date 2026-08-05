@@ -103,19 +103,19 @@ class CockpitProjectionAssembler(
         when (locale) {
             AppLocale.Korean -> when (source) {
                 null -> "외부 설정(환경변수)"
-                RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK"
+                RuntimeSource.DefaultKit -> "기본 Harness Kit"
                 is RuntimeSource.ExternalKit -> "외부 Harness Kit"
             }
             AppLocale.English -> when (source) {
                 null -> "External config (environment variable)"
-                RuntimeSource.InternalDeveloperSdk -> "Internal developer SDK"
+                RuntimeSource.DefaultKit -> "Default Harness Kit"
                 is RuntimeSource.ExternalKit -> "External Harness Kit"
             }
         }
 
     /**
      * runtime source가 [RuntimeResolution.Resolved]가 아닐 때만 채운다 — compatibility 진단과
-     * 근거가 다른 별개의 fail-closed 원인이다(새 Phase 7, `doc/hrns_now_design_pattern.md` §20.1).
+     * 근거가 다른 별개의 fail-closed 원인이다(`doc/hrns_now_design_pattern.md` §20.1).
      */
     private fun diagnosticsForRuntime(
         runtimeResolution: RuntimeResolution?,
@@ -127,11 +127,11 @@ class CockpitProjectionAssembler(
             is RuntimeResolution.Missing -> CockpitDiagnostics(
                 whatHappened = when (locale) {
                     AppLocale.Korean -> when (runtimeResolution.source) {
-                        RuntimeSource.InternalDeveloperSdk -> "개발용 내장 SDK(.local\\harness-kit)를 찾을 수 없습니다."
+                        RuntimeSource.DefaultKit -> "기본 Harness Kit(.local\\harness-kit)을 찾을 수 없습니다."
                         is RuntimeSource.ExternalKit -> "지정한 외부 Harness Kit 경로를 찾을 수 없습니다."
                     }
                     AppLocale.English -> when (runtimeResolution.source) {
-                        RuntimeSource.InternalDeveloperSdk -> "The internal developer SDK (.local\\harness-kit) couldn't be found."
+                        RuntimeSource.DefaultKit -> "The default Harness Kit (.local\\harness-kit) couldn't be found."
                         is RuntimeSource.ExternalKit -> "The specified external Harness Kit path couldn't be found."
                     }
                 },
@@ -205,7 +205,7 @@ class CockpitProjectionAssembler(
         return when (stateRead) {
             is StateReadResult.Success -> null
 
-            // 오늘 날짜의 정상적인 "아직 시작 안 함" 상태다(새 Phase 8 §2/§3) — BootstrapDay가
+            // 오늘 날짜의 정상적인 "아직 시작 안 함" 상태다 — BootstrapDay가
             // 열려 있으면 오류/경고 진단 카드가 아니라 그 typed CTA 자체가 다음 행동을 알려준다.
             is StateReadResult.Missing -> if (recommended.primary == UiAction.BootstrapDay) {
                 null

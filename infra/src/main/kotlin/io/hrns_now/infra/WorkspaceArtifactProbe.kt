@@ -111,7 +111,7 @@ class WorkspaceArtifactProbe(
         )
 
     /**
-     * harness-kit 현행 계약(2026-07-23 실측): daily 4-file은 `<workspaceRoot>\<yyyy-MM-dd>\` 아래에 있고,
+     * harness-kit의 현재 계약: daily 4-file은 `<workspaceRoot>\<yyyy-MM-dd>\` 아래에 있고,
      * `WORK_QUEUE.json`/`WORKDAY_STATE.json`은 명시적 `-ForceDualFileCompatibility` fallback에서만
      * 생성되는 legacy 산출물이다. day 산출물 로그와 wrapper 실행 로그는 각각
      * `<dayRoot>\logs\`, `<workspaceRoot>\logs\<yyyy-MM-dd>\`에 있다.

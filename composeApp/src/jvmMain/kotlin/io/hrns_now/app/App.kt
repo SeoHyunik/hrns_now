@@ -59,7 +59,7 @@ import io.hrns_now.infra.lock.LocalProcessLockAdapter
 import io.hrns_now.infra.process.PowerShellHarnessAdapter
 import io.hrns_now.infra.registry.JsonProjectRegistryAdapter
 import io.hrns_now.infra.registry.RealPathGateway
-import io.hrns_now.infra.runtime.DeveloperSdkRuntimeResolver
+import io.hrns_now.infra.runtime.DefaultKitRuntimeResolver
 import io.hrns_now.infra.git.CommandLineGitStatusAdapter
 import io.hrns_now.infra.preferences.UiPreferencesFileAdapter
 import io.hrns_now.infra.recovery.WorkspaceRecoveryDiagnosticsAdapter
@@ -111,8 +111,8 @@ fun App() {
         { action ->
             when (action) {
                 // 순수 navigation이다 — Harness/State에 영향을 주지 않으므로 ViewModel 이벤트로 보내지 않는다.
-                // (새 Phase 8 §2.3/§5: 이전에는 이 분기 밖 action들이 else로 떨어져 ViewModel도
-                // 처리하지 않는 완전한 무반응 버튼이었다.)
+                // 이 분기에 없는 action만 else로 떨어져 ViewModel 이벤트로 위임되며, ViewModel도 해당
+                // action을 실제로 처리해 반응 없는 버튼으로 남지 않도록 한다.
                 UiAction.OpenRecoveryCenter, UiAction.ReviewClosure -> selectedRoute = AppRoute.Recovery
                 UiAction.ConnectProject, UiAction.SelectWorkspaceDay -> selectedRoute = AppRoute.Setup
                 UiAction.ReviewPlan -> selectedRoute = AppRoute.Strategy
@@ -218,14 +218,14 @@ private fun resolveRegistryPath(): Path {
     return Paths.get(appData, "hrns-now", "projects.json")
 }
 
-/** `%APPDATA%\hrns-now\ui-preferences.json` — locale처럼 UI 소유 설정 전용 경로다(새 Phase 8 §7). */
+/** `%APPDATA%\hrns-now\ui-preferences.json` — locale처럼 UI 소유 설정 전용 경로다. */
 private fun resolveUiPreferencesPath(): Path {
     val appData = System.getenv("APPDATA")?.trim()?.takeIf(String::isNotEmpty)
         ?: (System.getProperty("user.home") + "\\AppData\\Roaming")
     return Paths.get(appData, "hrns-now", "ui-preferences.json")
 }
 
-/** `%LOCALAPPDATA%\hrns-now\locks\` — Harness workspace 밖의 앱 소유 lock 디렉터리다(Phase 3). */
+/** `%LOCALAPPDATA%\hrns-now\locks\` — Harness workspace 밖의 앱 소유 lock 디렉터리다. */
 private fun resolveLocksRoot(): Path {
     val localAppData = System.getenv("LOCALAPPDATA")?.trim()?.takeIf(String::isNotEmpty)
         ?: (System.getProperty("user.home") + "\\AppData\\Local")
@@ -250,10 +250,10 @@ private fun createProductionViewModel(): AppViewModel {
     val registry = JsonProjectRegistryAdapter(registryPath = resolveRegistryPath())
     val realPathGateway = RealPathGateway()
     val bridgeProbe = RepositoryBridgeProbe()
-    // 새 Phase 7: HRNS-NOW source checkout 상대 `.local/harness-kit` 개발용 SDK와 명시적 외부
-    // Kit을 모두 이 하나의 resolver로 해석한다 — internal/external 분기는 여기 한 곳에만 있다
+    // HRNS-NOW source checkout 상대 `.local/harness-kit` 기본 Kit와 명시적 외부
+    // Kit을 모두 이 하나의 resolver로 해석한다 — default/external 분기는 여기 한 곳에만 있다
     // (`doc/hrns_now_design_pattern.md` §20.1).
-    val runtimeSourceResolver = DeveloperSdkRuntimeResolver()
+    val runtimeSourceResolver = DefaultKitRuntimeResolver()
     return AppViewModel(
         loadCockpit = loadCockpit,
         changeProbe = WorkflowStateChangeProbe()::lastModifiedOrNull,

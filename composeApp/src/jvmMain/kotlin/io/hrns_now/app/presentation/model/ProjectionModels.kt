@@ -5,7 +5,7 @@ import io.hrns_now.core.domain.model.UiAction
 
 /**
  * Compose 화면 전용 read model이다. domain이 아니므로 `core`에 두지 않는다
- * (`doc/hrns_now_design_pattern.md` §3.1/§9, `doc/hrns_now_claude_plan.md` Phase 1C).
+ * (`doc/hrns_now_design_pattern.md` §3.1/§9).
  */
 data class StatusChipModel(
     val label: String,
@@ -26,7 +26,7 @@ data class ActionButtonModel(
     /** 표시 label과 분리된 typed 실행 식별자다. null이면 정보를 보여 주는 비실행 버튼이다. */
     val action: UiAction? = null,
     /**
-     * enabled 여부와 무관하게 항상 보여 줄 목적 설명이다(새 Phase 8 §5.2) — `연결 점검`/
+     * enabled 여부와 무관하게 항상 보여 줄 목적 설명이다 — `연결 점검`/
      * `작업 준비 점검`처럼 이름만으로 목적이 드러나지 않는 action에 붙인다. [helperText]는 비활성
      * 사유 전용으로 남긴다.
      */
@@ -55,7 +55,7 @@ data class SetupProjection(
 )
 
 /**
- * 사람이 읽는 `TODAY_STRATEGY.md` 원문 카드 전용 read model이다(새 Phase 8 §3) — 일반
+ * 사람이 읽는 `TODAY_STRATEGY.md` 원문 카드 전용 read model이다 — 일반
  * `InfoCardModel` 목록과 분리해 안전한 Markdown 렌더링과 문서 날짜/읽기 전용 배지를 붙인다.
  */
 data class DevelopmentStrategyCardModel(
@@ -72,7 +72,7 @@ data class TodayWorkProjection(
     val sections: List<InfoCardModel>,
     val actions: List<ActionButtonModel>,
     val note: String,
-    /** 요청 저장 결과 안내다(Phase 4) — 성공/충돌/실패 문구를 그대로 보여준다. */
+    /** 요청 저장 결과 안내다 — 성공/충돌/실패 문구를 그대로 보여준다. */
     val requestInboxNotice: String? = null,
     /** 요청 저장 진행 중 여부다 — 편집기 제출 버튼의 중복 클릭 가드에 쓰인다. */
     val requestSaving: Boolean = false,
@@ -82,7 +82,7 @@ data class TodayWorkProjection(
     val requestSaveSucceeded: Boolean = false,
     /**
      * 오늘 State가 Missing이고 `ActionPolicy`가 실제로 `BootstrapDay`를 primary로 허용할 때만
-     * true다(Phase 8 보완 §2.1) — 이 값이 true인 동안만 요구사항 카드가 "오늘 작업 시작" 단일
+     * true다 — 이 값이 true인 동안만 요구사항 카드가 "오늘 작업 시작" 단일
      * CTA로 전환된다. `actions`에는 이 typed action을 중복 포함하지 않는다.
      */
     val bootstrapEligible: Boolean = false,
@@ -101,7 +101,7 @@ data class RecoveryCardModel(
 )
 
 /**
- * Recovery Center와 마감 확인 화면 projection이다(Phase 5). `closureChecklist`는
+ * Recovery Center와 마감 확인 화면 projection이다. `closureChecklist`는
  * [io.hrns_now.core.domain.policy.ClosureDecision]을 read-only로 표현하고, 실행 CTA
  * enable/disable은 여전히 `ActionPolicy`/`ClosurePolicy`가 결정한 값만 그대로 보여준다 —
  * 이 화면 자체가 판단하지 않는다.
@@ -137,13 +137,13 @@ data class RunStatusProjection(
     val stageDetailRows: List<Pair<String, String>>,
     val failureChips: List<StatusChipModel>,
     val actions: List<ActionButtonModel>,
-    /** Doctor/ValidateOps 실행 취소가 가능한 상태인가(Phase 3) — 실제 클릭은 typed event로 연결한다. */
+    /** Doctor/ValidateOps 실행 취소가 가능한 상태인가 — 실제 클릭은 typed event로 연결한다. */
     val cancelEnabled: Boolean = false,
-    /** 현재 lock을 강제 해제할 수 있는 상태인가(Phase 3). */
+    /** 현재 lock을 강제 해제할 수 있는 상태인가. */
     val forceReleaseEnabled: Boolean = false,
     /**
      * 연결 점검/작업 준비 점검을 화면 어디서나(프로젝트 관리·작업 계획) 인라인으로 보여주기 위한
-     * 최근 실행 요약이다(새 Phase 6 UI/UX). raw stdout/session은 담지 않고 이미 typed/label 처리된
+     * 최근 실행 요약이다. raw stdout/session은 담지 않고 이미 typed/label 처리된
      * 값만 담는다 — [io.hrns_now.app.presentation.mapper.RunStatusProjectionAssembler]가 조립한다.
      */
     val isRunning: Boolean = false,

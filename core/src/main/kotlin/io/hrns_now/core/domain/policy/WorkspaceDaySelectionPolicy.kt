@@ -29,8 +29,8 @@ data class WorkspaceDaySelection(
  */
 class WorkspaceDaySelectionPolicy(
     /**
-     * 오늘 날짜다. 새 Phase 8 §6: 호출자(`LoadCockpitUseCase`)가 "명시적으로 선택한 오늘"을
-     * 파일 시스템 discovery 여부와 무관하게 허용할 수 있도록 공개했다 — 이 값 자체가 선택 우선순위를
+     * 오늘 날짜다. 호출자(`LoadCockpitUseCase`)가 "명시적으로 선택한 오늘"을
+     * 파일 시스템 discovery 여부와 무관하게 허용할 수 있도록 공개한 값이다 — 이 값 자체가 선택 우선순위를
      * 바꾸지는 않는다(그 로직은 여전히 [select] 안에만 있다).
      */
     val today: LocalDate = LocalDate.now(),

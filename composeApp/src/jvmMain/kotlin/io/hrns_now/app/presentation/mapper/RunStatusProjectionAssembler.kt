@@ -16,9 +16,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Harness 실행·진단 상태와 lock 조회 결과를 [RunStatusProjection]으로 조립한다(Phase 3/4).
+ * Harness 실행·진단 상태와 lock 조회 결과를 [RunStatusProjection]으로 조립한다.
  * raw stdout/session/PID 원문을 그대로 노출하지 않는다 — [ProcessRunResult]는 이미
- * `SecretMaskingProcessRunner`를 거친 값이며, 여기서는 label/tone 변환만 한다. 새 Phase 8 보완:
+ * `SecretMaskingProcessRunner`를 거친 값이며, 여기서는 label/tone 변환만 한다.
  * 화면에서 선택된 [AppLocale]로 투영한다.
  */
 class RunStatusProjectionAssembler {
@@ -267,7 +267,7 @@ class RunStatusProjectionAssembler {
             is ProcessRunResult.StartFailed, is ProcessRunResult.TimedOut, is ProcessRunResult.Cancelled -> "error"
         }
 
-    /** 인라인 실행 feedback 카드(새 Phase 6)의 "짧은 결과 요약" 한 줄이다. */
+    /** 인라인 실행 feedback 카드의 "짧은 결과 요약" 한 줄이다. */
     private fun ProcessRunResult.summaryLine(locale: AppLocale): String =
         when (this) {
             is ProcessRunResult.Completed -> {
@@ -345,7 +345,7 @@ internal fun HarnessCommandKind.displayLabel(locale: AppLocale = AppLocale.Korea
     }
 
 /**
- * 인라인 실행 feedback 카드(새 Phase 6)의 "다시 점검/다시 검증" 재시도 버튼이 다시 호출할 typed
+ * 인라인 실행 feedback 카드의 "다시 점검/다시 검증" 재시도 버튼이 다시 호출할 typed
  * action이다. Bootstrap/Planning류는 각자의 화면 action 그룹에서 이미 재클릭 가능하므로 별도
  * 재시도 CTA를 중복 제공하지 않는다 — 연결 점검·작업 준비 점검만 명시적 재시도 문구를 붙인다.
  */

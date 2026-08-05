@@ -13,7 +13,7 @@ import java.time.LocalDate
 data class LockInspection(val payload: LockPayload, val state: LockState)
 
 /**
- * UI 소유 lock의 port다(`doc/claude_prompts/phase3-process-adapter-lock.md` §4). 구현체는
+ * UI 소유 lock의 port다. 구현체는
  * `%LOCALAPPDATA%\hrns-now\locks\<projectId>\<yyyy-MM-dd>.lock.json`, PID lookup, 시계를
  * 알아도 되지만 이 interface 자체는 모른다. Lock은 decorator로 만들지 않는다 — 획득/해제는
  * 호출자(실행 조율부)가 명시적으로 관리한다(`doc/hrns_now_design_pattern.md` §12).

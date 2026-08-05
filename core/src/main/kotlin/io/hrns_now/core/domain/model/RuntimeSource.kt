@@ -4,17 +4,17 @@ import java.nio.file.Path
 
 /**
  * 프로젝트의 Harness runtime을 어디서 가져오는지에 대한 typed 선택이다
- * (`doc/hrns_now_design_pattern.md` §20.1, 새 Phase 7). Registry는 이 선택만 저장한다 —
- * [InternalDeveloperSdk]의 실제 절대 경로는 저장하지 않고, [ExternalKit.root]만 사용자가
+ * (`doc/hrns_now_design_pattern.md` §20.1). Registry는 이 선택만 저장한다 —
+ * [DefaultKit]의 실제 절대 경로는 저장하지 않고, [ExternalKit.root]만 사용자가
  * 명시적으로 등록한 값이다.
  */
 sealed interface RuntimeSource {
     /**
-     * HRNS-NOW source checkout 상대 경로 `.local/harness-kit`에 있는, 사용자가 제공하는
-     * Git-ignore 개발용 SDK checkout이다. 배포 artifact가 아니며 MSI/release distributable에
+     * HRNS-NOW source checkout 상대 경로 `.local/harness-kit`에 있는, 사용자가 준비하는
+     * Git-ignore 기본 Harness Kit checkout이다. 배포 artifact가 아니며 MSI/release distributable에
      * 포함되지 않는다.
      */
-    data object InternalDeveloperSdk : RuntimeSource
+    data object DefaultKit : RuntimeSource
 
     /** 사용자가 고급 설정에서 명시적으로 선택한 외부 Harness Kit 경로다. */
     data class ExternalKit(val root: Path) : RuntimeSource

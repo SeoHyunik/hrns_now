@@ -31,7 +31,7 @@ internal data class HarnessProjectDto(
     val id: String? = null,
     @SerialName("display_name") val displayName: String? = null,
     /**
-     * 새 Phase 7의 typed [RuntimeSource] 선택이다. `"internal_developer_sdk"` | `"external_kit"`만
+     * typed [RuntimeSource] 선택이다. `"internal_developer_sdk"` | `"external_kit"`만
      * 유효하다. 이 field가 없는(=schema_version 1.0 초기 항목) legacy entry는 [kitRoot]가
      * 있으면 `external_kit`으로 읽기 시점에 해석한다(`doc/hrns_now_design_pattern.md` §20.1) —
      * 별도 batch migration 없이, 다음에 이 project가 다시 저장될 때 이 field가 채워진다.
@@ -51,7 +51,7 @@ internal sealed interface ProjectMapResult {
     data class Failure(val message: String) : ProjectMapResult
 }
 
-private const val RUNTIME_SOURCE_INTERNAL = "internal_developer_sdk"
+private const val RUNTIME_SOURCE_DEFAULT_KIT_WIRE_VALUE = "internal_developer_sdk"
 private const val RUNTIME_SOURCE_EXTERNAL = "external_kit"
 
 /**
@@ -91,11 +91,11 @@ internal fun HarnessProjectDto.toDomain(): ProjectMapResult {
     }
 
     val runtimeSource = when (val typeRaw = runtimeSourceType?.trim()?.takeIf(String::isNotEmpty)) {
-        RUNTIME_SOURCE_INTERNAL -> {
+        RUNTIME_SOURCE_DEFAULT_KIT_WIRE_VALUE -> {
             if (!kitRoot.isNullOrBlank()) {
-                return ProjectMapResult.Failure("project.kit_root must be absent for internal runtime source (id=$id)")
+                return ProjectMapResult.Failure("project.kit_root must be absent for default runtime source (id=$id)")
             }
-            RuntimeSource.InternalDeveloperSdk
+            RuntimeSource.DefaultKit
         }
         RUNTIME_SOURCE_EXTERNAL, null -> {
             // typeRaw == null: schema_version 1.0 legacy entry — kit_root만 있던 시절의 저장값을
@@ -148,7 +148,7 @@ private fun isPortableAbsolutePath(raw: String, parsed: Path): Boolean =
 private val WINDOWS_DRIVE_ABSOLUTE = Regex("""^[A-Za-z]:[\\/].*""")
 
 /**
- * `InternalDeveloperSdk`는 선택 자체만 쓰고 `kit_root`는 항상 `null`이다 — repository-relative
+ * `DefaultKit`는 선택 자체만 쓰고 `kit_root`는 항상 `null`이다 — repository-relative
  * SDK의 절대 경로를 저장하면 source checkout을 다른 위치로 옮겼을 때 깨진 경로가 남는다
  * (`doc/hrns_now_design_pattern.md` §20.1). `ExternalKit`만 사용자가 명시한 절대 경로를 저장한다.
  */
@@ -157,7 +157,7 @@ internal fun HarnessProject.toDto(): HarnessProjectDto =
         id = id.value,
         displayName = displayName,
         runtimeSourceType = when (runtimeSource) {
-            RuntimeSource.InternalDeveloperSdk -> RUNTIME_SOURCE_INTERNAL
+            RuntimeSource.DefaultKit -> RUNTIME_SOURCE_DEFAULT_KIT_WIRE_VALUE
             is RuntimeSource.ExternalKit -> RUNTIME_SOURCE_EXTERNAL
         },
         kitRoot = (runtimeSource as? RuntimeSource.ExternalKit)?.root?.toString(),
