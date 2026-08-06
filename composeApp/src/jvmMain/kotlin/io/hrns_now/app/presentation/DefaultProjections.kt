@@ -19,10 +19,10 @@ import io.hrns_now.core.domain.model.UiAction
 /**
  * production 기본 경로에서 쓰는, mock이 아닌 정적/실데이터 기반 projection 조립부다.
  *
- * `MockProjectionProvider`는 명시적 demo mode 전용이므로(`doc/claude_prompts/phase1c-live-cockpit.md`),
- * production은 이 파일의 함수로 shell/setup 화면을 구성한다. 아직 실행 연결이 없는 화면
- * (작업 계획/실행 기록)은 성공한 것처럼 꾸미지 않고 "미구현" 상태를 그대로 보여준다. 새 Phase 8
- * 보완: 화면에서 선택된 [AppLocale]로 투영한다 — 기본값 Korean은 기존 호출부/테스트가 그대로
+ * `MockProjectionProvider`는 `demo` 패키지의 명시적 demo mode에만 존재하므로, production은
+ * 이 파일의 함수로 shell/setup 화면을 구성한다. 아직 실행 연결이 없는 화면
+ * (작업 계획/실행 기록)은 성공한 것처럼 꾸미지 않고 "미구현" 상태를 그대로 보여준다.
+ * 화면에서 선택된 [AppLocale]로 투영하며, 기본값 Korean은 기존 호출부/테스트가 그대로
  * 컴파일되도록 남긴다.
  */
 fun buildShellProjection(locale: AppLocale = AppLocale.Korean): ShellProjection =
@@ -165,9 +165,10 @@ private fun PathProbeState.summaryLabel(locale: AppLocale): String =
 /**
  * "작업 계획" 화면 projection이다. 사람용 `TODAY_STRATEGY.md` 원문과 기계
  * `WORKFLOW_STATE.json` queue 판단을 서로 다른 섹션으로 분리해 보여준다 — 둘이 어긋나면
- * `WORKFLOW_STATE.json`(= [cockpit])이 최종 진실이다(`doc/claude_prompts/phase4-standard-daily-flow.md` §3).
+ * `WORKFLOW_STATE.json`(= [cockpit])이 최종 진실이다.
  * action 목록은 [cockpit]이 이미 계산한 allowed action 중 일일 실행 흐름에 속하는 것만 남긴다 —
- * 연결 점검/작업 준비 점검은 프로젝트 관리 화면, Closure류는 Phase 5 범위라 여기서 다루지 않는다.
+ * 연결 점검/작업 준비 점검은 프로젝트 관리 화면, Closure류는 Recovery Center 화면의 책임이라
+ * 여기서 다루지 않는다.
  */
 fun buildTodayWorkProjection(
     cockpit: CockpitProjection,
@@ -188,7 +189,7 @@ fun buildTodayWorkProjection(
         UiAction.RunDocSlice,
         UiAction.RunValidationSlice,
     )
-    // 새 Phase 8 보완 §2.1: 실제 BootstrapDay 실행 CTA는 화면당 한 곳(요구사항 카드)에만 둔다 —
+    // 실제 BootstrapDay 실행 CTA는 화면당 한 곳(요구사항 카드)에만 둔다 —
     // 아래 일반 action 목록에서 제외하고 별도 필드로 분리해 렌더링을 강제한다.
     val bootstrapItem = cockpit.primaryAction?.takeIf { it.action == UiAction.BootstrapDay }
     val bootstrapEligible = bootstrapItem != null

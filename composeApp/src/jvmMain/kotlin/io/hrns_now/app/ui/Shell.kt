@@ -62,7 +62,6 @@ import io.hrns_now.core.domain.model.ArtifactRequirement
 import io.hrns_now.core.domain.model.WorkspaceArtifactSummary
 import io.hrns_now.core.domain.model.UiAction
 import io.hrns_now.app.presentation.model.ShellProjection
-import io.hrns_now.infra.InfraMarker
 import kotlinx.coroutines.delay
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,7 +263,7 @@ private fun TopRibbon(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 브랜드 + 활성 프로젝트 — 사용자가 화면을 열자마자 어느 프로젝트를 보고 있는지
-        // 즉시 식별할 수 있어야 한다(새 Phase 6 제품 목표 1, Phase 9 QA02).
+        // 즉시 식별할 수 있어야 한다.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -289,7 +288,7 @@ private fun TopRibbon(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        // QA02 §4: 활성 프로젝트가 없을 때는 locale과 무관하게 literal "NONE"을
+                        // 활성 프로젝트가 없을 때는 locale과 무관하게 literal "NONE"을
                         // 보여준다 — `strings.notSelected`(로케일 문구)를 쓰지 않는다.
                         text = activeProjectName ?: "NONE",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 16.sp),
@@ -313,7 +312,7 @@ private fun TopRibbon(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // 알림함 — 우측 상단, 배지·transient toast·이력 조회(새 Phase 8 §4.2)
+        // 알림함 — 우측 상단, 배지·transient toast·이력 조회
         NotificationBell(
             notifications = notifications,
             onDismiss = onDismissNotification,
@@ -321,7 +320,7 @@ private fun TopRibbon(
             strings = strings,
         )
 
-        // 한국어/English 전환 — 선택 즉시 적용되고 UiPreferencesPort에만 저장된다(새 Phase 8 §7).
+        // 한국어/English 전환 — 선택 즉시 적용되고 UiPreferencesPort에만 저장된다.
         LocaleToggle(locale = locale, strings = strings, onLocaleChange = onLocaleChange)
 
         // 테마 토글
@@ -336,7 +335,7 @@ private fun LocaleToggle(locale: AppLocale, strings: ChromeStrings, onLocaleChan
         onClick = {
             onLocaleChange(if (locale == AppLocale.Korean) AppLocale.English else AppLocale.Korean)
         },
-        // QA02 §3: 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
+        // 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
         modifier = Modifier.pointerHoverIcon(PointerIcon.Hand).heightIn(min = 44.dp),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
@@ -354,7 +353,7 @@ private fun LocaleToggle(locale: AppLocale, strings: ChromeStrings, onLocaleChan
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 전역 알림함 — 배지·이력 dropdown·transient toast(새 Phase 8 §4.2)
+// 전역 알림함 — 배지·이력 dropdown·transient toast
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -373,7 +372,7 @@ private fun NotificationBell(
             trayOpen = !trayOpen
             if (trayOpen) onMarkAllRead()
         },
-        // QA02 §3: 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
+        // 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
         modifier = Modifier.pointerHoverIcon(PointerIcon.Hand).heightIn(min = 44.dp),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
@@ -485,7 +484,7 @@ private fun NotificationTone.dotColor(): Color {
 }
 
 /**
- * 최근 미확인 알림 하나를 짧게 보여주고 자동으로 사라진다(새 Phase 8 §4.2). 사용자가 명시적으로
+ * 최근 미확인 알림 하나를 짧게 보여주고 자동으로 사라진다. 사용자가 명시적으로
  * 닫을 수도 있다 — 둘 다 해당 항목을 읽음 처리만 할 뿐 알림함 이력에서 지우지는 않는다.
  */
 @Composable
@@ -539,7 +538,7 @@ private fun NotificationToastHost(
 
 @Composable
 private fun BrandMark() {
-    // Phase 9 QA02: 1440x900 기준 내부 로고는 84dp를 기준으로 한다.
+    // 1440x900 기준 내부 로고는 84dp를 기준으로 한다.
     Box(
         modifier = Modifier
             .size(84.dp),
@@ -644,7 +643,7 @@ private fun ThemeToggle(themeMode: HrnsThemeMode, onClick: () -> Unit) {
 
     TextButton(
         onClick = onClick,
-        // QA02 §3: 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
+        // 우측 상단 제어는 최소 44dp의 클릭 영역을 제공한다.
         modifier = Modifier.pointerHoverIcon(PointerIcon.Hand).heightIn(min = 44.dp),
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.textButtonColors(
@@ -803,10 +802,9 @@ private fun InspectorPanel(
             )
         }
 
-        // 새 Phase 8 §5.2: compact technical panel은 하나의 영문 표기 규칙(STATUS/ENVIRONMENT/
-        // ARTIFACTS)으로 통일한다 — 이전에는 "아티팩트"(한글)/"Meta"(영문 약어)/"Read-only"가
-        // 서로 다른 언어·모호한 제목으로 섞여 있었다 — 이 세 패널 제목은 Phase 8 보완에서도 그대로
-        // 영문으로 고정한다(의도적 예외, phase8-completion-report.md §5 참고).
+        // compact technical panel은 하나의 영문 표기 규칙(STATUS/ENVIRONMENT/ARTIFACTS)으로
+        // 통일한다 — "아티팩트"(한글)/"Meta"(영문 약어)/"Read-only"처럼 서로 다른 언어·모호한
+        // 제목이 섞이지 않도록, 이 세 패널 제목은 의도적으로 영문으로 고정한다.
         SectionCard(title = "ARTIFACTS", eyebrow = strings.artifactsEyebrow) {
             // legacy fallback 파일(WORKDAY_STATE.json 등)은 기본 화면에서 숨긴다 (계약 2.2).
             val visibleItems = artifactSummary.items.filter { it.requirement != ArtifactRequirement.Legacy }
@@ -836,26 +834,6 @@ private fun InspectorPanel(
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                     color = colors.secondaryText,
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "infra",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 11.5.sp,
-                            letterSpacing = 0.6.sp,
-                        ),
-                        color = colors.tertiaryText,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = InfraMarker.name,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                        ),
-                        color = colors.primaryText,
-                    )
-                }
                 // 이전에는 별도의 상시 노출 "앱이 소유하지 않음" 경고 카드였다 — 행동을 안내하지
                 // 않는 반복 문구라 이 화면 기본 구성에서 제거하고, 필요한 사실만 여기 짧게 남긴다.
                 if (projection.notAppOwnedMessages.isNotEmpty()) {

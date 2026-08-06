@@ -3,14 +3,14 @@ package io.hrns_now.app.ui
 import androidx.compose.runtime.staticCompositionLocalOf
 import io.hrns_now.core.domain.model.AppLocale
 
-/** 현재 화면 언어다(새 Phase 8 §7). 기본값은 한국어이며, `App()`이 `AppViewModel.locale`로 덮어쓴다. */
+/** 현재 화면 언어다. 기본값은 한국어이며, `App()`이 `AppViewModel.locale`로 덮어쓴다. */
 val LocalAppLocale = staticCompositionLocalOf { AppLocale.Korean }
 
 /**
  * `infra`(`WorkspacePathProbe`)가 아직 typed 값이 아니라 고정된 한국어 단문으로 내는
- * `WorkspaceReadiness` 라벨/`PathProbeResult.message`를 위한, 닫힌 어휘 전용 번역표다(Phase 8
- * 보완 §1). 이 함수는 표시만 바꿀 뿐 어떤 분기·판단도 하지 않는다 — `infra`를 typed key로
- * 다시 설계하는 것은 이 Phase 범위를 넘는 대규모 변경이라 남겨 둔다(보고서 §3에 근거 기록).
+ * `WorkspaceReadiness` 라벨/`PathProbeResult.message`를 위한, 닫힌 어휘 전용 번역표다.
+ * 이 함수는 표시만 바꿀 뿐 어떤 분기·판단도 하지 않는다 — `infra`를 typed key로
+ * 다시 설계하는 것은 이 화면 범위를 넘는 별도의 대규모 변경이라 지금은 다루지 않는다.
  * 알려지지 않은 문자열은 원문 그대로 보존한다(원문 손실 방지).
  */
 fun localizeInfraLabel(korean: String, locale: AppLocale): String {
@@ -44,9 +44,9 @@ fun localizeInfraLabel(korean: String, locale: AppLocale): String {
 }
 
 /**
- * 앱 상시 chrome(사이드바·상단 리본·알림함)의 정적 label 전용 locale catalog다(새 Phase 8 §7).
+ * 앱 상시 chrome(사이드바·상단 리본·알림함)의 정적 label 전용 locale catalog다.
  * Setup/Cockpit/Strategy/Run/Recovery 화면 본문(각 projection이 조립하는 카드 제목·설명·버튼
- * 문구 다수)은 이 Phase에서 전부 번역하지 않았다 — 범위와 사유는 phase8 보고서에 남긴다.
+ * 문구 다수)은 `AppStrings`가 별도로 다루며 이 catalog에는 포함하지 않는다.
  */
 data class ChromeStrings(
     val navSectionWorkflow: String,
@@ -136,10 +136,10 @@ fun chromeStrings(locale: AppLocale): ChromeStrings =
     }
 
 /**
- * Setup/Cockpit/Strategy/Run/Recovery 화면 본문·모달·버튼 전용 locale catalog다(Phase 8 보완 §1).
+ * Setup/Cockpit/Strategy/Run/Recovery 화면 본문·모달·버튼 전용 locale catalog다.
  * `ChromeStrings`가 다루던 상시 chrome 밖의, 각 화면이 직접 그리는 정적 문구를 모두 담는다 —
  * projection이 만드는 동적 값(상태 라벨 등)은 여전히 각 assembler가 locale을 받아 조립한다.
- * `Shell.kt`의 ARTIFACTS/ENVIRONMENT/INSPECTOR 패널 제목은 Phase 8에서 이미 "하나의 영문 표기
+ * `Shell.kt`의 ARTIFACTS/ENVIRONMENT/INSPECTOR 패널 제목은 "하나의 영문 표기
  * 규칙으로 통일"하기로 확정한 의도적 예외이므로 이 catalog에 포함하지 않는다.
  */
 data class AppStrings(
@@ -171,9 +171,9 @@ data class SetupStrings(
     val noActiveProjectSelectNotice: String,
     val activeLabel: String,
     val registerProjectButton: String,
-    /** Phase 9 QA03-A: 활성 프로젝트가 있을 때 메인 등록 버튼에 쓰는 문구다. */
+    /** 활성 프로젝트가 있을 때 메인 등록 버튼에 쓰는 문구다. */
     val registerAnotherProjectButton: String,
-    /** Phase 9 QA03-A: Registry의 활성 선택만 지운다 — 등록 정보는 남긴다. */
+    /** Registry의 활성 선택만 지우며 등록된 project entry는 보존한다. */
     val releaseActiveProjectButton: String,
     val registeredProjectsHeading: String,
     val selectButton: String,
@@ -195,9 +195,9 @@ data class SetupStrings(
     val hideAdvancedButton: String,
     val useExternalKitLabel: String,
     val diagnosingButton: String,
-    /** Phase 10: 신규 프로젝트의 기본 primary 흐름 — 등록에 이어 repository bridge/외부 workspace까지 준비한다. */
+    /** 신규 프로젝트의 기본 primary 흐름 — 등록에 이어 repository bridge/외부 workspace까지 준비한다. */
     val diagnoseRegisterAndPrepareButton: String,
-    /** Phase 10: 온보딩(bridge/외부 workspace 준비) 없이 등록만 원하는 보조 행동이다. */
+    /** 온보딩(bridge/외부 workspace 준비) 없이 등록만 원하는 보조 행동이다. */
     val registerOnlyButton: String,
     val registrationRunningNotice: String,
     val registrationCompleteChip: String,
@@ -208,7 +208,7 @@ data class SetupStrings(
     val projectPreparedChip: String,
     val projectPreparedNotice: String,
     val projectNotPreparedChip: String,
-    /** Phase 10: primary 등록 전 "무엇이 만들어지는지" 확인 modal. */
+    /** primary 등록 전 "무엇이 만들어지는지" 확인 modal. */
     val onboardingConfirmTitle: String,
     val onboardingConfirmIntro: String,
     val onboardingConfirmBridgeLabel: String,
@@ -217,7 +217,7 @@ data class SetupStrings(
     val onboardingConfirmKeepExistingNote: String,
     val onboardingConfirmCancelButton: String,
     val onboardingConfirmProceedButton: String,
-    /** Phase 10: 이미 등록된 활성 프로젝트의 bridge/오늘 workspace 준비 복구 CTA다. */
+    /** 이미 등록된 활성 프로젝트의 bridge/오늘 workspace 준비 복구 CTA다. */
     val prepareProjectButton: String,
     val prepareProjectNeededNotice: String,
 )
@@ -234,7 +234,7 @@ data class CockpitStrings(
     val stateTitle: String,
     val artifactsTitle: String,
     val nextActionTitle: String,
-    /** 새 Phase 8 보완 §2.1: BootstrapDay가 primary일 때 실행 버튼 대신 보여줄 순수 navigation 버튼이다. */
+    /** BootstrapDay가 primary일 때 실행 버튼 대신 보여줄 순수 navigation 버튼이다. */
     val goToPlanButton: String,
     val whatHappenedLabel: String,
     val lastKnownGoodLabel: String,
@@ -271,7 +271,7 @@ data class StrategyStrings(
     val runningSuffix: String,
     val completedAtPrefix: String,
     val cancelRunButton: String,
-    /** 새 Phase 8 보완 §2.1: Bootstrap 단일 CTA 카드 제목·설명이다. */
+    /** Bootstrap 단일 CTA 카드 제목·설명이다. */
     val startWorkTitle: String,
     val startWorkExplanation: String,
     val blockedNoticeFallback: String,
@@ -368,7 +368,7 @@ fun appStrings(locale: AppLocale): AppStrings =
                 previousButton = "이전",
                 nextButton = "다음",
                 registrationFormTitle = "새 프로젝트 등록",
-                registrationFormHint = "기본값은 개발용 내장 SDK(.local\\harness-kit)입니다. Kit 경로를 직접 입력할 필요가 없습니다.",
+                registrationFormHint = "기본값은 기본 Harness Kit(.local\\harness-kit)입니다. Kit 경로를 직접 입력할 필요가 없습니다.",
                 displayNameLabel = "표시명",
                 showAdvancedButton = "고급 설정",
                 hideAdvancedButton = "고급 설정 숨기기",
@@ -535,7 +535,7 @@ fun appStrings(locale: AppLocale): AppStrings =
                 previousButton = "Previous",
                 nextButton = "Next",
                 registrationFormTitle = "Register a new project",
-                registrationFormHint = "The default is the internal developer SDK (.local\\harness-kit). You don't need to enter a Kit path yourself.",
+                registrationFormHint = "The default is the Default Harness Kit (.local\\harness-kit). You don't need to enter a Kit path yourself.",
                 displayNameLabel = "Display name",
                 showAdvancedButton = "Advanced settings",
                 hideAdvancedButton = "Hide advanced settings",

@@ -58,7 +58,7 @@ internal fun HarnessCheckDto.toDomain(): HarnessCheckResult? {
 
 /**
  * [HarnessRunnerPort]의 실제 구현이다 — [HarnessCommandEncoder]로 인자를 만들고
- * [JvmProcessExecutor]로 실행한 뒤, stdout을 Phase 2 JSON 계약으로 파싱해 typed
+ * [JvmProcessExecutor]로 실행한 뒤, stdout을 Harness JSON 계약으로 파싱해 typed
  * [ProcessRunResult]로 매핑한다. stdout의 성공 문구만으로 완료를 판단하지 않는다 — JSON이
  * 파싱되지 않으면 `contract`를 `null`로 남기고 masking된 조각만 [ProcessRunResult.Completed.rawOutputSnippet]에
  * 담는다.

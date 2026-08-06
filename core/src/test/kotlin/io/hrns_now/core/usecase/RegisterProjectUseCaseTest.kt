@@ -41,13 +41,13 @@ class RegisterProjectUseCaseTest {
     }
 
     private fun candidate(
-        useInternalDeveloperSdk: Boolean = false,
+        useDefaultKit: Boolean = false,
         kitRoot: String? = "/kit",
         workspaceRoot: String? = "/workspace",
         repositoryRoot: String? = "/repo",
     ) = RegisterProjectCandidate(
         displayName = "테스트 프로젝트",
-        useInternalDeveloperSdk = useInternalDeveloperSdk,
+        useDefaultKit = useDefaultKit,
         kitRootRaw = kitRoot,
         projectWorkspaceRootRaw = workspaceRoot,
         repositoryRootRaw = repositoryRoot,
@@ -67,7 +67,7 @@ class RegisterProjectUseCaseTest {
     private fun alwaysResolvedRuntimeResolver(internalRoot: Path = Path.of("/internal-sdk")): (RuntimeSource) -> RuntimeResolution =
         { source ->
             val root = when (source) {
-                RuntimeSource.InternalDeveloperSdk -> internalRoot
+                RuntimeSource.DefaultKit -> internalRoot
                 is RuntimeSource.ExternalKit -> source.root
             }
             RuntimeResolution.Resolved(source, root)
@@ -93,7 +93,7 @@ class RegisterProjectUseCaseTest {
     }
 
     @Test
-    fun `useInternalDeveloperSdk가 true면 ExternalKit 경로 없이도 InternalDeveloperSdk로 등록한다`() = runTest {
+    fun `useDefaultKit가 true면 ExternalKit 경로 없이도 DefaultKit로 등록한다`() = runTest {
         val registry = SpyRegistryPort()
         val useCase = RegisterProjectUseCase(
             pathResolver = alwaysValidResolver(),
@@ -102,10 +102,10 @@ class RegisterProjectUseCaseTest {
             idFactory = { ProjectId("fixed-id") },
         )
 
-        val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
+        val result = useCase(candidate(useDefaultKit = true, kitRoot = null))
 
         val registered = assertIs<RegisterProjectResult.Registered>(result)
-        assertEquals(RuntimeSource.InternalDeveloperSdk, registered.project.runtimeSource)
+        assertEquals(RuntimeSource.DefaultKit, registered.project.runtimeSource)
     }
 
     @Test
@@ -117,11 +117,11 @@ class RegisterProjectUseCaseTest {
             registry = registry,
         )
 
-        val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
+        val result = useCase(candidate(useDefaultKit = true, kitRoot = null))
 
         val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
         val reason = assertIs<RegistrationRejectionReason.RuntimeMissing>(invalid.reason)
-        assertEquals(RuntimeSource.InternalDeveloperSdk, reason.source)
+        assertEquals(RuntimeSource.DefaultKit, reason.source)
         assertEquals(0, registry.saveCallCount)
     }
 
@@ -134,7 +134,7 @@ class RegisterProjectUseCaseTest {
             registry = registry,
         )
 
-        val result = useCase(candidate(useInternalDeveloperSdk = true, kitRoot = null))
+        val result = useCase(candidate(useDefaultKit = true, kitRoot = null))
 
         val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
         val reason = assertIs<RegistrationRejectionReason.RuntimeInvalid>(invalid.reason)
@@ -151,7 +151,7 @@ class RegisterProjectUseCaseTest {
             registry = registry,
         )
 
-        val result = useCase(candidate(useInternalDeveloperSdk = false, kitRoot = "/missing-kit"))
+        val result = useCase(candidate(useDefaultKit = false, kitRoot = "/missing-kit"))
 
         val invalid = assertIs<RegisterProjectResult.InvalidCandidate>(result)
         val reason = assertIs<RegistrationRejectionReason.RuntimeMissing>(invalid.reason)

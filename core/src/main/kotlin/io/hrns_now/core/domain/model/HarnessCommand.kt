@@ -4,7 +4,7 @@ import java.nio.file.Path
 import java.time.LocalDate
 
 /**
- * Phase 3에서 실제로 프로세스와 연결하는 command의 안정된 식별자다. 표시 label이 아니라
+ * 실제로 프로세스와 연결하는 command의 안정된 식별자다. 표시 label이 아니라
  * lock payload/로그 등 machine 값으로 쓰인다 (`doc/hrns_now_design_pattern.md` §5.3).
  */
 enum class HarnessCommandKind {
@@ -59,9 +59,8 @@ enum class ReplanReason(val cliValue: String) {
  * 조립이 아니라 [io.hrns_now.core.port.HarnessCommandEncoder]류의 순수 encoder가 이 값을
  * argument 목록으로 변환한다.
  *
- * Phase 3은 read-only `Doctor`/`ValidateOps`를 연결했다. Phase 4는 `run-cycle.ps1` 기반
- * mutating command(`BootstrapDay`/`RunPlanning`/`RunReplan`/`RunExecution`)를 추가했다. Phase 5는
- * `ValidateClosure`를 추가한다.
+ * read-only `Doctor`/`ValidateOps`, `run-cycle.ps1` 기반 mutating command
+ * (`BootstrapDay`/`RunPlanning`/`RunReplan`/`RunExecution`), `ValidateClosure`를 포함한다.
  */
 sealed interface HarnessCommand {
     val kind: HarnessCommandKind
@@ -87,7 +86,7 @@ sealed interface HarnessCommand {
     }
 
     /**
-     * `scripts/enter-project.ps1`에 대응한다(Phase 10). repository bridge(`.claude/settings.local.json`,
+     * `scripts/enter-project.ps1`에 대응한다. repository bridge(`.claude/settings.local.json`,
      * `.claude/CLAUDE.md`, `tools/run-cycle.ps1`)와 external workspace(오늘 day root 포함 daily
      * 4-file)를 준비하는 명시적 온보딩 명령이다 — `-Force`/`-RunDoctor`/`-MaterializeSubagents`/
      * `-AgentNames`는 전달하지 않는다. 기존 bridge 파일은 덮어쓰지 않는다(live 계약: `enter-project.ps1`이

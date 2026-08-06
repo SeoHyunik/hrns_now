@@ -192,7 +192,7 @@ class CockpitProjectionAssemblerTest {
     }
 
     /**
-     * 새 Phase 8 §2.2: 오늘 날짜 + Missing state + compatibility/boundary/process 정상은
+     * 오늘 날짜 + Missing state + compatibility/boundary/process 정상은
      * `OpenRecoveryCenter`가 아니라 `BootstrapDay`를 primary CTA로 연다.
      */
     @Test
@@ -358,7 +358,7 @@ class CockpitProjectionAssemblerTest {
         assertFalse(requireNotNull(projection.primaryAction).enabled)
     }
 
-    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 Cockpit 화면 본문에도 실제로 적용되는지 확인한다. */
+    /** locale이 Shell chrome을 넘어 Cockpit 화면 본문에도 실제로 적용되는지 확인한다. */
     @Test
     fun `English locale은 phase status queue 라벨과 action label을 영어로 투영한다`() {
         val projection = assemble(success(), locale = AppLocale.English)
@@ -382,7 +382,7 @@ class CockpitProjectionAssemblerTest {
     /**
      * typed [io.hrns_now.core.domain.model.BlockedReasonKey]로 바뀐 뒤에는 raw 원문이 담길 수
      * 있는 String 필드 자체가 없다 — 이 테스트는 그 타입 보장이 영어 locale에서도 유지되는지
-     * 확인한다(Phase 8 보완 §1, 이전 String.contains 검증을 대체).
+     * 확인한다.
      */
     @Test
     fun `unknown domain raw 값은 English locale에서도 노출되지 않는다`() {

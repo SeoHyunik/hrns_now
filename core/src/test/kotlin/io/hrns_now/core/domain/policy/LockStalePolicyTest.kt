@@ -10,8 +10,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * `doc/claude_prompts/phase3-process-adapter-lock.md` §4의 stale 결정표를 표 기반으로
- * 검증한다. `Stale`은 PID 미존재와 heartbeat 만료를 **함께** 만족해야만 나온다.
+ * `LockStalePolicy`의 stale 결정표를 표 기반으로 검증한다.
+ * `Stale`은 PID 미존재와 heartbeat 만료를 **함께** 만족해야만 나온다.
  */
 class LockStalePolicyTest {
 

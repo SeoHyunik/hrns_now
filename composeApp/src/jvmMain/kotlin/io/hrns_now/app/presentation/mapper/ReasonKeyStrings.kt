@@ -9,8 +9,7 @@ import io.hrns_now.core.domain.policy.ClosureBlockReasonKey
 
 /**
  * [BlockedReasonKey]/[ClosureBlockReasonKey]는 `core`가 낸 typed 판정이다 — 문구는 여기
- * presentation에서만 만든다(Phase 8 보완, `doc/claude_prompts/
- * phase8-completion-localization-native-qa.md` §1). 기본값 Korean은 기존 호출부/테스트가
+ * presentation에서만 만든다. 기본값 Korean은 기존 호출부/테스트가
  * 그대로 컴파일되도록 남긴다.
  */
 fun BlockedReasonKey.toDisplayText(locale: AppLocale = AppLocale.Korean): String =

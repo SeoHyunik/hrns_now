@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * `TODAY_STRATEGY.md` 같은 사람이 읽는 Harness 원문을 위한 안전하고 제한된 Markdown renderer다
- * (새 Phase 8 §3). HTML/webview를 실행하지 않고, 원격 resource를 불러오지 않으며, 파일을 쓰거나
+ * `TODAY_STRATEGY.md` 같은 사람이 읽는 Harness 원문을 위한 안전하고 제한된 Markdown renderer다.
+ * HTML/webview를 실행하지 않고, 원격 resource를 불러오지 않으며, 파일을 쓰거나
  * 명령을 실행하지 않는다 — 순수 문자열 파싱 후 Compose Text로만 그린다. heading/list/강조/
  * inline code/code block/인용/link의 실제 사용 범위만 지원하는 제한된 renderer다.
  */
@@ -141,7 +141,7 @@ private fun inlineMarkdownText(raw: String): AnnotatedString {
 
 /**
  * 원문(read-only) Markdown 문서를 안전하게 렌더링한다. 원문을 수정·정규화·번역하지 않고
- * 그대로 보여줄 뿐이다 — 임의의 영문 prose를 자동 번역했다고 주장하지 않는다(새 Phase 8 §3).
+ * 그대로 보여줄 뿐이다 — 임의의 영문 prose를 자동 번역했다고 주장하지 않는다.
  */
 @Composable
 fun SafeMarkdownDocument(text: String, modifier: Modifier = Modifier) {

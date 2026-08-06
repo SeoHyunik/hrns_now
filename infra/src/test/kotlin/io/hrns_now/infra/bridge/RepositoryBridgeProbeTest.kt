@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * `enter-project.ps1`이 만드는 repository bridge 3-file을 read-only로만 탐지한다(Phase 10).
+ * `enter-project.ps1`이 만드는 repository bridge 3-file을 read-only로만 탐지한다.
  * 이 probe는 파일을 쓰거나 지우지 않는다 — 오직 존재 여부만 관측한다.
  */
 class RepositoryBridgeProbeTest {

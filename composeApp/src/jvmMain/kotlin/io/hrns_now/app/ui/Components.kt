@@ -333,7 +333,7 @@ fun ProjectionInfoCard(card: InfoCardModel, modifier: Modifier = Modifier, warni
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.borderSubtle))
                     Box(modifier = Modifier.height(14.dp))
                 }
-                PlaceholderRow(label, value)
+                LabelValueRow(label, value)
                 if (index < card.rows.lastIndex) Box(modifier = Modifier.height(14.dp))
             }
         }
@@ -343,7 +343,7 @@ fun ProjectionInfoCard(card: InfoCardModel, modifier: Modifier = Modifier, warni
 // ─── 라벨 / 값 행 ────────────────────────────────────────────────────────────
 
 @Composable
-fun PlaceholderRow(
+fun LabelValueRow(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
@@ -374,7 +374,7 @@ fun PlaceholderRow(
 // ─── 액션 버튼 ───────────────────────────────────────────────────────────────
 
 @Composable
-fun PlaceholderActionButton(
+fun HrnsActionButton(
     text: String,
     primary: Boolean = false,
     modifier: Modifier = Modifier,
@@ -384,7 +384,7 @@ fun PlaceholderActionButton(
     val colors = LocalHrnsColors.current
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    // 클릭 가능한 버튼은 hover 시 손 모양 커서를 일관되게 보인다(새 Phase 8 §4.1) —
+    // 클릭 가능한 버튼은 hover 시 손 모양 커서를 일관되게 보인다 —
     // disabled 버튼은 기본 화살표 커서를 유지해 클릭 불가 상태를 함께 전달한다.
     val hoverModifier = if (enabled) {
         modifier
@@ -431,7 +431,7 @@ fun PlaceholderActionButton(
 }
 
 @Composable
-fun PlaceholderActionButton(
+fun HrnsActionButton(
     action: ActionButtonModel,
     primary: Boolean = false,
     modifier: Modifier = Modifier,
@@ -439,7 +439,7 @@ fun PlaceholderActionButton(
 ) {
     val colors = LocalHrnsColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlaceholderActionButton(
+        HrnsActionButton(
             text = action.label,
             primary = primary,
             modifier = modifier,
@@ -476,7 +476,7 @@ fun ActionButtonGroup(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         actions.forEachIndexed { index, action ->
-            PlaceholderActionButton(
+            HrnsActionButton(
                 action = action,
                 primary = index == 0,
                 onClick = { action.action?.let(onAction) },
@@ -500,7 +500,7 @@ fun CockpitActionButtonGroup(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         actions.forEachIndexed { index, item ->
-            PlaceholderActionButton(
+            HrnsActionButton(
                 text = item.label,
                 primary = index == 0,
                 enabled = item.enabled,
@@ -557,7 +557,7 @@ fun LabeledTextField(
     )
 }
 
-// ─── 모달 오버레이 (새 Phase 6: 프로젝트 관리 / 요구사항 작성) ────────────────
+// ─── 모달 오버레이 (프로젝트 관리 / 요구사항 작성) ────────────────
 
 /**
  * 화면 전체를 덮는 scrim + 중앙 카드 모달이다. 실제 OS 창을 새로 띄우지 않고 같은 Compose
@@ -632,7 +632,7 @@ fun ModalDialog(
     }
 }
 
-/** 실행 중임을 나타내는 작은 원형 진행 표시다(새 Phase 6 action feedback). */
+/** 실행 중임을 나타내는 작은 원형 진행 표시다. */
 @Composable
 fun InlineSpinner(modifier: Modifier = Modifier) {
     val colors = LocalHrnsColors.current
@@ -663,7 +663,7 @@ fun <T> EnumOptionRow(
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { option ->
-                PlaceholderActionButton(
+                HrnsActionButton(
                     text = optionLabel(option),
                     primary = option == selected,
                     enabled = true,

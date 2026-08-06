@@ -12,7 +12,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** 실제 `%APPDATA%`를 건드리지 않고 임시 디렉터리에만 쓴다(새 Phase 8 §7 테스트 지시). */
+/** 실제 `%APPDATA%`를 건드리지 않고 임시 디렉터리에만 쓴다. */
 class UiPreferencesFileAdapterTest {
 
     private val createdDirs = mutableListOf<Path>()

@@ -7,7 +7,7 @@ import java.nio.file.Path
 /**
  * [io.hrns_now.core.port.ProjectRegistryPort.findAll] 결과다. 손상된 Registry를 조용히 빈
  * 목록으로 바꾸지 않는다 — [RecoveredFromCorruption]이 원본 백업 위치와 진단 문구를 UI까지
- * 전달한다(`doc/claude_prompts/phase1d-project-registry.md`).
+ * 전달한다.
  */
 sealed interface RegistryLoadResult {
     data class Success(

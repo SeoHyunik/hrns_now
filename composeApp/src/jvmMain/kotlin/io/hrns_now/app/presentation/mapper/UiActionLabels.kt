@@ -5,8 +5,8 @@ import io.hrns_now.core.domain.model.UiAction
 
 /**
  * [UiAction]의 표시 문구다. `doc/hrns_now_design_pattern.md` §5.3 "표시 label을 action ID로
- * 사용하지 않는다"에 따라 domain sealed interface가 아니라 여기 presentation에 둔다. 새 Phase 8
- * 보완: 화면에서 선택된 [AppLocale]로 투영한다 — 기본값 Korean은 기존 호출부가 그대로
+ * 사용하지 않는다"에 따라 domain sealed interface가 아니라 여기 presentation에 둔다. 화면에서
+ * 선택된 [AppLocale]로 투영한다 — 기본값 Korean은 기존 호출부가 그대로
  * 컴파일되도록 남긴다.
  */
 fun UiAction.displayLabel(locale: AppLocale = AppLocale.Korean): String =

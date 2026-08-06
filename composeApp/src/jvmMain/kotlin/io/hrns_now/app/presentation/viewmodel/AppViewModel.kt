@@ -114,7 +114,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Phase 1C/1D의 단일 UI 상태 보유자다. 조회 orchestration은 [LoadCockpitUseCase]/
+ * 단일 UI 상태 보유자다. 조회 orchestration은 [LoadCockpitUseCase]/
  * [ResolveActiveProjectUseCase], Registry 쓰기는 [RegisterProjectUseCase]/[SelectProjectUseCase]/
  * [DeleteProjectUseCase], 화면 조립은 [CockpitUiStateAssembler]에 위임하고 이 클래스는
  * refresh/polling/lifecycle/이벤트 분배만 관리한다. 모든 filesystem 협력자는 [ioDispatcher]
@@ -165,7 +165,7 @@ class AppViewModel(
     private val _state = MutableStateFlow<HrnsUiState>(HrnsUiState.Loading)
     val state: StateFlow<HrnsUiState> = _state.asStateFlow()
 
-    /** 전역 알림함이다(새 Phase 8 §4.2) — `HrnsUiState`와 별도 StateFlow로 두어 Shell이 독립 구독한다. */
+    /** 전역 알림함이다 — `HrnsUiState`와 별도 StateFlow로 두어 Shell이 독립 구독한다. */
     val notifications: StateFlow<List<NotificationItem>> = notificationCenter.items
 
     fun dismissNotification(id: String) = notificationCenter.dismiss(id)
@@ -175,13 +175,13 @@ class AppViewModel(
     fun markAllNotificationsRead() = notificationCenter.markAllRead()
 
     /**
-     * 화면 표시 언어다(새 Phase 8 §7) — `WORKFLOW_STATE.json`/Harness workspace/project Registry와
+     * 화면 표시 언어다 — `WORKFLOW_STATE.json`/Harness workspace/project Registry와
      * 무관한 UI 소유 값이며 [uiPreferencesPort]에만 저장한다.
      */
     private val _locale = MutableStateFlow(AppLocale.Korean)
     val locale: StateFlow<AppLocale> = _locale.asStateFlow()
 
-    /** 현재 선택된 화면 언어다 — registryMessage/알림/실행 notice 조립에 쓴다(Phase 8 보완 §1). */
+    /** 현재 선택된 화면 언어다 — registryMessage/알림/실행 notice 조립에 쓴다. */
     private val currentLocale: AppLocale
         get() = _locale.value
 
@@ -250,7 +250,7 @@ class AppViewModel(
         viewModelScope.launch { loadOnce(forceRead = true) }
     }
 
-    /** Phase 1C/1D에서 실제로 연결된 이벤트만 처리한다. */
+    /** 실제로 연결된 이벤트만 처리한다. */
     fun onEvent(event: HrnsUiEvent) {
         when (event) {
             is HrnsUiEvent.ActionRequested -> when (event.action) {
@@ -265,7 +265,7 @@ class AppViewModel(
                 UiAction.RunClosureValidation ->
                     onClosureValidationRequested(incompleteHandoffAcknowledged = false)
                 // 과거 날짜 fallback 화면에서 "오늘로 이동"은 순수 navigation이 아니다 — 실제로 오늘
-                // 날짜를 선택해야 한다(새 Phase 8 §2.3). 오늘 폴더가 아직 없어도 항상 허용한다.
+                // 날짜를 선택해야 한다. 오늘 폴더가 아직 없어도 항상 허용한다.
                 UiAction.OpenToday -> viewModelScope.launch { onWorkspaceDaySelected(todayLocalDate()) }
                 else -> Unit
             }
@@ -340,7 +340,7 @@ class AppViewModel(
         val project = prepared.project
         val resolvedKitRoot = prepared.resolvedKitRoot
         val date = todayLocalDate()
-        // Phase 10: 등록 전 Doctor는 Kit 자체만 점검한다 — candidate workspace/repository는
+        // 등록 전 Doctor는 Kit 자체만 점검한다 — candidate workspace/repository는
         // enter-project(온보딩) 이전에는 아직 bridge/daily surface가 없으므로, 이 경로에 넘기면
         // 정상적인 미생성 상태를 오류처럼 만든다.
         val command = HarnessCommand.Doctor(
@@ -471,8 +471,8 @@ class AppViewModel(
 
     private fun RegistrationRejectionReason.suggestsAdvancedSettings(): Boolean =
         when (this) {
-            is RegistrationRejectionReason.RuntimeMissing -> source == RuntimeSource.InternalDeveloperSdk
-            is RegistrationRejectionReason.RuntimeInvalid -> source == RuntimeSource.InternalDeveloperSdk
+            is RegistrationRejectionReason.RuntimeMissing -> source == RuntimeSource.DefaultKit
+            is RegistrationRejectionReason.RuntimeInvalid -> source == RuntimeSource.DefaultKit
             RegistrationRejectionReason.BlankDisplayName,
             RegistrationRejectionReason.BlankProfile,
             RegistrationRejectionReason.BlankExternalKitPath,
@@ -520,7 +520,7 @@ class AppViewModel(
 
     private suspend fun onWorkspaceDaySelected(date: LocalDate) {
         // 오늘은 아직 daily directory가 없어도 항상 선택할 수 있다 — UI가 폴더/4-file을 만들지는
-        // 않지만, 오늘 시작 흐름은 discovery 목록 존재 여부에 의존하면 안 된다(새 Phase 8 §6).
+        // 않지만, 오늘 시작 흐름은 discovery 목록 존재 여부에 의존하면 안 된다.
         if (date !in availableDates && date != todayLocalDate()) {
             registryMessage = dayFolderNotFoundMessage(currentLocale)
             loadOnce(forceRead = true)
@@ -615,7 +615,7 @@ class AppViewModel(
         }
         val rawWorkspaceConfig = requireNotNull(currentWorkspaceConfig)
 
-        // 활성 프로젝트가 있을 때만 typed runtime source를 해석한다(새 Phase 7). 미선택/환경변수
+        // 활성 프로젝트가 있을 때만 typed runtime source를 해석한다. 미선택/환경변수
         // fallback 경로(`activeProject == null`)는 이 resolver를 아예 거치지 않고 기존 legacy
         // `HRNS_KIT_ROOT` 동작을 그대로 유지한다.
         val runtimeResolution = activeProject?.let { project ->
@@ -685,7 +685,7 @@ class AppViewModel(
         lastStateRead = loaded.stateRead
         lastRequiredArtifactsReady = loaded.workspaceArtifactSummary.isRequiredReady
         recoveryDiagnostics = loadedRecoveryDiagnostics
-        // Phase 10: 활성 프로젝트인데 bridge 또는 오늘 workspace 준비가 누락되면 Setup 화면에
+        // 활성 프로젝트인데 bridge 또는 오늘 workspace 준비가 누락되면 Setup 화면에
         // 단일 "프로젝트 준비" CTA를 보인다. 과거 날짜 조회는 온보딩 대상이 아니다.
         val needsProjectPreparation = activeProject != null &&
             !daySelection.isReadOnly &&
@@ -713,7 +713,7 @@ class AppViewModel(
 
         // resolvedKitRoot가 없으면(runtime source Missing/Invalid) 실행 context 자체를 만들지
         // 않는다 — command mapper는 resolved root 없이는 절대 호출되지 않는다(§20.1). 이 상태의
-        // fail-closed 이유는 `compatibilityDetail`(MissingManifest로 강제)과 새 Phase 7
+        // fail-closed 이유는 `compatibilityDetail`(MissingManifest로 강제)과
         // `runtimeSourceDiagnostics`가 화면에 표시한다.
         latestExecutionContext = activeProject
             ?.takeIf { loaded.projectConnected && resolvedKitRoot != null }
@@ -805,7 +805,7 @@ class AppViewModel(
     }
 
     /**
-     * 활성 프로젝트가 있으면(새 Phase 7) `runtimeResolution`이 이미 `RuntimeSourceResolverPort`로
+     * 활성 프로젝트가 있으면 `runtimeResolution`이 이미 `RuntimeSourceResolverPort`로
      * 판정한 root만 쓴다 — `Missing`/`Invalid`는 compatibility를 아예 시도하지 않고
      * `MissingManifest`로 대체한다(별개의 fail-closed 원인, `runtimeSourceDiagnostics`가 화면에서
      * 실제 이유를 보여준다). 활성 프로젝트가 없으면(환경변수 fallback/미선택) 기존처럼
@@ -840,8 +840,8 @@ class AppViewModel(
     }
 
     /**
-     * 중복 클릭을 막고(이미 실행 중이면 무시), 정책·lock을 통과한 뒤에만 [executeHarnessAction]을 호출한다
-     * (Phase 3). 실행 종료 뒤에는 lock을 보유한 채 State를 다시 읽고, heartbeat를 멈춘 뒤
+     * 중복 클릭을 막고(이미 실행 중이면 무시), 정책·lock을 통과한 뒤에만 [executeHarnessAction]을 호출한다.
+     * 실행 종료 뒤에는 lock을 보유한 채 State를 다시 읽고, heartbeat를 멈춘 뒤
      * lock을 해제·재검사한다. stdout 성공 문구가 아니라 재읽은 State가 완료 판단의
      * 근거로 남게 하기 위함이다. project/day가 실행 도중 바뀌면
      * [loadContextGeneration] 비교로 late-write를 막는다.
@@ -912,7 +912,7 @@ class AppViewModel(
      * outcome을 돌려준다. 사용자가 직접 요청한 실행은 [onHarnessRunRequested]가 pre-check 뒤
      * launch해서 호출하고, 등록 직후 자동 Bootstrap 시도([attemptWorkspacePreparationAfterRegistration])는
      * 이미 suspend 문맥이므로 이 함수를 직접 await해 결과를 등록 feedback에 반영한다 — 등록
-     * 화면용 별도 lock/process lifecycle을 복제하지 않는다(Phase 9 QA03-B).
+     * 화면용 별도 lock/process lifecycle을 복제하지 않는다.
      */
     private suspend fun runHarnessAction(action: UiAction, kind: HarnessCommandKind): ExecuteHarnessActionOutcome {
         val context = latestExecutionContext
@@ -1014,7 +1014,7 @@ class AppViewModel(
 
     /**
      * 등록+선택+context 재조회가 끝난 뒤 typed `HarnessCommand.OnboardProject`(= `enter-project.ps1`)로
-     * repository bridge와 오늘 external workspace를 준비한다(Phase 10). daily `ActionPolicy`는
+     * repository bridge와 오늘 external workspace를 준비한다. daily `ActionPolicy`는
      * 전혀 거치지 않는다 — 온보딩은 하루 단위 CTA 정책과 분리된 별도 lifecycle이다. 등록 직후
      * `BootstrapDay`/`run-cycle`을 자동 호출하지 않는다.
      */
@@ -1029,7 +1029,7 @@ class AppViewModel(
 
     /**
      * 이미 등록된 활성 프로젝트의 bridge/오늘 workspace 준비가 누락됐을 때 다시 시도하는
-     * "프로젝트 준비" 단일 CTA다(Phase 10). Health Check(Doctor)와 달리 실제로 파일을 만들
+     * "프로젝트 준비" 단일 CTA다. Health Check(Doctor)와 달리 실제로 파일을 만들
      * 수 있는 쓰기 행동이며, 그 사실은 UI 확인 절차에서 이미 사용자에게 알려졌다.
      */
     /**
@@ -1151,7 +1151,7 @@ class AppViewModel(
     }
 
     /**
-     * 성공 판단은 stdout 문구 하나가 아니라 5가지 근거의 교집합이다(Phase 10 §3): enter-project
+     * 성공 판단은 stdout 문구 하나가 아니라 5가지 근거의 교집합이다: enter-project
      * 정상 종료(exitCode 0), validate-ops `-Json` overall=ok, repository bridge 3종 ready,
      * required daily 4-file ready, `WORKFLOW_STATE.json` 재조회 Success.
      */
@@ -1170,7 +1170,7 @@ class AppViewModel(
     }
 
     /**
-     * Registry의 활성 선택만 지운다(Phase 9 QA03-A) — 등록된 project entry, workspace, repository,
+     * Registry의 활성 선택만 지운다 — 등록된 project entry, workspace, repository,
      * Harness Kit, State/daily 파일은 전혀 건드리지 않는다. 해제 직후 selected day/polling
      * context/active project projection을 [onProjectDeletionRequested]와 동일하게 안전 초기화하고
      * 재조회한다.
@@ -1198,7 +1198,7 @@ class AppViewModel(
     }
 
     /**
-     * 실행 결과를 전역 알림함에 남긴다(새 Phase 8 §4.2) — 등록/저장과 마찬가지로 사용자가
+     * 실행 결과를 전역 알림함에 남긴다 — 등록/저장과 마찬가지로 사용자가
      * 결과를 기다린 action에만 쓴다. `Completed`/`Failed`는 이미 조립된 `RunStatusProjection.
      * lastOutcome`(= State reread가 아니라 `ProcessRunResult.contract.overall` 기반 typed 결과,
      * 기존 실행 기록 카드와 같은 신호)만 재사용하고, stdout 원문을 다시 파싱하지 않는다.

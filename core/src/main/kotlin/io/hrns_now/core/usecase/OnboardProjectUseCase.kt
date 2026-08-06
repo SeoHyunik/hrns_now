@@ -45,7 +45,7 @@ sealed interface OnboardProjectOutcome {
 
 /**
  * 프로젝트 온보딩(Bridge 준비 + 오늘 workspace 초기화 + 검증 + State 재조회)을 daily
- * `ActionPolicy`와 완전히 분리된 별도 lifecycle로 실행한다(Phase 10). `enter-project.ps1` 실행 →
+ * `ActionPolicy`와 완전히 분리된 별도 lifecycle로 실행한다. `enter-project.ps1` 실행 →
  * `validate-ops.ps1 -Json` 실행 → repository bridge probe → required 4-file probe →
  * `WORKFLOW_STATE.json` 재조회까지 **하나의 lock을 보유한 채** 수행하고, 그 뒤에만 lock을
  * 해제한다. 등록 직후 자동으로 `BootstrapDay`/`run-cycle`을 호출하지 않는다 — 이 use case는

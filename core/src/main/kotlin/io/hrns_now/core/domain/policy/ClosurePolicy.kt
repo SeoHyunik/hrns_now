@@ -20,7 +20,7 @@ import io.hrns_now.core.result.StateReadResult
  * `RequiresExplicitIncompleteHandoff`는 필수 조건은 모두 만족하지만 repository에 아직
  * 커밋되지 않은 변경이 있어 사용자가 "이 상태로 마감함"을 명시적으로 인지해야 하는 경우다 —
  * 자동으로 막거나 자동으로 진행하지 않는다. 두 결과 모두 문구가 아니라 typed key/raw 변경 경로만
- * 낸다 — presentation이 locale별 문구로 투영한다(Phase 8 보완 §1).
+ * 낸다 — presentation이 locale별 문구로 투영한다.
  */
 sealed interface ClosureDecision {
     data object Allowed : ClosureDecision
@@ -36,8 +36,7 @@ data class ClosureContext(
 )
 
 /**
- * 실행 process 성공과 하루 마감 허용을 분리하는 순수 checklist 정책이다
- * (`doc/claude_prompts/phase5-closure-recovery.md` §1).
+ * 실행 process 성공과 하루 마감 허용을 분리하는 순수 checklist 정책이다.
  *
  * `state.closure.validated`/`is_clean_handoff`는 harness의 결정적 `pre_handoff_validate.py`/`.ps1`가
  * 이미 계산한 결과이므로 이 정책이 다시 계산하지 않는다 — 이미 그 값이 true인지가 아니라

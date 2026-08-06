@@ -9,8 +9,8 @@ enum class SelectedDayKind {
 }
 
 /**
- * Harness JSON schema/UI 계약 호환성 판정이다. Phase 2가 `kit-version.json` 핸드셰이크를
- * 도입하기 전까지는 호출자가 이 값을 직접 구성한다 — Phase 1B는 그 판정 로직을 구현하지 않는다.
+ * Harness JSON schema/UI 계약 호환성 판정이다. `kit-version.json` 핸드셰이크로 이 값을
+ * 직접 판정하는 로직은 아직 구현되지 않았으므로, 호출자가 이 값을 직접 구성한다.
  */
 enum class CompatibilityStatus {
     Supported,
@@ -19,8 +19,8 @@ enum class CompatibilityStatus {
 }
 
 /**
- * Kit root/workspace root/repository root 경계 검사 결과다. Phase 1D의
- * `BoundaryPolicy`(`ProjectBoundaryResult`)가 실제로 이 판정을 만들기 전까지는 호출자가 구성한다.
+ * Kit root/workspace root/repository root 경계 검사 결과다.
+ * `BoundaryPolicy`(`ProjectBoundaryResult`)가 아직 이 판정을 만들지 않으므로 호출자가 구성한다.
  */
 enum class BoundaryStatus {
     Valid,
@@ -29,8 +29,8 @@ enum class BoundaryStatus {
 }
 
 /**
- * 같은 프로젝트·날짜에 대한 다른 실행의 존재 여부다. Phase 3의 lock/프로세스 조율 계층이
- * 실제로 이 값을 만들기 전까지는 호출자가 구성한다.
+ * 같은 프로젝트·날짜에 대한 다른 실행의 존재 여부다. lock/프로세스 조율 계층이
+ * 아직 이 값을 만들지 않으므로 호출자가 구성한다.
  */
 enum class ProcessRunStatus {
     Idle,
@@ -43,7 +43,7 @@ enum class ProcessRunStatus {
  *
  * `WorkflowState.executionWrapper`(`state.execution_wrapper`)는 "가장 최근 실행 시도에 사용된
  * CLI wrapper" 값이며, harness의 개별 queue slice가 선언하는 wrapper(`queue.cards[].slices[].wrapper`,
- * 예: `"none (verification-only)"`)와는 다른 필드다. Phase 1A는 slice 목록 전체를 typed model로
+ * 예: `"none (verification-only)"`)와는 다른 필드다. slice 목록 전체는 typed model로
  * 만들지 않았으므로(`WorkflowQueue.active`는 pointer만 가짐), 이 타입은 호출자가 별도로 판정해
  * 주입하는 독립적인 context 차원이다. `ValidationOnly`는 검증 전용 slice를 뜻하며, 가짜
  * `ExecutionWrapperState`나 존재하지 않는 CLI wrapper 값으로 대체하지 않는다.
@@ -84,8 +84,8 @@ fun ExecutionWrapperState.toActiveSliceKind(): ActiveSliceKind? =
  * [io.hrns_now.core.domain.policy.ActionPolicy]의 유일한 입력이다. domain 값만 가진 불변
  * context이며, 파일 경로·JSON·Compose·프로세스 핸들을 전혀 참조하지 않는다.
  *
- * `selectedDayKind`/`stateRead`가 오늘 날짜인지, 실제로 State를 읽었는지는 호출자(Phase 1C
- * ViewModel/use case)가 [io.hrns_now.core.domain.model.WorkspaceDay]와
+ * `selectedDayKind`/`stateRead`가 오늘 날짜인지, 실제로 State를 읽었는지는 호출자(ViewModel/use case)가
+ * [io.hrns_now.core.domain.model.WorkspaceDay]와
  * [io.hrns_now.core.port.WorkflowStatePort]를 조합해 결정한다 — 정책 자체는 `LocalDate.now()`
  * 등 시간을 직접 조회하지 않는다.
  */

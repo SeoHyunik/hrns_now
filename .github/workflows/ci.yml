@@ -8,8 +8,8 @@ on:
 
 jobs:
   check:
-    # Phase 0B: core/infra tests are pure JVM and portable; a non-Windows runner
-    # is acceptable for now. PowerShell-integration tests (Phase 3+) will need a
+    # core/infra tests are pure JVM and portable; a non-Windows runner is
+    # acceptable for these. PowerShell-integration tests will need a
     # dedicated windows-latest job.
     runs-on: ubuntu-latest
     steps:

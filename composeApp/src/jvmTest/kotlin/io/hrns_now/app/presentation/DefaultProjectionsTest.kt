@@ -126,7 +126,7 @@ class DefaultProjectionsTest {
     }
 
     /**
-     * 새 Phase 8 §3: "개발 전략"은 더 이상 일반 `InfoCardModel` 목록에 섞이지 않고, 원문을 그대로
+     * "개발 전략"은 일반 `InfoCardModel` 목록에 섞이지 않고, 원문을 그대로
      * 담는 별도 [io.hrns_now.app.presentation.model.DevelopmentStrategyCardModel]로 분리된다 —
      * "없으면 안내 문구"는 이제 mapper가 아니라 Compose 카드가 렌더링 시점에 보여준다.
      */
@@ -167,7 +167,7 @@ class DefaultProjectionsTest {
         assertTrue(projection.requestSaving)
     }
 
-    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 화면 본문에도 실제로 적용되는지 확인한다. */
+    /** locale이 Shell chrome을 넘어 화면 본문에도 실제로 적용되는지 확인한다. */
     @Test
     fun `English locale은 작업 계획 제목과 대기열 섹션 제목을 영어로 투영한다`() {
         val cockpit = cockpitProjection(primaryAction = null, allowedActions = emptyList())
@@ -202,7 +202,7 @@ class DefaultProjectionsTest {
     }
 
     /**
-     * 새 Phase 8 보완 §2.1: BootstrapDay가 primary일 때만 [io.hrns_now.app.presentation.model.
+     * BootstrapDay가 primary일 때만 [io.hrns_now.app.presentation.model.
      * TodayWorkProjection.bootstrapEligible]/[bootstrapAction]이 채워지고, 일반 `actions` 목록에는
      * BootstrapDay가 중복 포함되지 않는다 — 화면당 실제 실행 CTA는 한 곳(요구사항 카드)뿐이어야 한다.
      */

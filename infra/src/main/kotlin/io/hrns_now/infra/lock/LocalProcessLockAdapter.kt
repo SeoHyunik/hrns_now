@@ -68,8 +68,7 @@ internal fun LockPayloadDto.toDomain(): LockPayload? {
 
 /**
  * `%LOCALAPPDATA%\hrns-now\locks\<projectId>\<yyyy-MM-dd>.lock.json`에 UI 소유 lock을 두는
- * [ProcessLockPort] 구현이다(`doc/claude_prompts/phase3-process-adapter-lock.md` §4).
- * Harness workspace에는 어떤 파일도 만들지 않는다.
+ * [ProcessLockPort] 구현이다. Harness workspace에는 어떤 파일도 만들지 않는다.
  *
  * 테스트를 위해 root/clock/PID lookup을 모두 주입 가능하게 한다. `pidAlive`가 `null`을
  * 반환하면(생존 여부 불명) [LockStalePolicy]가 fail-closed로 Active 취급한다.

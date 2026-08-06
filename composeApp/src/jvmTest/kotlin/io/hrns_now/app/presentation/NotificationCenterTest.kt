@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * 새 Phase 8 §4.2: 전역 알림함 reducer의 push/dismiss/read 상태 전이만 검증한다. raw process
+ * 전역 알림함 reducer의 push/dismiss/read 상태 전이만 검증한다. raw process
  * detail을 담지 않는지는 [message] 값 자체가 이미 typed 요약 문자열이라는 계약으로 상위
  * 호출자(`AppViewModel`)가 보장하므로, 여기서는 reducer의 리스트 연산만 확인한다.
  */

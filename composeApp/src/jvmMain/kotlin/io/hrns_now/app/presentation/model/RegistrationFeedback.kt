@@ -1,7 +1,7 @@
 package io.hrns_now.app.presentation.model
 
 /**
- * "진단 후 등록" 진행 상태다(새 Phase 8 §1). `ProjectManagementSection`/`ProjectRegistrationForm`은
+ * "진단 후 등록" 진행 상태다. `ProjectManagementSection`/`ProjectRegistrationForm`은
  * 이 값을 modal·인라인 폼 어디서든 직접 렌더링해, 결과가 modal 뒤 부모 카드에만 남아 사용자가
  * 놓치는 일이 없게 한다. 원인은 core의 typed 값(`RegistrationRejectionReason`/`ProcessRunResult`/
  * `HarnessCompatibilityDetail`)에서 그대로 유도하며, 문자열 일부를 비교해 추정하지 않는다.
@@ -11,7 +11,7 @@ sealed interface RegistrationFeedback {
     data object Running : RegistrationFeedback
 
     /**
-     * [onboarding]은 등록 자체의 성공과 분리된 결과다(Phase 10) — "등록은 완료됨"과 "프로젝트
+     * [onboarding]은 등록 자체의 성공과 분리된 결과다 — "등록은 완료됨"과 "프로젝트
      * 준비(bridge/외부 workspace)는 실패/차단됨"을 서로 다른 사실로 보여줄 수 있다.
      */
     data class Success(
@@ -33,7 +33,7 @@ sealed interface RegistrationFeedback {
 /**
  * 등록 직후(또는 기존 활성 프로젝트의 "프로젝트 준비" 재시도) 시도한 온보딩(typed
  * `HarnessCommand.OnboardProject` = `enter-project.ps1` + `validate-ops.ps1 -Json` + bridge/4-file
- * probe + State 재조회)의 결과다(Phase 10). 이 값은 새 Phase 9의 `WorkspacePreparationOutcome`(=
+ * probe + State 재조회)의 결과다. 이 값은 `WorkspacePreparationOutcome`(=
  * `BootstrapDay` 실행 결과)과 의미가 다르다 — 온보딩은 오늘 daily 작업을 시작하지 않는다.
  * [Blocked.reasonText]는 이미 typed 값에서 locale별로 조립된 안전한 문구이며, raw process
  * 출력이나 경로 원문·secret·session ID를 담지 않는다.

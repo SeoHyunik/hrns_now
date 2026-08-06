@@ -7,7 +7,7 @@ import java.time.Duration
 
 /**
  * Harness PowerShell command 실행 결과에 필요한 최소 contract만 노출하는 port다
- * (`doc/hrns_now_design_pattern.md` §3.2, Phase 3). `ProcessBuilder`, Windows API, JSON
+ * (`doc/hrns_now_design_pattern.md` §3.2). `ProcessBuilder`, Windows API, JSON
  * 파싱 라이브러리를 참조하지 않는다 — 이 port 자체는 순수 계약이다.
  */
 fun interface HarnessRunnerPort {

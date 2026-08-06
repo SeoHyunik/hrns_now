@@ -60,8 +60,8 @@ private sealed interface AttemptOutcome {
  *
  * 절대 이 파일에 쓰지 않는다. 읽기 전/후 파일 metadata(mtime, size)를 비교해 partial write를
  * 감지하고, JSON 구문 오류·도메인 필수 필드 누락·UTF-8 디코딩 오류를 모두 재시도 대상으로
- * 취급한다(`doc/claude_prompts/phase1a-workflow-state-reader.md` Reader 정책 1~9단계).
- * 재시도가 모두 소진되면 마지막으로 성공했던 [WorkflowState](last-known-good)를 함께 반환한다.
+ * 취급한다. 재시도가 모두 소진되면 마지막으로 성공했던 [WorkflowState](last-known-good)를
+ * 함께 반환한다.
  */
 class JsonWorkflowStateAdapter private constructor(
     private val retryPolicy: StateReadRetryPolicy,

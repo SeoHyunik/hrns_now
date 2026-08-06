@@ -368,7 +368,7 @@ class ActionPolicyTest {
             assertEquals(UiAction.OpenRecoveryCenter, result.primary, "unknown #$index")
             assertEquals(recovery, result.allowed, "unknown #$index")
             // reasonKey는 typed enum이므로 raw 원문("new-secret-...")을 담을 수 없다 — 타입 자체가
-            // 보안 보장이다(Phase 8 보완 §1, 이전에는 String.contains로 이를 검증했다).
+            // 보안 보장이다.
             val reasonKey = assertIs<BlockedReasonKey.UnknownDomainValue>(result.reasonKey, "unknown #$index")
             assertEquals(expectedKind, reasonKey.kind, "unknown #$index")
         }
@@ -391,7 +391,7 @@ class ActionPolicyTest {
     }
 
     /**
-     * 새 Phase 8 §2.2: 오늘 날짜 + State Missing + 프로젝트/runtime(compatibility로 대리)/boundary
+     * 오늘 날짜 + State Missing + 프로젝트/runtime(compatibility로 대리)/boundary
      * 정상 + lock/실행 없음 조합에서만 `BootstrapDay`를 허용한다. 단일 조건이라도 어긋나면
      * 기존 fail-closed recovery 경로를 그대로 유지한다.
      */

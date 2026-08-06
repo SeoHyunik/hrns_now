@@ -23,7 +23,7 @@ import java.time.Duration
 
 /**
  * 실행 직전의 순수 policy 입력과 command 경계에 필요한 project/day를 묶은 값이다. [resolvedKitRoot]는
- * `project.runtimeSource`를 이미 `RuntimeResolution.Resolved`로 해석한 결과다(새 Phase 7) —
+ * `project.runtimeSource`를 이미 `RuntimeResolution.Resolved`로 해석한 결과다 —
  * command mapper/encoder는 `runtimeSource` 자체나 internal/external 분기를 알지 못하고 이 값만 쓴다.
  */
 data class HarnessExecutionContext(
@@ -85,7 +85,7 @@ sealed interface ExecuteHarnessActionOutcome {
         val refreshedState: StateReadResult,
     ) : ExecuteHarnessActionOutcome
 
-    /** 문구가 아니라 typed key다 — presentation이 locale별 문구로 투영한다(Phase 8 보완 §1). */
+    /** 문구가 아니라 typed key다 — presentation이 locale별 문구로 투영한다. */
     data class Rejected(val reasonKey: BlockedReasonKey?) : ExecuteHarnessActionOutcome
     data class Failed(val processResult: ProcessRunResult) : ExecuteHarnessActionOutcome
     data class LockUnavailable(val result: LockAcquireResult) : ExecuteHarnessActionOutcome

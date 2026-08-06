@@ -216,7 +216,7 @@ class RunStatusProjectionAssemblerTest {
         assertNull(HarnessCommandKind.Bootstrap.toRetryAction())
     }
 
-    /** Phase 8 보완 §1: locale이 Shell chrome을 넘어 실행 기록 화면에도 실제로 적용되는지 확인한다. */
+    /** locale이 Shell chrome을 넘어 실행 기록 화면에도 실제로 적용되는지 확인한다. */
     @Test
     fun `English locale은 제목과 stage label과 outcome을 영어로 투영한다`() {
         val contract = HarnessDiagnosticContract(

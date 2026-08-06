@@ -13,10 +13,10 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 /**
- * fake fixture/temp 디렉터리로만 검증한다 — `D:\harness-kit`이나 실제 `.local\harness-kit`을
- * 복사·참조하지 않는다(새 Phase 7 테스트 지시). 실제 Harness 실행도 하지 않는다.
+ * fake fixture/temp 디렉터리로만 검증한다 — 실제 Harness Kit 설치 경로나 실제 `.local\harness-kit`을
+ * 복사·참조하지 않는다. 실제 Harness 실행도 하지 않는다.
  */
-class DeveloperSdkRuntimeResolverTest {
+class DefaultKitRuntimeResolverTest {
 
     private val createdDirs = mutableListOf<Path>()
 
@@ -39,21 +39,21 @@ class DeveloperSdkRuntimeResolverTest {
     @Test
     fun `root가 존재하지 않으면 Missing이다`() {
         val root = tempDir("hrns-sdk").resolve("does-not-exist")
-        val resolver = DeveloperSdkRuntimeResolver { root }
+        val resolver = DefaultKitRuntimeResolver { root }
 
-        val result = resolver.resolve(RuntimeSource.InternalDeveloperSdk)
+        val result = resolver.resolve(RuntimeSource.DefaultKit)
 
         assertIs<RuntimeResolution.Missing>(result)
-        assertEquals(RuntimeSource.InternalDeveloperSdk, result.source)
+        assertEquals(RuntimeSource.DefaultKit, result.source)
     }
 
     @Test
     fun `root가 디렉터리가 아니면 Invalid NotDirectory다`() {
         val file = tempDir("hrns-sdk").resolve("harness-kit-but-a-file")
         Files.writeString(file, "not a directory")
-        val resolver = DeveloperSdkRuntimeResolver { file }
+        val resolver = DefaultKitRuntimeResolver { file }
 
-        val result = resolver.resolve(RuntimeSource.InternalDeveloperSdk)
+        val result = resolver.resolve(RuntimeSource.DefaultKit)
 
         val invalid = assertIs<RuntimeResolution.Invalid>(result)
         assertEquals(RuntimeIssue.NotDirectory, invalid.reason)
@@ -64,9 +64,9 @@ class DeveloperSdkRuntimeResolverTest {
         val root = tempDir("hrns-sdk")
         Files.createDirectories(root.resolve("scripts"))
         root.resolve("scripts/doctor.ps1").writeText("# only doctor, missing others")
-        val resolver = DeveloperSdkRuntimeResolver { root }
+        val resolver = DefaultKitRuntimeResolver { root }
 
-        val result = resolver.resolve(RuntimeSource.InternalDeveloperSdk)
+        val result = resolver.resolve(RuntimeSource.DefaultKit)
 
         val invalid = assertIs<RuntimeResolution.Invalid>(result)
         assertEquals(RuntimeIssue.MissingEntrypoint, invalid.reason)
@@ -76,9 +76,9 @@ class DeveloperSdkRuntimeResolverTest {
     fun `필요한 entrypoint가 모두 있으면 Resolved다`() {
         val root = tempDir("hrns-sdk")
         writeRequiredEntrypoints(root)
-        val resolver = DeveloperSdkRuntimeResolver { root }
+        val resolver = DefaultKitRuntimeResolver { root }
 
-        val result = resolver.resolve(RuntimeSource.InternalDeveloperSdk)
+        val result = resolver.resolve(RuntimeSource.DefaultKit)
 
         val resolved = assertIs<RuntimeResolution.Resolved>(result)
         assertEquals(root.toAbsolutePath().normalize(), resolved.root)
@@ -89,22 +89,22 @@ class DeveloperSdkRuntimeResolverTest {
         val root = tempDir("hrns-sdk-kr").resolve("한글 폴더 이름 테스트")
         Files.createDirectories(root)
         writeRequiredEntrypoints(root)
-        val resolver = DeveloperSdkRuntimeResolver { root }
+        val resolver = DefaultKitRuntimeResolver { root }
 
-        val result = resolver.resolve(RuntimeSource.InternalDeveloperSdk)
+        val result = resolver.resolve(RuntimeSource.DefaultKit)
 
         val resolved = assertIs<RuntimeResolution.Resolved>(result)
         assertEquals(root.toAbsolutePath().normalize(), resolved.root)
     }
 
     @Test
-    fun `ExternalKit은 internalSdkRootProvider를 쓰지 않고 주어진 경로를 그대로 확인한다`() {
+    fun `ExternalKit은 defaultKitRootProvider를 쓰지 않고 주어진 경로를 그대로 확인한다`() {
         val internalRoot = tempDir("hrns-sdk-internal")
         writeRequiredEntrypoints(internalRoot)
         val externalRoot = tempDir("hrns-sdk-external")
         // internalRoot만 유효하고 externalRoot는 비워 둔다 — resolver가 실제로 externalRoot를
         // 검사하는지(내부 provider로 몰래 대체하지 않는지) 확인한다.
-        val resolver = DeveloperSdkRuntimeResolver { internalRoot }
+        val resolver = DefaultKitRuntimeResolver { internalRoot }
 
         val result = resolver.resolve(RuntimeSource.ExternalKit(externalRoot))
 
@@ -117,7 +117,7 @@ class DeveloperSdkRuntimeResolverTest {
     fun `ExternalKit이 유효하면 Resolved root는 그 경로 자신이다`() {
         val externalRoot = tempDir("hrns-sdk-external-valid")
         writeRequiredEntrypoints(externalRoot)
-        val resolver = DeveloperSdkRuntimeResolver { error("InternalDeveloperSdk를 요청하면 안 된다") }
+        val resolver = DefaultKitRuntimeResolver { error("DefaultKit를 요청하면 안 된다") }
 
         val result = resolver.resolve(RuntimeSource.ExternalKit(externalRoot))
 
@@ -139,7 +139,7 @@ class DeveloperSdkRuntimeResolverTest {
 
         assertEquals(
             root.resolve(".local").resolve("harness-kit"),
-            DeveloperSdkRuntimeResolver.findHrnsNowSourceRoot(nestedWorkingDirectory)
+            DefaultKitRuntimeResolver.findHrnsNowSourceRoot(nestedWorkingDirectory)
                 ?.resolve(".local")
                 ?.resolve("harness-kit"),
         )
@@ -150,6 +150,6 @@ class DeveloperSdkRuntimeResolverTest {
         val root = tempDir("unrelated-working-directory")
         Files.createDirectories(root.resolve(".git"))
 
-        assertNull(DeveloperSdkRuntimeResolver.findHrnsNowSourceRoot(root))
+        assertNull(DefaultKitRuntimeResolver.findHrnsNowSourceRoot(root))
     }
 }

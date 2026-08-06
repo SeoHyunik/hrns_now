@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 /**
- * Phase 9 QA02 회귀다 — 상단 리본 전용 muted 텍스트 토큰이 실제로 dark/light 각각 낮은 채도의
+ * 상단 리본 전용 muted 텍스트 토큰이 실제로 dark/light 각각 낮은 채도의
  * 값으로 정의돼 있는지, 그리고 이 토큰이 전역 `tertiaryText`와 분리된 별도 값인지 확인한다.
  * `Shell.kt`가 이 토큰과 `chelseaBlue`를 실제로 소비하는지는 native GUI 수동 QA로 확인한다 —
  * 이 프로젝트는 Compose UI 렌더 트리를 단위 테스트하는 하네스를 쓰지 않는다.

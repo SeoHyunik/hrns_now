@@ -203,14 +203,14 @@ class JsonProjectRegistryAdapterTest {
     }
 
     @Test
-    fun `InternalDeveloperSdk는 절대 경로 없이 선택만 저장하고 다시 읽으면 그대로 복원된다`() = runTest {
+    fun `DefaultKit는 절대 경로 없이 선택만 저장하고 다시 읽으면 그대로 복원된다`() = runTest {
         val path = tempRegistryPath()
         val adapter = JsonProjectRegistryAdapter(path)
         val internalProject = project("internal").let {
             HarnessProject(
                 id = it.id,
                 displayName = it.displayName,
-                runtimeSource = RuntimeSource.InternalDeveloperSdk,
+                runtimeSource = RuntimeSource.DefaultKit,
                 projectWorkspaceRoot = it.projectWorkspaceRoot,
                 repositoryRoot = it.repositoryRoot,
                 profileId = it.profileId,
@@ -224,18 +224,18 @@ class JsonProjectRegistryAdapterTest {
 
         val text = Files.readString(path)
         assertTrue(text.contains("internal_developer_sdk"))
-        // kit_root는 ExternalKit일 때만 값을 갖는 필드다. InternalDeveloperSdk는 null을 주므로
+        // kit_root는 ExternalKit일 때만 값을 갖는 필드다. DefaultKit는 null을 주므로
         // (encodeDefaults=false 기본값이라 아예 생략되거나 명시적 null로만 나타난다) 실제 경로
         // 문자열이 그 field 값으로 채워지는 일이 없다 — round-trip 결과로 이를 확인한다(§20.1).
         val kitRootLine = text.lineSequence().firstOrNull { it.contains("\"kit_root\"") }
         assertTrue(kitRootLine == null || kitRootLine.contains("null"), "kit_root에 값이 있으면 안 된다: $kitRootLine")
 
         val loaded = assertIs<RegistryLoadResult.Success>(adapter.findAll())
-        assertEquals(RuntimeSource.InternalDeveloperSdk, loaded.projects.single().runtimeSource)
+        assertEquals(RuntimeSource.DefaultKit, loaded.projects.single().runtimeSource)
     }
 
     @Test
-    fun `InternalDeveloperSdk entry에 kit root가 함께 있으면 조용히 버리지 않고 손상으로 격리한다`() = runTest {
+    fun `DefaultKit entry에 kit root가 함께 있으면 조용히 버리지 않고 손상으로 격리한다`() = runTest {
         val path = tempRegistryPath()
         Files.writeString(
             path,

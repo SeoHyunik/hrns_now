@@ -130,7 +130,7 @@ class JsonProjectRegistryAdapter(
         }
 
     /**
-     * "마지막으로 활성화된 프로젝트" 선택만 지운다(Phase 9 QA03-A) — project entry 목록은
+     * "마지막으로 활성화된 프로젝트" 선택만 지운다 — project entry 목록은
      * [markActive]/[save]와 동일한 atomic write 경로로 그대로 다시 쓴다.
      */
     override suspend fun clearActive(): RegistrySaveResult =
@@ -327,8 +327,8 @@ class JsonProjectRegistryAdapter(
     }
 
     /**
-     * `InternalDeveloperSdk`는 절대 경로를 domain에 갖고 있지 않으므로(§20.1) 이 검사에서
-     * 제외한다 — repository-relative 개발 SDK 경로가 `%APPDATA%\hrns-now` 근처에 있을 일은
+     * `DefaultKit`는 절대 경로를 domain에 갖고 있지 않으므로(§20.1) 이 검사에서
+     * 제외한다 — repository-relative 기본 Kit 경로가 `%APPDATA%\hrns-now` 근처에 있을 일은
      * 실질적으로 없고, 필요한 real root 비교는 `ExternalKit`처럼 실제 절대 경로가 있을 때만
      * 의미가 있다.
      */

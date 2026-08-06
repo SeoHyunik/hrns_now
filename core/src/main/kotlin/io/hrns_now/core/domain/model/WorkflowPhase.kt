@@ -6,7 +6,7 @@ package io.hrns_now.core.domain.model
  * 알려진 값은 harness-kit 스크립트에서 실측 확인한 리터럴만 포함한다
  * (`scripts/init-workspace.ps1`, `scripts/lib/code/code-state-output.ps1`,
  * `scripts/lib/doc/doc-state-output.ps1`, `scripts/invoke-append-*.ps1` 등).
- * 목록에 없는 값은 [Unknown]으로 원문을 보존하며, 실행 가능 여부 판단(Phase 1B)은
+ * 목록에 없는 값은 [Unknown]으로 원문을 보존하며, 실행 가능 여부 판단은
  * 이 Unknown 값에서 fail-closed로 처리해야 한다.
  */
 sealed interface WorkflowPhase {

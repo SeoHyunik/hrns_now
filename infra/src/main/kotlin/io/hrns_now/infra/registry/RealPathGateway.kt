@@ -12,7 +12,8 @@ import java.nio.file.Path
  *
  * `Files.exists`/`isDirectory`/`isReadable`/`toRealPath()` 등 실제 filesystem 호출은 전부
  * 여기서만 수행한다 — [io.hrns_now.core.domain.policy.BoundaryPolicy]는 이 결과만 소비하는
- * 순수 함수로 남는다(`doc/claude_prompts/phase1d-project-registry.md` §2 계층 분리 지시).
+ * 순수 함수로 남는다. infra가 filesystem I/O를 전담하고 domain은 순수하게 유지하는 계층 분리
+ * 원칙을 따른다.
  */
 class RealPathGateway {
     fun resolve(raw: String?): RootPathCheck {

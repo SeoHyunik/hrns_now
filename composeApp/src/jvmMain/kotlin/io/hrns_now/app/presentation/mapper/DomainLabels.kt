@@ -10,7 +10,7 @@ import io.hrns_now.core.usecase.ActiveProjectSource
 /**
  * domain sealed 값의 화면 표시 문구다. 외부 JSON의 `Unknown(raw)` 원문은 domain에
  * 보존하되 UI에는 그대로 표시하지 않는다. 상태 필드는 신뢰 경계 밖의 입력이므로 원문에
- * session ID·token·secret이 없다고 가정할 수 없다. 새 Phase 8 보완: 화면에서 실제로 선택된
+ * session ID·token·secret이 없다고 가정할 수 없다. 화면에서 실제로 선택된
  * [AppLocale]로 투영한다 — 기본값 Korean은 기존 호출부/테스트가 그대로 컴파일되도록 남긴다.
  */
 fun WorkflowPhase.displayLabel(locale: AppLocale = AppLocale.Korean): String =

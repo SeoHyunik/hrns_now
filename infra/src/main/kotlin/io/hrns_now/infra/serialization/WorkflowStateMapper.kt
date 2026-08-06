@@ -32,7 +32,7 @@ internal sealed interface MapResult {
  *
  * 반대로 상세 계약이 아직 불명확한 `current_slice`/`slice_queue`/`role_sliced`/`usage_guard`는
  * 필드 누락과 명시적 null을 구분하지 않고 동일하게 도메인 null(없음)로 처리한다 — 이 필드들은
- * Phase 1A의 readiness/CTA 판단에 관여하지 않기 때문이다.
+ * readiness/CTA 판단에 관여하지 않기 때문이다.
  */
 internal class WorkflowStateMapper(
     private val rawJsonValueSanitizer: RawJsonValueSanitizer = RawJsonValueSanitizer(),

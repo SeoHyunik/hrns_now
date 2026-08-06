@@ -44,7 +44,7 @@ data class HrnsColors(
     val tertiaryText: Color,
 
     /**
-     * 상단 리본 전용 muted 텍스트 토큰이다(Phase 9 QA02). 전역 [tertiaryText]와 분리해 두어,
+     * 상단 리본 전용 muted 텍스트 토큰이다. 전역 [tertiaryText]와 분리해 두어,
      * 이 값을 바꿔도 다른 화면의 "덜 중요한 텍스트" 의미를 훼손하지 않는다.
      */
     val ribbonMutedText: Color,
@@ -98,8 +98,8 @@ fun hrnsColors(mode: HrnsThemeMode): HrnsColors =
             secondaryText = Color(0xFFA1A1AA),
             tertiaryText = Color(0xFF6B6B74),
 
-            // Phase 9 QA02: 이전 값(0xFFFFE9A6)은 채도가 너무 높았다. 흰색에 가까운 낮은 채도의
-            // warm off-white로 낮췄다.
+            // 채도가 높으면 다크 배경에서 지나치게 튀므로, 흰색에 가까운 낮은 채도의 warm
+            // off-white를 사용한다.
             ribbonMutedText = Color(0xFFD9D7C7),
 
             accent = Color(0xFF4A7FC9),
@@ -143,7 +143,7 @@ fun hrnsColors(mode: HrnsThemeMode): HrnsColors =
             secondaryText = Color(0xFF52525B),
             tertiaryText = Color(0xFF9CA3AF),
 
-            // Phase 9 QA02: light 배경에서 대비를 유지하는 muted warm dark 색.
+            // light 배경에서 대비를 유지하는 muted warm dark 색.
             ribbonMutedText = Color(0xFF6B5A3C),
 
             accent = Color(0xFF034694),

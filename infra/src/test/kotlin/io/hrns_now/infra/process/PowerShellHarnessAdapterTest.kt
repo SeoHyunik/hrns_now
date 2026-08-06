@@ -180,7 +180,7 @@ class PowerShellHarnessAdapterTest {
         }
     }
 
-    // ── Phase 4: run-cycle.ps1 기반 mutating command (JSON 계약 없음) ──────────
+    // ── run-cycle.ps1 기반 mutating command (JSON 계약 없음) ──────────────────
 
     private fun writeRunCycleStub(kitRoot: Path, body: String) {
         val script = """
@@ -242,7 +242,7 @@ class PowerShellHarnessAdapterTest {
         }
     }
 
-    // ── Phase 10: enter-project.ps1 기반 onboarding command (JSON 계약 없음) ──────
+    // ── enter-project.ps1 기반 onboarding command (JSON 계약 없음) ────────────
 
     private fun writeEnterProjectStub(kitRoot: Path, body: String) {
         val script = """
