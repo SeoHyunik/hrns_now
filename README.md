@@ -38,23 +38,19 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 
 ## 현재 개발 상태
 
-**기준일: 2026-07-28**
+**기준일: 2026-08-06**
 
-| 단계 | 상태 | 주요 결과 |
+| 영역 | 상태 | 현재 판정 |
 |---|---|---|
-| Phase 0 | 완료 | Harness 계약 재정렬, 테스트·CI 기반 정비 |
-| Phase 1 | 완료 | State Reader, fail-closed CTA, 실데이터 Cockpit, 프로젝트 Registry |
-| Phase 2 | 완료 | Harness JSON 진단·호환성 계약 연동 |
-| Phase 3 | 완료 | typed PowerShell 실행 어댑터, 프로세스 잠금, 온보딩 |
-| Phase 4 | 완료 | 요청 작성, Planning·Replan, code/doc 실행 흐름 |
-| Phase 5 | `PASS_WITH_FIXES` | Closure 정책, 복구 센터, Git 오염 확인, 진단 projection |
-| 새 Phase 6 | `BLOCKED` | 자동 검증·MSI 재패키징은 통과했으나 새 native UI 수동 QA 증빙이 남음 |
-| 새 Phase 7 | `PASS_WITH_FIXES` | Git-ignore 개발용 내장 Harness SDK source, typed runtime 선택·해석, explicit external override. 실제 SDK·native UI 운영 QA는 남음 |
-| 보류 기존 Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
-| 보류 기존 Phase 6B | **BLOCKED** | 승인된 Harness Runtime 릴리스 artifact가 없어 통합 구현을 시작할 수 없음 |
-| 보류 기존 Phase 7E | 미착수 | opt-in 실험·고급 진단 기능 |
+| Core application | 구현됨 | State Reader, typed CTA/command, Cockpit, Registry, onboarding, daily flow, Recovery, Closure |
+| 자동 검증 | 통과 | 강제 재실행 기준 `core` 141 + `infra` 174 + `composeApp` 122 = 437 tests |
+| Live Harness Kit 호환성 | **차단 결함 확인** | fresh onboarding State의 UI 보장 필드 누락으로 production parser가 fail-closed할 수 있음 |
+| Native UI QA | 대기 | live 호환성 blocker 해결 후 실제 사용자 클릭·캡처 필요 |
+| Windows MSI lifecycle | 대기 | package는 생성되지만 clean Windows 설치→표준 cycle→제거 증거가 없음 |
+| Bundled Harness Runtime | **차단** | owner-approved immutable runtime artifact·manifest·checksum이 없음 |
+| Post-MVP | 미착수 | signing, update/rollback, license, portable data mode |
 
-### 보류 기존 Phase 6A가 아직 완료가 아닌 이유
+### Windows MSI Gate가 아직 완료가 아닌 이유
 
 현재 소스 기준으로 다음 검증은 통과했습니다.
 
@@ -89,9 +85,9 @@ clean Windows 환경
 
 ### 1. 프로젝트 온보딩과 Registry
 
-프로젝트별로 다음 경로와 Profile을 등록하고 전환할 수 있습니다. 새 Phase 7이 끝나면 표준 등록은 HRNS-NOW source checkout 안의 사용자 제공 개발 SDK를 기본으로 사용하며, 외부 Kit 경로는 고급 override에서만 선택합니다.
+프로젝트별로 runtime source, workspace, repository, Profile을 등록하고 전환할 수 있습니다. 기본 선택은 HRNS-NOW source checkout 상대 `.local\harness-kit`이며, 명시적 외부 Harness Kit은 고급 선택으로 등록합니다.
 
-- Harness runtime source(현재는 외부 Kit root, Phase 7부터 개발용 내장 SDK 기본)
+- Harness runtime source: DefaultKit 또는 ExternalKit
 - 프로젝트 workspace root
 - Git repository root
 - Harness profile
@@ -99,13 +95,13 @@ clean Windows 환경
 
 등록 전에 경로의 상호 포함, junction·symlink를 고려한 실경계, Harness 호환성을 검사합니다.
 
-현재 구현의 Registry 해석 순서는 다음과 같습니다.
+앱은 Registry의 마지막 활성 ID가 유효한 project entry를 가리킬 때 이를 선택하고, 그렇지 않으면 사용자가 Setup에서 프로젝트를 등록·선택하게 합니다.
 
 ```text
-사용자 Registry → 환경변수 fallback → 사용자 직접 선택
+Registry last active project → explicit user selection
 ```
 
-새 Phase 7이 완료되면 기본 runtime source는 저장소 상대 `.local\harness-kit` 개발 SDK가 되며, 기존 Registry `kit_root`과 환경변수 경로는 명시적 외부 Kit 선택으로만 해석합니다. 이는 개발 환경 편의를 위한 경계이며, MSI에 Harness Runtime을 포함한다는 뜻은 아닙니다.
+DefaultKit은 source checkout을 찾을 수 있는 개발 실행에서만 `.local\harness-kit`으로 해석됩니다. packaged app처럼 checkout 표지를 찾지 못하면 경로를 추측하지 않고 fail-closed합니다. ExternalKit만 사용자가 지정한 absolute root를 Registry에 저장합니다. 어느 선택도 Harness Runtime을 MSI에 포함한다는 뜻은 아닙니다.
 
 Registry 기본 위치:
 
@@ -345,7 +341,7 @@ composeApp → core ← infra
 
 ## Windows MSI 패키징
 
-보류 기존 Phase 6A는 Windows MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
+현재 Windows 배포 Gate는 MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
 
 ### Debug MSI
 
@@ -394,33 +390,23 @@ Program Files에는 Registry, workspace, Harness 로그, 사용자 작업 파일
 
 ## 문서
 
-- [최종 통합 발전 계획](./doc/hrns_now_claude_plan.md)
+- [문서 안내와 현재 상태](./doc/README.md)
+- [현행 계획과 외부 계약](./doc/hrns_now_claude_plan.md)
 - [Kotlin 아키텍처와 디자인 패턴](./doc/hrns_now_design_pattern.md)
-- [패키징 계획](./doc/hrns_now_packaging_plan.md)
-- [Phase 보고서](./doc/phase_reports)
-- [다음 단계 작업 지시](./doc/claude_prompts)
+- [Native QA 체크리스트](./doc/native_qa_checklist.md)
+- [Live Harness Kit 호환성 감사](./doc/claude_prompts/harness-kit-live-compatibility-audit.md)
+- [패키징 초안](./doc/hrns_now_packaging_plan.md) — 사용자 작업 자료, 비정본
 
-개발 또는 검증을 시작하기 전에 현재 Phase 보고서와 다음 작업 지시를 함께 확인해야 합니다. 과거 보고서의 테스트 수나 판정보다 최신 Codex 독립 검증 절이 우선합니다.
+현재 source와 live artifact가 문서보다 우선합니다. 완료된 일회성 프롬프트와 과거 시점 보고서는 Git 이력에서 조회하며 현재 계약으로 사용하지 않습니다.
 
 ---
 
 ## 로드맵
 
-### 새 Phase 7 결과: 내장 개발용 Harness SDK source
+1. **Live Kit 호환성** — 모든 command, diagnostics, State lifecycle과 fresh onboarding artifact를 production parser 기준으로 정렬
+2. **Native workflow QA** — 실제 사용자 클릭으로 registration, onboarding, today work, recovery, closure 확인
+3. **Clean Windows MSI** — 설치부터 표준 cycle과 제거까지 독립 검증
+4. **Approved bundled runtime** — owner-approved immutable artifact가 제공된 뒤에만 통합
+5. **Post-MVP** — signing, update/rollback, license, portable data mode, opt-in diagnostics
 
-- Git-ignore `.local\harness-kit` 사용자 제공 개발 SDK를 기본 runtime source로 해석
-- typed runtime source와 safe Registry migration
-- 표준 프로젝트 등록에서 Kit root 직접 입력 제거
-- advanced external Kit override와 missing SDK fail-closed UX
-- repository·workspace·runtime root 경계와 기존 compatibility/command 계약 보존
-
-소스·Registry·fail-closed 동작과 전체 자동 테스트는 통과했습니다. 사용자가 실제 `.local\harness-kit` SDK를 제공한 환경에서의 등록→Doctor→State 조회, 그리고 native UI 육안 QA는 다음 운영 점검에서 확인합니다. 이 결과는 보류 Gate를 통과 처리하지 않습니다.
-
-### 보류 과제
-
-- **기존 Phase 6A** — clean Windows release MSI 통합 smoke
-- **기존 Phase 6B** — Harness 저장소가 승인한 재현 가능한 Runtime artifact만 MSI에 통합
-- **기존 Phase 7E** — 메인 CTA와 분리된 opt-in 실험·고급 진단 기능
-- **Post-MVP** — 코드 서명, 업데이트·롤백, 라이선스, portable data mode
-
-새 Phase 7의 완료는 보류 G6A/G6B나 기존 Phase 7E를 완료 처리하지 않습니다. 보류 과제 재개는 별도 사용자 승인과 Codex 독립 검증이 필요합니다.
+상세 완료 조건과 현재 blocker는 [현행 계획](./doc/hrns_now_claude_plan.md)을 따릅니다.
