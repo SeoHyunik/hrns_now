@@ -13,7 +13,7 @@
 - live 호환성 감사의 `BLOCKER`와 `HIGH` finding이 해결되거나 명시적으로 수용된다.
 - Kit, workspace, repository가 서로 분리된 QA 전용 경로다.
 
-2026-08-06 현재 fresh onboarding State의 `required_next_action` 누락이 확인되어, 호환성 수정 전 native onboarding 성공 Gate는 차단 상태다.
+2026-09-02 현재 fresh onboarding State의 `required_next_action` 누락을 포함한 재현 가능 BLOCKER/HIGH는 수정·회귀 검증됐다. 자동화된 호환성 Gate는 `COMPATIBLE_WITH_NONBLOCKING_GAPS`이며, 이 체크리스트의 Native QA는 실제 사용자 클릭·관찰 증거가 없어 아직 대기 상태다.
 
 ## 증거 원칙
 

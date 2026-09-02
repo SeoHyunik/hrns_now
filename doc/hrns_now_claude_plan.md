@@ -1,6 +1,6 @@
 # HRNS-NOW 현행 계획과 외부 계약
 
-- 기준일: 2026-08-06
+- 기준일: 2026-09-02
 - 대상: 현재 `harness-dev` production source
 - 외부 통합 기준: 현재 live `D:\harness-kit`
 - 성격: 구현 연혁이 아니라 현재 불변식, 구현 상태, 우선순위와 완료 Gate의 정본
