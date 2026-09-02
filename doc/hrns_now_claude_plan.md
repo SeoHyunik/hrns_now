@@ -22,15 +22,17 @@
 
 ## 0.2 검증 기준선
 
-2026-08-06 강제 재실행 결과는 `core` 141, `infra` 174, `composeApp` 122로 총 437 tests이며 failures/errors/skipped는 0이다.
+2026-09-02 기준 Windows 강제 재실행 기준선은 `core` 141, `infra` 180, `composeApp` 122로 총 443 tests이며 failures/errors는 0, skipped 2(opt-in live-Kit contract test 2건, env var 미설정 시 정상 skip)다.
 
-등록된 외부 Kit에서 Doctor는 167 checks, Validate-Ops는 19 checks로 각각 `overall=ok`였다. 이 진단 성공은 State production parser 호환성을 자동 보장하지 않는다.
+등록된 외부 Kit(`kit_version=2026.09.02`)에서 Doctor는 193 checks(run-cycle.ps1의 필수/optional 런타임 의존성 인벤토리 검증 포함), Validate-Ops는 20 checks로 각각 `overall=ok`였다. 이 진단 성공은 State production parser 호환성을 자동 보장하지 않는다.
 
-## 0.3 현재 차단 결함
+CI는 Windows 전용 infra 계약을 Ubuntu에서 실행하던 잘못된 구성을 제거했다. Ubuntu job은 portable `:core:check`, Windows job은 PowerShell/경로/process-tree 통합을 포함한 전체 `check`를 실행한다. Linux에서 별도로 발견된 lock 생성 경쟁은 `CREATE_NEW` 원자 생성과 작성 직후 publication retry로 수정하고 Ubuntu WSL에서 회귀 검증했다. 원격 GitHub Actions의 최종 확인은 이 커밋을 push할 때 수행한다.
 
-fresh `enter-project.ps1` 재현은 exit 0, bridge 3/3, daily 4/4, State schema 1.0, Doctor/Validate-Ops `overall=ok`였다. 그러나 초기 State에는 live Harness 문서가 UI 보장 필드로 선언하고 HRNS-NOW `WorkflowStateMapper`가 필수로 요구하는 최상위 `required_next_action`이 없었다.
+## 0.3 Live Harness Kit 호환성 현재 상태
 
-따라서 온보딩의 5중 성공 Gate 중 `StateReadResult.Success`가 실패할 수 있다. 이 문제는 표준 onboarding을 막으므로 해결 전 현재 live Kit 조합을 완전 호환으로 판정하지 않는다. [전수 호환성 감사](./claude_prompts/harness-kit-live-compatibility-audit.md)가 같은 유형의 추가 drift를 조사한다.
+fresh `enter-project.ps1` 재현은 exit 0, bridge 3/3, daily 4/4, State schema 1.0, Doctor/Validate-Ops `overall=ok`, HRNS-NOW production adapter `Success`다. 정상/실패 native closure(`run-cycle.ps1 -ValidateForClosure`) 양쪽 계약도 순수 production 산출물로 재검증했다.
+
+과거 발견된 두 차례의 BLOCKER/HIGH급 결함(UI 보장 필드 `required_next_action` 누락, `run-cycle.ps1` native child exit code 미확인, `pre_handoff_validate.ps1`의 dot-source StrictMode 스코프 누출로 인한 closure 크래시)은 모두 실제 소스 수정과 동적 재현으로 닫혔다. 현재 verdict는 `COMPATIBLE_WITH_NONBLOCKING_GAPS`다 — 남은 항목은 compatibility를 위반하지 않는 non-blocking gap 2건뿐이다: packaged 앱 console-window-flash(`UNVERIFIED`, 재현 시도했으나 관찰 안 됨), `Invoke-RunCycleWrapper`(native-only) 자체의 exit code 미확인(상위 ops-validation gate로 이미 보호되나 근거 부족으로 자체 수정은 보류). 상세 근거는 [감사 보고서](./phase_reports/harness-kit-live-compatibility-audit-report.md)를 따른다.
 
 # 1. 현재 제품 상태
 
@@ -48,8 +50,8 @@ fresh `enter-project.ps1` 재현은 exit 0, bridge 3/3, daily 4/4, State schema 
 
 ## 1.2 미완료 영역
 
-1. live Harness Kit과의 production-to-production 전수 호환성
-2. 호환성 blocker 해결 후 native onboarding과 daily flow 사용자 QA
+1. live Harness Kit과의 production-to-production 전수 호환성(현재 `COMPATIBLE_WITH_NONBLOCKING_GAPS`, §0.3 — 재현된 finding은 전부 해결됨, 향후 Kit 변경에 대한 지속 재검증은 계속 필요)
+2. native onboarding과 daily flow 사용자 QA(호환성 blocker는 해소됨, 실제 사용자 클릭·캡처는 아직 미실행)
 3. clean Windows release MSI 설치 lifecycle
 4. owner-approved Harness Runtime artifact 기반 bundle
 5. 코드 서명, 업데이트/롤백, 라이선스, portable data mode
@@ -221,7 +223,7 @@ fixture는 live writer artifact와 field-by-field 비교한다. public 필드를
 
 | Gate | 상태 | 완료 조건 |
 |---|---|---|
-| Live Kit compatibility | 차단 | 전수 finding 해결과 fresh parser success |
+| Live Kit compatibility | 통과(non-blocking gap 공개) | 전수 finding 해결(완료)과 fresh parser success(완료) — 남은 gap 2건은 §0.3 참고, compatibility 위반 아님 |
 | Native workflow QA | 대기 | 실제 사용자 증거와 필수 항목 PASS |
 | Clean Windows MSI | 대기 | 설치부터 제거까지 lifecycle PASS |
 | Bundled runtime | 차단 | owner-approved artifact와 manifest 제공 |

@@ -78,7 +78,7 @@ git log -5 --oneline --decorate
 문서:
 
 - `README.md`
-- `doc/README.md`
+- `doc/documentation_guide.md`
 - `doc/hrns_now_claude_plan.md`
 - `doc/hrns_now_design_pattern.md`
 - `doc/native_qa_checklist.md`

@@ -17,19 +17,20 @@
 
 ## 현재 상태
 
-기준일은 2026-08-06이다.
+기준일은 2026-09-02이다.
 
 | 영역 | 상태 | 근거 |
 |---|---|---|
 | 애플리케이션 구조 | 구현됨 | Hexagonal Architecture, typed command/policy, MVVM/UDF, CQRS-lite |
-| 기본 자동 테스트 | 통과 | 강제 재실행 기준 `core` 141, `infra` 174, `composeApp` 122 — 총 437 |
-| live Kit 진단 | 통과 | 등록된 외부 Kit에서 Doctor 167 checks, Validate-Ops 19 checks, 각각 `overall=ok` |
-| live Kit 호환성 | **차단 결함 확인** | fresh onboarding State에 UI 보장 필드 `required_next_action`이 없어 HRNS production parser가 fail-closed할 수 있음 |
-| Native UI QA | 대기 | 호환성 blocker 해결 후 실제 사용자 클릭·캡처 필요 |
+| 기본 자동 테스트 | 통과 | 강제 재실행 기준 `core` 141, `infra` 180, `composeApp` 122 — 총 443(opt-in live 테스트 2건 skip 포함) |
+| live Kit 진단 | 통과 | 등록된 외부 Kit에서 Doctor 193 checks(run-cycle.ps1 필수/optional 런타임 의존성 인벤토리 포함), Validate-Ops 20 checks, 각각 `overall=ok` |
+| live Kit 호환성 | `COMPATIBLE_WITH_NONBLOCKING_GAPS` | `kit_version=2026.09.02`; 재현된 모든 BLOCKER/HIGH와 stale current-baseline 문서를 수정·회귀 검증함. 남은 항목은 non-blocking으로 공개(console-window-flash UNVERIFIED, `Invoke-RunCycleWrapper` 미확정 exit-code) |
+| CI | 구성 수정·로컬 교차 검증 통과 | Ubuntu portable core와 Windows 전체 PowerShell 통합 gate를 분리. 원격 Actions 확인은 다음 push에서 수행 |
+| Native UI QA | 대기 | 호환성 non-blocking gap과 무관하게 실제 사용자 클릭·캡처 필요 |
 | Windows MSI lifecycle | 대기 | clean Windows 설치→표준 cycle→제거 증거 미완료 |
 | Bundled Harness Runtime | 차단 | owner가 승인한 immutable runtime artifact·manifest·checksum이 없음 |
 
-live Kit 호환성은 [감사 프롬프트](./claude_prompts/harness-kit-live-compatibility-audit.md)로 전수 재검증한다. 보고서가 생성되면 `phase_reports/harness-kit-live-compatibility-audit-report.md`가 현재 판정의 직접 근거가 된다.
+live Kit 호환성의 현재 판정은 [감사 보고서](./phase_reports/harness-kit-live-compatibility-audit-report.md)를 따른다. 확인된 결함은 [호환성 수정 프롬프트](./claude_prompts/harness-kit-live-compatibility-remediation.md)와 [closure-validation 수정 프롬프트](./claude_prompts/harness-kit-closure-validation-remediation.md)로 수정·회귀 검증했다.
 
 ## 현재 유지 문서
 
@@ -37,7 +38,8 @@ live Kit 호환성은 [감사 프롬프트](./claude_prompts/harness-kit-live-co
 - [Kotlin 아키텍처 규범](./hrns_now_design_pattern.md) — 계층, 패턴, port/adapter, 실행 lifecycle, 테스트 원칙
 - [Native QA 체크리스트](./native_qa_checklist.md) — 실제 사용자 상호작용과 증거 요구사항
 - [Live Harness Kit 호환성 감사 프롬프트](./claude_prompts/harness-kit-live-compatibility-audit.md) — 현재 `D:\harness-kit` 전수 감사 절차
-- [현재 검증 보고서](./phase_reports/README.md) — 아직 유효한 현재 Gate 보고서만 유지
+- [Live Harness Kit 호환성 수정 프롬프트](./claude_prompts/harness-kit-live-compatibility-remediation.md) — BLOCKER 수정, 양쪽 회귀 테스트, verdict 재판정 절차
+- [현재 검증 보고서](./phase_reports/current_validation_reports.md) — 아직 유효한 현재 Gate 보고서만 유지
 
 다음 파일은 사용자 작업 자료이며 production 계약의 정본이 아니다. 존재할 경우 명시적 요청 없이 수정·삭제·stage하지 않는다.
 

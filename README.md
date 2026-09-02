@@ -38,14 +38,15 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 
 ## 현재 개발 상태
 
-**기준일: 2026-08-06**
+**기준일: 2026-09-02**
 
 | 영역 | 상태 | 현재 판정 |
 |---|---|---|
 | Core application | 구현됨 | State Reader, typed CTA/command, Cockpit, Registry, onboarding, daily flow, Recovery, Closure |
-| 자동 검증 | 통과 | 강제 재실행 기준 `core` 141 + `infra` 174 + `composeApp` 122 = 437 tests |
-| Live Harness Kit 호환성 | **차단 결함 확인** | fresh onboarding State의 UI 보장 필드 누락으로 production parser가 fail-closed할 수 있음 |
-| Native UI QA | 대기 | live 호환성 blocker 해결 후 실제 사용자 클릭·캡처 필요 |
+| 자동 검증 | 통과 | 강제 재실행 기준 `core` 141 + `infra` 180 + `composeApp` 122 = 443 tests(opt-in live 테스트 2건 skip 포함) |
+| Live Harness Kit 호환성 | `COMPATIBLE_WITH_NONBLOCKING_GAPS` | `kit_version=2026.09.02`; 재현된 BLOCKER/HIGH와 문서 기준선 drift를 수정·회귀 검증 완료. 남은 항목은 non-blocking으로 공개(console-window-flash UNVERIFIED, `Invoke-RunCycleWrapper` 미확정 exit-code) — [감사 보고서](doc/phase_reports/harness-kit-live-compatibility-audit-report.md) 참고 |
+| CI | 구성 수정·로컬 교차 검증 통과 | Ubuntu는 portable `core`를, Windows는 PowerShell 통합을 포함한 전체 `check`를 실행. 원격 Actions 확인은 다음 push에서 수행 |
+| Native UI QA | 대기 | 실제 사용자 클릭·캡처 필요(호환성 non-blocking gap과는 별개) |
 | Windows MSI lifecycle | 대기 | package는 생성되지만 clean Windows 설치→표준 cycle→제거 증거가 없음 |
 | Bundled Harness Runtime | **차단** | owner-approved immutable runtime artifact·manifest·checksum이 없음 |
 | Post-MVP | 미착수 | signing, update/rollback, license, portable data mode |
@@ -390,11 +391,12 @@ Program Files에는 Registry, workspace, Harness 로그, 사용자 작업 파일
 
 ## 문서
 
-- [문서 안내와 현재 상태](./doc/README.md)
+- [문서 안내와 현재 상태](./doc/documentation_guide.md)
 - [현행 계획과 외부 계약](./doc/hrns_now_claude_plan.md)
 - [Kotlin 아키텍처와 디자인 패턴](./doc/hrns_now_design_pattern.md)
 - [Native QA 체크리스트](./doc/native_qa_checklist.md)
 - [Live Harness Kit 호환성 감사](./doc/claude_prompts/harness-kit-live-compatibility-audit.md)
+- [Live Harness Kit 호환성 수정](./doc/claude_prompts/harness-kit-live-compatibility-remediation.md)
 - [패키징 초안](./doc/hrns_now_packaging_plan.md) — 사용자 작업 자료, 비정본
 
 현재 source와 live artifact가 문서보다 우선합니다. 완료된 일회성 프롬프트와 과거 시점 보고서는 Git 이력에서 조회하며 현재 계약으로 사용하지 않습니다.
