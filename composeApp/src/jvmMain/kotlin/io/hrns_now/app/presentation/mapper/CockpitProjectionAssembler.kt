@@ -146,12 +146,12 @@ class CockpitProjectionAssembler(
                     AppLocale.Korean -> when (runtimeResolution.reason) {
                         RuntimeIssue.NotDirectory -> "runtime 경로가 디렉터리가 아닙니다."
                         RuntimeIssue.NotReadable -> "runtime 경로를 읽을 수 없습니다."
-                        RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
+                        RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(enter-project.ps1/doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
                     }
                     AppLocale.English -> when (runtimeResolution.reason) {
                         RuntimeIssue.NotDirectory -> "The runtime path isn't a directory."
                         RuntimeIssue.NotReadable -> "The runtime path couldn't be read."
-                        RuntimeIssue.MissingEntrypoint -> "Required Harness files (doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json) are missing."
+                        RuntimeIssue.MissingEntrypoint -> "Required Harness files (enter-project.ps1/doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json) are missing."
                     }
                 },
                 lastKnownGoodPreserved = false,

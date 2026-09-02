@@ -41,7 +41,7 @@ fun registrationWhatHappenedText(reason: RegistrationRejectionReason, locale: Ap
                 val reasonText = when (reason.issue) {
                     RuntimeIssue.NotDirectory -> "경로가 디렉터리가 아닙니다."
                     RuntimeIssue.NotReadable -> "경로를 읽을 수 없습니다."
-                    RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
+                    RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(enter-project.ps1/doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
                 }
                 "${runtimeSourceLabel(reason.source, locale)} 확인 실패: $reasonText"
             }
@@ -60,7 +60,7 @@ fun registrationWhatHappenedText(reason: RegistrationRejectionReason, locale: Ap
                 val reasonText = when (reason.issue) {
                     RuntimeIssue.NotDirectory -> "The path isn't a directory."
                     RuntimeIssue.NotReadable -> "The path couldn't be read."
-                    RuntimeIssue.MissingEntrypoint -> "Required Harness files (doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json) are missing."
+                    RuntimeIssue.MissingEntrypoint -> "Required Harness files (enter-project.ps1/doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json) are missing."
                 }
                 "${runtimeSourceLabel(reason.source, locale)} check failed: $reasonText"
             }

@@ -17,8 +17,8 @@ import java.nio.file.Path
  * fail-closed된다 — 이는 의도된 동작이다(개발 전용 편의, 배포 Runtime이 아님).
  *
  * `ExternalKit`은 사용자가 등록한 경로를 그대로 검사한다. 두 경우 모두 존재·디렉터리·읽기 가능
- * 여부와 공개 entrypoint(`doctor.ps1`/`validate-ops.ps1`/`run-cycle.ps1`)·`kit-version.json`의
- * **존재**만 확인한다 — 내용을 읽거나 파싱하지 않는다. 실제 manifest 파싱/호환성 판정은
+ * 여부와 공개 entrypoint(`enter-project.ps1`/`doctor.ps1`/`validate-ops.ps1`/`run-cycle.ps1`)·
+ * `kit-version.json`의 **존재**만 확인한다 — 내용을 읽거나 파싱하지 않는다. 실제 manifest 파싱/호환성 판정은
  * [io.hrns_now.core.port.KitVersionManifestPort]/[io.hrns_now.core.domain.policy.CompatibilityPolicy]가
  * `Resolved.root`를 받은 뒤 별도로 수행한다.
  */
@@ -52,13 +52,22 @@ class DefaultKitRuntimeResolver(
 
     companion object {
         /**
-         * Kit root 아래 `scripts/doctor.ps1`, `scripts/validate-ops.ps1`, `scripts/run-cycle.ps1`,
-         * `kit-version.json`의 **존재**만 확인한다 — [io.hrns_now.infra.process.HarnessCommandEncoder]가
-         * 실제 실행 시점에 이 경로들을 다시 해석하므로, 여기서는 "이 root가 Kit처럼 보이는가"만
-         * 판단한다. 두 위치가 실제로 다르면 `MissingEntrypoint`가 아니라 이후 실행 단계에서 typed
-         * process 실패로 드러난다.
+         * Kit root 아래 `scripts/enter-project.ps1`, `scripts/doctor.ps1`, `scripts/validate-ops.ps1`,
+         * `scripts/run-cycle.ps1`, `kit-version.json`의 **존재**만 확인한다 —
+         * [io.hrns_now.infra.process.HarnessCommandEncoder]가 실제 실행 시점에 이 경로들을 다시
+         * 해석하므로, 여기서는 "이 root가 Kit처럼 보이는가"만 판단한다. 두 위치가 실제로 다르면
+         * `MissingEntrypoint`가 아니라 이후 실행 단계에서 typed process 실패로 드러난다.
+         *
+         * `enter-project.ps1`은 [io.hrns_now.core.usecase.RegisterProjectUseCase]가 프로젝트 등록
+         * 시 가장 먼저 호출하는 entrypoint이므로 doctor/validate-ops/run-cycle과 동일한 근거로
+         * 포함한다. 반대로 `scripts/init-workspace.ps1`은 포함하지 **않는다** — HRNS-NOW가 직접
+         * 호출하는 진입점이 아니라 `enter-project.ps1`/`run-cycle.ps1`이 내부적으로 위임하는
+         * 스크립트이며, Kit의 install-completeness 전수 검사(60여개 파일)는 이미 `doctor.ps1` 자신의
+         * 책임이다. 이 resolver는 doctor.ps1을 대신하는 전수 검사기가 아니라, HRNS-NOW가 실제로
+         * 직접 실행하는 진입점만 얕게 확인하는 sniff test로 유지한다.
          */
         private val REQUIRED_ENTRYPOINTS = listOf(
+            "scripts/enter-project.ps1",
             "scripts/doctor.ps1",
             "scripts/validate-ops.ps1",
             "scripts/run-cycle.ps1",
