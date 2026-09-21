@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "artifact_name": "WORKFLOW_STATE.json",
+  "workflow_state_model": "workflow-state-v1",
+  "required_next_action": "",
+  "date": "2026-08-06",
+  "project_name": "contract-sample-project",
+  "workspace_root": "C:\\contract-sample-workspace",
+  "repo_root": "C:\\contract-sample-repo",
+  "profile": "corp-default",
+  "merge_source": "state-surface",
+  "materialized_from": [],
+  "write_mode": "workflow-state-primary-default",
+  "default_runtime_mode": "workflow-state-primary-default",
+  "runtime_activation_ready": true,
+  "runtime_cutover": "workflow-state-primary-default",
+  "automatic_cutover": "disabled",
+  "compatibility_outputs_required": false,
+  "compatibility_outputs": [],
+  "state": {
+    "schema_version": "1.0",
+    "date": "2026-08-06",
+    "project_name": "contract-sample-project",
+    "workspace_root": "C:\\contract-sample-workspace",
+    "repo_root": "C:\\contract-sample-repo",
+    "profile": "corp-default",
+    "status": "running",
+    "current_phase": "request_intake_pending",
+    "current_status": "request_intake_pending",
+    "next_action": "",
+    "selected_current_work": "",
+    "execution_wrapper": "",
+    "authorized_target_file": "",
+    "stop_reason": "request_intake_pending",
+    "human_action_required": false,
+    "execution_completed": false,
+    "closure_validated": false,
+    "clean_handoff": false,
+    "current_step_id": "",
+    "current_step_title": "",
+    "last_completed_step_id": "",
+    "last_completed_step_title": "",
+    "current_card_id": "",
+    "current_slice_id": "",
+    "resume_from_step_id": "",
+    "blocked_reason": "",
+    "failed_reason": "",
+    "required_artifacts": {
+      "request_inbox": "REQUEST_INBOX.md",
+      "today_strategy": "TODAY_STRATEGY.md",
+      "daily_handoff": "DAILY_HANDOFF.md",
+      "workflow_state": "WORKFLOW_STATE.json"
+    },
+    "artifacts_state": {
+      "request_inbox": "missing",
+      "today_strategy": "missing",
+      "daily_handoff": "missing",
+      "workflow_state": "ready"
+    },
+    "steps": [],
+    "run_log": [
+      {
+        "timestamp": "2026-08-06T00:00:00",
+        "event": "initialized",
+        "details": "workflow state created"
+      }
+    ],
+    "ops_validation": {
+      "passed": false,
+      "validated_at": null,
+      "notes": ""
+    },
+    "closure": {
+      "is_clean_handoff": false,
+      "validated": false,
+      "validated_at": null,
+      "validator_notes": ""
+    }
+  },
+  "queue": {
+    "schema_version": "1.0",
+    "date": "2026-08-06",
+    "project_name": "contract-sample-project",
+    "workspace_root": "C:\\contract-sample-workspace",
+    "repo_root": "C:\\contract-sample-repo",
+    "profile": "corp-default",
+    "status": "empty",
+    "active": {
+      "card_id": "",
+      "slice_id": "",
+      "wrapper": "",
+      "authorized_target_file": ""
+    },
+    "cards": [],
+    "queue_log": [],
+    "blocked_reason": "",
+    "last_updated_at": "",
+    "notes": ""
+  },
+  "cutover": {
+    "materialized": true,
+    "materialized_at": null,
+    "activation_gate": "passed",
+    "runtime_cutover": "workflow-state-primary-default",
+    "default_runtime": "workflow-state-primary-default",
+    "required_operator_action": "validate workflow-state-primary default runtime window; legacy artifacts are optional compatibility outputs",
+    "rollback_required_artifacts": [],
+    "backups_required": true,
+    "automatic_cutover": "disabled"
+  },
+  "notes": "workflow-state-primary default runtime source; legacy dual-file artifacts are optional explicit fallback compatibility outputs"
+}

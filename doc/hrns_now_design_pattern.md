@@ -1,1041 +1,484 @@
-# HRNS-NOW Kotlin 아키텍처·디자인 패턴 규범
+# HRNS-NOW Kotlin 아키텍처 규범
 
-- **작성일:** 2026-07-23
-- **문서 지위:** 본 문서는 HRNS-NOW의 Kotlin 설계·문법 규범(normative)이다. 모든 Phase 구현과 코드 리뷰는 이 문서를 기준으로 판단한다.
-- **검증 기준:** live `S:\dev\project\hrns_now`(harness-dev, Codex 검토 반영분 포함), live `D:\harness-kit` 실계약, `doc/hrns_now_claude_plan.md`(최종 계획서)
-- **상위 문서:** 설계 원칙이 충돌할 경우 `doc/hrns_now_claude_plan.md`의 불변 원칙(2장)과 Phase 계약(4장)이 우선한다.
+- 기준일: 2026-08-06
+- 대상: 현재 production source
+- 상위 계약: [현행 계획과 외부 계약](./hrns_now_claude_plan.md)
 
-## 0. 원안 대비 검증·수정 내역
-
-초안을 live 소스와 대조하여 다음을 수정·확정했다. (근거는 각 해당 절에 표기)
-
-| # | 항목 | 판정 및 조치 |
-|---|---|---|
-| 1 | Use case 계층의 위치 | 초안은 `composeApp/application`에 배치했으나 최종 계획서 3.1은 "초기엔 `core` 내 usecase 패키지로 시작, 비대해지면 `:application` 분리"로 규정. **`core`에 배치로 정정** (§2, §17). Use case는 port에만 의존하므로 core 배치가 성립하며 Compose 없이 테스트 가능하다는 이점도 있다 |
-| 2 | §17 패키지 구조 | 초안의 목표 구조는 유효하나 현재 live 구조와 다르다. **big-bang 재배치를 금지**하고 "현재 → 목표" 매핑과 이동 시점 규칙을 추가 (§17) |
-| 3 | `ProjectRegistryPort` API | §3.2와 §10의 시그니처가 불일치 (`loadProjects/saveProject` vs `findAll/findById/save/delete`). **§10 형태로 통일** |
-| 4 | `ExecutionWrapper.Auto` | `auto`는 run-cycle CLI 실계약에 존재하나(실측: `none\|code\|doc\|auto`), 계획서는 "queue가 노출한 단일 wrapper만 실행"을 요구. **CLI enum에는 유지하되 UI 액션으로 노출 금지** 규칙 추가 (§6.2) |
-| 5 | 상태 머신에 `no_request` 누락 | harness-kit 실측 존재 상태이며 계획서 CTA 표에도 있음. **추가** (§7.1) |
-| 6 | `StateReadResult` vs 기존 `Projection<T>`/`ProjectionMeta` | 초안은 관계를 정의하지 않았음. **계층별 역할로 정리**: sealed result는 Reader/port 계약, `Projection<T>`+`ProjectionMeta`는 화면 투영 메타 (§14). Phase 1A의 `ProjectionMeta.malformed=true` 계약 유지 |
-| 7 | 실행 후 lock 해제 vs State 재읽기 순서 | 계획서 문구("lock 해제 확인 → State 재읽기")와 초안 코드(State 재읽기 후 finally 해제)가 상충. **State 재읽기는 lock 보유 중 수행으로 확정** — 계획서의 "해제 확인"은 실행 종료 후 잔존 lock 파일 정리 검증으로 해석한다 (§16) |
-| 8 | 날짜 선택 정책 | live에 이미 `WorkspaceDaySelectionPolicy`(`core.domain.policy`, 순수 정책)가 구현되어 있음을 반영. 본 문서의 Policy Pattern 규범이 이미 실현된 첫 사례로 §11에 등재 |
-
-초안에서 검증 후 **정확했던 핵심 사항**: stop reason·상태·차단 marker 값이 harness-kit에 실존(`usage_limit_blocked`, `claude_context_limit`, `dispatch_contract_mismatch`, `dispatch_metadata_conflict`, `manual_prerequisite_required`, `execution_blocked` 등), `-RunPlanningWrapper`/`-RunReplanWrapper`/`-RunExecutionWrapper code|doc`/`-ValidateForClosure` 명령 형태, `WORKFLOW_STATE.json` 위치(`dayRoot` 하위), validation wrapper 모드 부재. 단 `dispatch_metadata_conflict`는 `state.stop_reason`이 아니라 planning queue의 `blocked_reason`/`purpose_marker`이며, 실행 단계의 대응 stop reason은 `dispatch_contract_mismatch`다.
-
----
+이 문서는 현재 코드의 설계 규범이다. 과거 구현 순서와 교차검토 연혁은 제거했으며, source KDoc이 참조하는 section 번호는 유지한다.
 
 # 1. 최종 설계 결론
 
-HRNS-NOW가 최종적으로 지향해야 할 구조는 다음 네 가지를 결합한 형태다.
+HRNS-NOW는 다음 조합을 사용한다.
 
-> **Hexagonal Architecture + MVVM 기반 단방향 데이터 흐름 + CQRS-lite + 명시적 상태 머신과 정책 객체**
+```text
+Hexagonal Architecture
++ Anti-Corruption Layer
++ CQRS-lite
++ typed Command
++ State Machine / Policy
++ MVVM + Unidirectional Data Flow
++ Projection
++ Repository
++ Result
+```
 
-이를 한 문장으로 표현하면 다음과 같다.
-
-> **Harness Kit은 실행 엔진으로 유지하고, HRNS-NOW는 Harness의 상태를 읽고 허용된 명령만 전달하는 안전한 Kotlin Control Plane이 되어야 한다.**
-
-HRNS-NOW가 해서는 안 되는 일 (계획서 2.1~2.3과 동일):
-
-- Harness 로직을 Kotlin으로 다시 구현
-- Claude API를 직접 호출
-- `WORKFLOW_STATE.json`을 직접 수정
-- Markdown 문장을 분석해 실행 가능 여부 결정
-- stdout의 성공 문구만 보고 작업 완료 처리
-- 사용자가 임의 PowerShell 명령을 입력하게 허용
-
-상태 진실은 `WORKFLOW_STATE.json` 하나이며, unknown 상태·스키마·enum에서는 모든 쓰기와 실행을 잠그는 **fail-closed** 원칙을 지킨다.
-
----
+핵심 목적은 외부 Harness 계약 변화와 Windows I/O를 domain에서 격리하고, UI가 파일·문구를 추측해 실행하지 못하게 하는 것이다.
 
 # 2. 전체 아키텍처
 
 ```text
-┌─────────────────────────────────────────────┐
-│                Compose Desktop              │
-│   (composeApp: presentation + demo)         │
-│  Screen → UiEvent → AppViewModel → UiState  │
-└──────────────────────┬──────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────┐
-│        Application Layer (core.usecase)     │
-│  LoadCockpitUseCase                         │
-│  ExecuteHarnessActionUseCase                │
-│  SaveRequestUseCase                         │
-│  ValidateClosureUseCase                     │
-│  RefreshWorkspaceUseCase                    │
-└──────────────┬─────────────────┬────────────┘
-               │                 │
-               ▼                 ▼
-┌──────────────────────┐  ┌──────────────────────┐
-│  Domain (core)       │  │   Ports (core.port)  │
-│ WorkflowState        │  │ WorkflowStatePort    │
-│ WorkspaceDay         │  │ HarnessRunnerPort    │
-│ UiAction             │  │ ProjectRegistryPort  │
-│ StopReason           │  │ RequestWriterPort    │
-│ ActionPolicy         │  │ GitStatusPort        │
-│ ClosurePolicy        │  │ ProcessLockPort      │
-│ BoundaryPolicy       │  │ ClockPort            │
-│ WorkspaceDaySelectionPolicy (live 구현됨)     │
-└──────────────────────┘  └──────────┬───────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────┐
-│       Infrastructure Adapters (infra)       │
-│ JsonWorkflowStateAdapter                    │
-│ PowerShellHarnessAdapter                    │
-│ JsonProjectRegistryAdapter                  │
-│ AtomicRequestWriterAdapter                  │
-│ LocalProcessLockAdapter                     │
-│ CommandLineGitStatusAdapter                 │
-│ SecretMaskingProcessRunner (decorator)      │
-└──────────────────────┬──────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────┐
-│                  Harness Kit                │
-│ run-cycle.ps1 / doctor.ps1 / validate-ops.ps1│
-│ WORKFLOW_STATE.json (dayRoot 하위)           │
-│ REQUEST_INBOX.md / TODAY_STRATEGY.md        │
-│ DAILY_HANDOFF.md                            │
-└─────────────────────────────────────────────┘
+Compose UI
+  ↓ UiEvent
+AppViewModel
+  ↓ use case / port
+core domain + policy
+  ↑ port implementation
+infra adapter
+  ↓
+Registry / filesystem / Git / PowerShell / process / live Harness Kit
 ```
 
-**Use case 배치 결정 (수정 내역 #1):** use case는 port(core 내 interface)에만 의존하므로 `core`의 `usecase` 패키지에 둔다. Compose·파일·프로세스 의존이 core에 유입되지 않는 한 이 배치는 hexagonal 원칙과 충돌하지 않는다. use case 수가 많아져 core가 비대해지면 그때 `:application` Gradle 모듈로 분리한다 (계획서 3.1). `composeApp`에는 presentation(ViewModel, UI projection, mapper, screen, component)과 `demo`(mock provider)만 둔다.
+데이터 조회 흐름:
 
----
+```text
+Registry/runtime resolve → compatibility/boundary → day/State/artifact probe
+→ policy → presentation projection → Compose
+```
+
+명령 흐름:
+
+```text
+UiAction → ActionPolicy → typed HarnessCommand → argument encoder
+→ lock → process → State reread → unlock → projection refresh
+```
 
 # 3. 최상위 패턴: Hexagonal Architecture
 
 ## 3.1 선택 이유
 
-HRNS-NOW의 외부 의존성: Windows 파일 시스템, PowerShell, Harness Kit PS1, JSON 상태 파일, Git 명령, `%APPDATA%` Registry, `%LOCALAPPDATA%` Lock, 시스템 시간, 프로세스 PID, Compose Desktop.
+Harness Kit은 별도 제품이며 PowerShell, JSON, filesystem, process exit code라는 외부 계약을 가진다. domain이 이 구현에 결합하면 Kit 변경, test fixture, Windows 차이, 배포 형태가 모두 policy 코드로 새어 들어온다.
 
-이 외부 기술을 domain과 직접 결합하면:
+따라서 `core`는 domain model, policy, port, use case, typed result만 가진다. `infra`가 외부 계약을 구현하고 `composeApp`이 composition과 UI를 담당한다.
 
-```kotlin
-@Composable
-fun RunScreen() {
-    val process = ProcessBuilder("powershell.exe", ...)   // 금지
-    val json = File("WORKFLOW_STATE.json").readText()      // 금지
-}
-```
+금지 dependency:
 
-- UI 테스트 불가, PowerShell 없이 domain 테스트 불가능
-- 파일 구조 변경이 화면까지 전파
-- SRP·DIP 위반
-
-따라서 **핵심 로직은 port에만 의존하고 외부 기술은 adapter로 연결한다.**
+- `core` → Compose
+- `core` → kotlinx serialization DTO
+- `core` → `Files`, `ProcessBuilder`, Windows API
+- domain model → `%APPDATA%` 또는 특정 drive
+- UI → concrete infra adapter 직접 호출
 
 ## 3.2 Port 예시
 
-```kotlin
-interface WorkflowStatePort {
-    suspend fun read(day: WorkspaceDay): StateReadResult
-}
+현재 주요 port:
 
-interface HarnessRunnerPort {
-    suspend fun execute(command: HarnessCommand): ProcessRunResult
-    suspend fun cancel(runId: RunId): CancelResult
-}
+- `WorkflowStatePort`
+- `HarnessRunnerPort`
+- `RuntimeSourceResolverPort`
+- `KitVersionManifestPort`
+- `ProjectRegistryPort`
+- `ProcessLockPort`
+- `WorkspaceRecoveryDiagnosticsPort`
+- `RepositoryBridgeProbePort`
+- `RequestWriterPort`
+- `TodayStrategyReaderPort`
+- Git status와 preference port
 
-interface RequestWriterPort {
-    suspend fun save(
-        day: WorkspaceDay,
-        request: RequestDraft,
-        expectedVersion: FileVersion,
-    ): RequestSaveResult
-}
-```
-
-`ProjectRegistryPort`는 §10의 Repository 형태(`findAll`/`findById`/`save`/`delete`)를 단일 정본으로 사용한다 (수정 내역 #3).
-
-port interface는 JSON, 파일 경로, PowerShell, Windows API를 알지 못한다.
+Port는 외부 예외나 raw JSON 대신 domain input과 typed result를 노출한다.
 
 ## 3.3 Adapter 예시
 
-```kotlin
-class JsonWorkflowStateAdapter(
-    private val fileSystem: FileSystemGateway,
-    private val parser: WorkflowStateParser,
-    private val retryPolicy: StateReadRetryPolicy,
-) : WorkflowStatePort {
+- `JsonWorkflowStateAdapter`
+- `JsonKitVersionManifestAdapter`
+- `JsonProjectRegistryAdapter`
+- `PowerShellHarnessAdapter`
+- `JvmProcessExecutor`
+- `DefaultKitRuntimeResolver`
+- `LocalProcessLockAdapter`
+- `WorkspaceArtifactProbe`
+- `RepositoryBridgeProbe`
+- `RequestInboxWriterAdapter`
 
-    override suspend fun read(day: WorkspaceDay): StateReadResult =
-        retryPolicy.execute {
-            val content = fileSystem.readUtf8(
-                day.dayRoot.resolve("WORKFLOW_STATE.json"),
-            )
-            parser.parse(content)
-        }
-}
-```
-
-`WORKFLOW_STATE.json`의 위치는 반드시 `dayRoot`(=`<projectWorkspaceRoot>/<yyyy-MM-dd>/`) 하위다. live `WorkspaceDay`는 `dayRoot`, `dayLogsRoot`(day 산출물 로그), `wrapperLogsRoot`(`<root>/logs/<date>/`, wrapper 실행 로그)를 이미 구분해 제공한다 — 이 세 경로 해석을 다른 곳에 중복 구현하지 않는다.
-
-핵심: domain이 adapter를 모르고, adapter가 domain port를 구현한다.
-
----
+Adapter는 DTO, filesystem, encoding, exception 분류, process stdout/stderr를 알아도 되지만 domain policy를 결정하지 않는다.
 
 # 4. Harness와 HRNS-NOW 사이의 Anti-Corruption Layer
 
-## 4.1 필요한 이유
-
-`WORKFLOW_STATE.json`은 Harness Kit의 외부 계약이다. DTO를 그대로 UI까지 전달하면 Harness 필드명이 UI 전체로 확산되고, schema 추가가 화면 코드 연쇄 변경을 일으키며, raw 문자열 비교가 화면 곳곳에 흩어진다.
+Harness의 JSON은 외부 wire contract다. DTO는 nullable field와 `ignoreUnknownKeys=true`로 확장을 허용하고, 별도 mapper가 requiredness와 type을 판정한다.
 
 ```text
-WORKFLOW_STATE.json → HarnessWorkflowStateDto → WorkflowStateMapper → WorkflowState(domain)
+external JSON
+→ nullable DTO
+→ explicit mapper validation
+→ domain model / sealed result
 ```
 
-## 4.2 외부 DTO
+규칙:
 
-```kotlin
-@Serializable
-internal data class HarnessWorkflowStateDto(
-    @SerialName("schema_version") val schemaVersion: String? = null,
-    val state: HarnessStateDto? = null,
-    val queue: HarnessQueueDto? = null,
-)
-```
+- missing, null, empty string을 동일하게 뭉개지 않는다.
+- schema major는 지원 범위 밖이면 `UnsupportedSchema`다.
+- higher minor와 unknown field는 알려진 major 안에서 보존·무시할 수 있다.
+- malformed JSON, invalid UTF-8, access denied, missing file을 구분한다.
+- unknown taxonomy 값은 raw value를 보존하는 typed `Unknown`으로 매핑한다.
+- readiness 필수값을 nullable 기본값으로 은폐하지 않는다.
 
-DTO는 외부 구조를 있는 그대로 표현하고 `internal`로 격리한다. 파서 설정은 Phase 1A 계약을 따른다: `ignoreUnknownKeys = true` 필수, UTF-8(BOM 허용) 읽기, explicit null과 필드 누락 구분 정책 명시.
-
-## 4.3 내부 Domain
-
-```kotlin
-data class WorkflowState(
-    val schemaVersion: SchemaVersion,
-    val phase: WorkflowPhase,
-    val status: WorkflowStatus,
-    val stopReason: StopReason?,
-    val queue: WorkflowQueue,
-    val artifacts: ArtifactReadiness,
-    val opsValidation: OpsValidationState,
-    val closure: ClosureState,
-)
-```
-
-## 4.4 Unknown 값 보존
-
-```kotlin
-sealed interface StopReason {
-    data object UsageLimitBlocked : StopReason
-    data object ClaudeContextLimit : StopReason
-    data object DispatchContractMismatch : StopReason
-    data class Unknown(val raw: String) : StopReason
-}
-
-fun String?.toStopReason(): StopReason? =
-    when (this) {
-        null, "" -> null
-        "usage_limit_blocked" -> StopReason.UsageLimitBlocked
-        "claude_context_limit" -> StopReason.ClaudeContextLimit
-        "dispatch_contract_mismatch" -> StopReason.DispatchContractMismatch
-        else -> StopReason.Unknown(this)
-    }
-```
-
-외부 시스템 값은 계속 추가되므로 `else -> null`로 버리지 않는다. `Unknown(raw)`은:
-
-- 기존 코드가 새 값을 받아도 깨지지 않음 (OCP)
-- 실행은 fail-closed로 잠김
-- 원문을 진단 화면에 표시 가능, 데이터 손실 없음
-
-매핑에 사용하는 문자열 상수는 harness-kit 실측 taxonomy만 사용한다(계획서 부록 C). `packet_contract_failed` 같은 창작 용어를 다시 들여오지 않는다.
-
----
+현재 live onboarding에서 `required_next_action` writer drift가 발견된 이유도 이 ACL이 의도대로 fail-closed했기 때문이다. 외부 writer 결함을 숨기기 위해 mapper를 느슨하게 만들지 않는다.
 
 # 5. CQRS-lite
 
-완전한 CQRS까지 갈 필요는 없다. 읽기와 실행을 명확하게 분리하는 **CQRS-lite**가 적합하다.
+조회와 명령은 분리하지만 별도 bus나 framework를 도입하지 않는다.
 
-## 5.1 Query 측
+Query:
 
-읽기 작업: State/Artifact readiness/Strategy/Handoff/Git status/Registry/로그 읽기.
+- Registry, runtime, State, artifact, Git, lock을 읽는다.
+- domain policy를 계산한다.
+- immutable projection을 만든다.
 
-```kotlin
-class LoadCockpitUseCase(
-    private val statePort: WorkflowStatePort,
-    private val artifactPort: ArtifactReaderPort,
-    private val actionPolicy: ActionPolicy,
-) {
-    suspend operator fun invoke(
-        project: HarnessProject,
-        day: WorkspaceDay,
-    ): CockpitSnapshot {
-        val state = statePort.read(day)
-        val artifacts = artifactPort.read(day)
-        return CockpitSnapshotAssembler.assemble(
-            project = project, day = day,
-            state = state, artifacts = artifacts,
-            actions = actionPolicy.recommend(state = state, day = day),
-        )
-    }
-}
-```
+Command:
 
-## 5.2 Command 측
-
-상태를 변경할 수 있는 작업: Bootstrap, Request 저장, Planning, Replan, Code/Doc execution, Closure validation.
-
-```kotlin
-sealed interface HarnessCommand {
-    data class BootstrapDay(val project: HarnessProject, val day: WorkspaceDay) : HarnessCommand
-    data class RunPlanning(val project: HarnessProject, val day: WorkspaceDay) : HarnessCommand
-    data class RunReplan(val project: HarnessProject, val day: WorkspaceDay) : HarnessCommand
-    data class RunExecution(
-        val project: HarnessProject,
-        val day: WorkspaceDay,
-        val wrapper: ExecutionWrapper,
-    ) : HarnessCommand
-    data class ValidateClosure(val project: HarnessProject, val day: WorkspaceDay) : HarnessCommand
-}
-```
-
-계획서의 typed CTA(`RunPlanning`, `RunReplan`, `RunCodeSlice`, `RunDocSlice`, `RunClosureValidation`)와 1:1로 대응한다.
+- 요청 저장
+- 프로젝트 등록·활성 선택
+- onboarding
+- Doctor/Validate-Ops
+- bootstrap/planning/replan/execution/closure
 
 ## 5.3 분리해야 하는 이유
 
-조회와 실행의 위험 수준이 다르다.
-
-```text
-State 새로고침 / 과거 날짜 조회 / doctor  → 읽기·진단
-REQUEST 저장                              → 쓰기
-Planning / Execution / Closure validation → Harness 상태·Repository 변경 가능
-```
-
-`readState()`부터 `closeDay()`까지 한 클래스에 몰아넣은 God Service는 SRP·ISP를 모두 위반한다.
-
----
+- 표시 label은 locale과 UX에 따라 바뀐다.
+- action ID와 command kind는 machine contract다.
+- 조회가 성공했다고 쓰기를 허용할 수 없다.
+- 실행 결과는 다시 State를 조회해야 확정된다.
+- UI는 command line을 조립하거나 stdout을 해석하지 않는다.
 
 # 6. Command Pattern
 
-PowerShell 명령의 문자열 조립을 금지하고 typed command를 사용한다.
+`HarnessCommand`는 실행 가능한 외부 동작을 closed hierarchy로 표현한다.
+
+```text
+Doctor
+ValidateOps
+OnboardProject
+BootstrapDay
+RunPlanning
+RunReplan
+RunExecution
+ValidateClosure
+```
+
+`HarnessCommandEncoder`는 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`과 독립 argument list를 만든다. shell 문자열 quoting에 의존하지 않는다.
 
 ## 6.1 금지 방식
 
-```kotlin
-val command = "powershell.exe -File $script -ProjectRoot $projectRoot $extraArgs"
-```
-
-공백 경로 오류, quoting 오류, command injection, 존재하지 않는 인자 생성, Phase별 허용 명령 통제 불가.
+- 사용자 입력으로 임의 script/argument 실행
+- command line 한 문자열 조립
+- label 또는 raw State string을 그대로 option으로 전달
+- `--continue` 같은 존재하지 않는 우회 인자
+- planning/replan/closure option을 같은 pass에 잘못 결합
 
 ## 6.2 표준 방식
 
-```kotlin
-class HarnessCommandEncoder {
-    fun encode(command: HarnessCommand): List<String> =
-        when (command) {
-            is HarnessCommand.RunPlanning ->
-                baseArguments(command) + listOf("-RunPlanningWrapper")
-            is HarnessCommand.RunReplan ->
-                baseArguments(command) + listOf("-RunReplanWrapper")
-            is HarnessCommand.RunExecution ->
-                baseArguments(command) + listOf("-RunExecutionWrapper", command.wrapper.cliValue)
-            is HarnessCommand.ValidateClosure ->
-                baseArguments(command) + listOf("-ValidateForClosure")
-            is HarnessCommand.BootstrapDay ->
-                baseArguments(command)
-        }
-    // baseArguments는 -WorkspaceRoot / -ProjectRoot / -KitRoot / -Profile / -Date 등
-    // run-cycle.ps1 실계약 파라미터를 typed 값에서 생성한다.
-}
+외부 execution wrapper 계약은 `none|code|doc|auto`다. domain의 outbound `ExecutionWrapper`는 `Code`, `Doc`, `Auto`를 표현하지만 UI dispatch는 active slice가 명시한 code/doc만 생성한다. `none`은 실행하지 않음을 나타내는 State/CLI 기본값이지 outbound 실행 action이 아니다.
 
-enum class ExecutionWrapper(val cliValue: String) {
-    Code("code"),
-    Doc("doc"),
-    Auto("auto"),
-}
-```
+Planning reason과 Replan reason은 live `ValidateSet`과 동일한 enum을 사용한다. Replan은 빈 reason을 허용하지 않는다. Closure는 `-ValidateForClosure` 단독 pass다.
 
-**규칙 (수정 내역 #4):**
-
-- run-cycle CLI 실계약은 `none|code|doc|auto`다(실측). `validation` 같은 존재하지 않는 wrapper 값을 타입 수준에서 만들지 않는다.
-- `Auto`는 CLI 계약 충실성을 위해 enum에 존재하지만, **UI 액션으로 노출하지 않는다.** 계획서는 "`WORKFLOW_STATE.queue`가 노출한 wrapper와 authorized target만 실행"을 요구하므로, UI는 queue가 지정한 `Code` 또는 `Doc`만 사용한다. validation-only slice의 실행 매핑은 Phase 4 착수 시 실계약으로 확정한다.
-- 프로세스 기동은 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <script> <args...>` 형태의 인자 목록으로만 한다.
-
----
+`queue.active`는 pointer이므로 wrapper와 authorized target은 State의 권위 있는 별도 field와 policy 조건에서 읽는다.
 
 # 7. State Machine + Policy Pattern
 
-HRNS-NOW의 핵심은 화면이 아니라 **현재 상태에서 어떤 행동이 허용되는지 결정하는 정책**이다.
+외부 State taxonomy는 typed mapping을 통과한다. 알려진 phase/status/stop reason은 enum으로, unknown은 raw 값을 가진 typed variant로 보존한다.
 
-## 7.1 상태 머신 (수정 내역 #5: `no_request` 포함)
+`ActionPolicy`는 다음 context를 종합한다.
 
-```text
-request_intake_pending
-        ↓
-   (no_request ←→ 새 요청 추가)
-        ↓
-planning_required
-        ↓
-planning_completed
-        ↓
-execution_ready
-        ↓
-execution_completed
-        ↓
-closure_validated
-```
+- runtime resolution과 manifest compatibility
+- Kit/workspace/repository boundary
+- 오늘/과거 날짜
+- State read result
+- required artifact readiness
+- active pointer, wrapper, authorized target
+- ops validation, closure flags
+- process lock과 external modification 가능성
 
-중간 차단 상태 (전부 harness-kit 실측 존재):
-
-```text
-execution_blocked
-manual_prerequisite_required
-usage_limit_blocked
-claude_context_limit
-```
-
-`dispatch_metadata_conflict`는 상태가 아니라 planning queue의 `blocked_reason`/
-`purpose_marker`다. 이 marker에서는 재계획만 허용하며 실행 CTA를 잠근다.
-
-이 흐름을 화면의 `if` 문으로 흩어놓지 않는다.
-
-## 7.2 금지: UI 조건문 정책
-
-```kotlin
-if (state.currentStatus == "planning_required") { PlanningButton() }   // 금지
-```
-
-화면이 많아질수록 같은 정책이 여러 곳에 복제된다. raw 문자열 비교는 ACL mapper 한 곳으로 한정한다(§19.3).
-
-## 7.3 Action Policy
-
-```kotlin
-class ActionPolicy {
-    fun recommend(context: ActionContext): RecommendedActions {
-        if (!context.compatibility.isSupported) {
-            return RecommendedActions(
-                primary = UiAction.ShowCompatibilityIssue,
-                allowed = setOf(UiAction.ShowCompatibilityIssue),
-                blockedReason = "지원하지 않는 Harness 계약입니다.",
-            )
-        }
-        if (context.state.isMalformed) {
-            return RecommendedActions(
-                primary = UiAction.OpenRecoveryCenter,
-                allowed = setOf(UiAction.OpenRecoveryCenter, UiAction.Refresh),
-                blockedReason = "상태 파일을 해석할 수 없습니다.",
-            )
-        }
-        if (context.day.isHistorical) {
-            return RecommendedActions(
-                primary = UiAction.OpenToday,
-                allowed = setOf(UiAction.OpenToday, UiAction.Refresh),
-                blockedReason = "과거 날짜는 읽기 전용입니다.",
-            )
-        }
-        return when (context.state.status) {
-            WorkflowStatus.RequestIntakePending -> editRequestActions()
-            WorkflowStatus.NoRequest -> newRequestActions()
-            WorkflowStatus.PlanningRequired -> planningActions()
-            WorkflowStatus.ExecutionReady -> executionActions(context.state)
-            WorkflowStatus.ExecutionBlocked -> recoveryActions()
-            WorkflowStatus.ClosureValidated -> nextDayActions()
-            is WorkflowStatus.Unknown -> unknownStatusActions()
-        }
-    }
-}
-```
-
-정책 함수는 순수해야 하며(파일·프로세스·Compose 미참조), 계획서 부록 B의 CTA 결정표 전 행을 parameterized test로 고정한다. guard 우선순위는 compatibility → malformed → 과거 날짜 → 상태별 분기 순이다.
-
----
+Policy 결과는 `Allowed` 또는 reason key를 가진 blocked decision이다. Compose 조건문이 정책을 재구현하지 않는다.
 
 # 8. MVVM + 단방향 데이터 흐름
 
-## 8.1 구조
-
 ```text
-사용자 입력 → HrnsUiEvent → AppViewModel → Use Case → Port/Adapter
-→ 새 State 읽기 → HrnsUiState → Compose 렌더링
+Compose → HrnsUiEvent → AppViewModel → use case/port
+→ HrnsUiState → Compose
 ```
 
-## 8.2 UI Event
-
-```kotlin
-sealed interface HrnsUiEvent {
-    data object Refresh : HrnsUiEvent
-    data object RunPrimaryAction : HrnsUiEvent
-    data class SelectProject(val projectId: ProjectId) : HrnsUiEvent
-    data class SelectDay(val date: LocalDate) : HrnsUiEvent
-}
-```
+Compose는 projection을 그리며 filesystem이나 PowerShell을 직접 호출하지 않는다. ViewModel은 lifecycle과 coroutine 조율을 담당하지만 domain 판정을 소유하지 않는다.
 
 ## 8.3 UI State
 
-```kotlin
-data class HrnsUiState(
-    val selectedProject: HarnessProject? = null,
-    val selectedDay: WorkspaceDay? = null,
-    val cockpit: CockpitProjection? = null,
-    val processRun: ProcessRunUiState = ProcessRunUiState.Idle,
-    val refreshState: RefreshState = RefreshState.Idle,
-    val recommendedActions: RecommendedActions = RecommendedActions.none(),
-)
-```
+`HrnsUiState`는 화면에 필요한 projection과 진행 상태를 포함한다. raw domain aggregate나 raw external JSON을 그대로 노출하지 않는다.
 
-## 8.4 ViewModel
+핵심 원칙:
 
-```kotlin
-class AppViewModel(
-    private val loadCockpit: LoadCockpitUseCase,
-    private val executeAction: ExecuteHarnessActionUseCase,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(HrnsUiState())
-    val state: StateFlow<HrnsUiState> = _state.asStateFlow()
-
-    fun onEvent(event: HrnsUiEvent) {
-        when (event) {
-            HrnsUiEvent.Refresh -> refresh()
-            HrnsUiEvent.RunPrimaryAction -> runPrimaryAction()
-            is HrnsUiEvent.SelectProject -> selectProject(event.projectId)
-            is HrnsUiEvent.SelectDay -> selectDay(event.date)
-        }
-    }
-}
-```
-
-Compose는 state를 그리기만 한다.
-
-```kotlin
-@Composable
-fun CockpitRoute(viewModel: AppViewModel) {
-    val state by viewModel.state.collectAsState()
-    CockpitScreen(state = state, onEvent = viewModel::onEvent)
-}
-```
-
-UI 스레드에서 파일 I/O를 하지 않는다. 현재 live의 `remember { buildProjections() }` 일회성 생성은 Phase 1C에서 이 구조로 교체한다(계획서 3.4). lifecycle-viewmodel-compose 의존성은 이미 도입되어 있다.
-
----
+- immutable snapshot
+- locale-dependent string은 presentation에서 생성
+- active project 표시명은 Registry projection으로 안정적으로 유지
+- process running/notice와 domain State를 구분
+- raw secret/session/log 부재
 
 # 9. Projection Pattern
 
-Harness domain 모델을 그대로 화면에 노출하지 않는다.
-
-```text
-WorkflowState → CockpitProjectionAssembler → CockpitProjection → Compose UI
-```
-
-```kotlin
-data class CockpitProjection(
-    val projectName: String,
-    val dateLabel: String,
-    val phaseLabel: String,
-    val statusLabel: String,
-    val stopReason: UserMessage?,
-    val artifactItems: List<ArtifactItemProjection>,
-    val primaryAction: ActionProjection?,
-    val badges: List<StatusBadgeProjection>,
-)
-```
-
-Projection이 담당하는 것: 사용자 문구, 날짜 포맷, 상태 색상, 표시 순서, enabled/disabled 표현.
-
-Projection이 판단하면 안 되는 것: 실행 가능 여부, Harness 상태 전이, boundary 허용 여부, Closure 가능 여부 — 이 판단은 domain policy가 수행한 결과를 projection이 **표현만** 한다.
-
-현재 live의 `core.projection`(StatusChipModel 등)은 UI read model이므로 Phase 1C에서 `composeApp/presentation/model`로 이동한다(계획서 3.1). Phase 1C 전까지는 현 위치를 유지한다.
-
----
-
-# 10. Repository Pattern
-
-프로젝트 Registry의 정본 port (수정 내역 #3):
-
-```kotlin
-interface ProjectRegistryPort {
-    suspend fun findAll(): List<HarnessProject>
-    suspend fun findById(id: ProjectId): HarnessProject?
-    suspend fun save(project: HarnessProject)
-    suspend fun delete(id: ProjectId)
-}
-```
-
-```kotlin
-class JsonProjectRegistryAdapter(
-    private val registryPath: Path,   // %APPDATA%\hrns-now\projects.json 은 조립 지점에서 주입
-    private val atomicWriter: AtomicFileWriter,
-) : ProjectRegistryPort { /* ... */ }
-```
-
-Registry domain이 `%APPDATA%`를 직접 알면 안 된다. 경로는 composition root에서 주입한다. secret·token·session ID·응답 원문은 저장 금지(계획서 2.5), atomic write와 손상 복구를 갖춘다.
-
----
-
-# 11. Strategy/Policy Pattern
-
-각각 독립된 정책으로 분리한다.
-
-| 정책 | 상태 | 비고 |
-|---|---|---|
-| `WorkspaceDaySelectionPolicy` | **live 구현 완료** (`core.domain.policy`) | 명시 날짜 > 오늘 > 최신(읽기 전용 fallback). Execution 목적일 때 과거 fallback 금지, `isReadOnly = (date != today)`. 본 규범이 이미 실현된 첫 사례 |
-| `ActionPolicy` | Phase 1B | CTA 결정표 전 행 테스트 고정 |
-| `ClosurePolicy` | Phase 5 | `Allowed / Blocked(reasons) / RequiresExplicitIncompleteHandoff(items)` |
-| `BoundaryPolicy` | Phase 1D | 상호 포함 6종 + junction/symlink 실경로 비교, Registry 저장 이전 수행 |
-| `CompatibilityPolicy` | Phase 2 연동 | schema major/contract 버전 판단 |
-| `StateReadRetryPolicy` | Phase 1A | partial write 재읽기 (지연 → mtime/size 재확인 → 최대 2~3회) |
-| `ExternalExecutionDetectionPolicy` | Phase 3~4 | UI가 유발하지 않은 State 변경 감지 휴리스틱 |
-| `SecretMaskingPolicy` | Phase 3 | stdout/stderr 표시 전 마스킹 |
+Projection assembler는 domain result를 화면 전용 model로 바꾼다.
 
 예:
 
-```kotlin
-class BoundaryPolicy {
-    fun evaluate(project: HarnessProjectCandidate): ProjectBoundaryResult {
-        val kit = normalize(project.kitRoot)
-        val workspace = normalize(project.projectWorkspaceRoot)
-        val repository = normalize(project.repositoryRoot)
-        val violations = buildList {
-            if (workspace.isInside(repository)) add(BoundaryViolation.WorkspaceInsideRepository)
-            if (repository.isInside(workspace)) add(BoundaryViolation.RepositoryInsideWorkspace)
-            if (kit.isInside(repository)) add(BoundaryViolation.KitInsideRepository)
-            // + KitInsideWorkspace, 동일 경로, realPath 비교
-        }
-        return ProjectBoundaryResult(violations)
-    }
-}
-```
+- `CockpitProjectionAssembler`
+- run/recovery/closure projection assembler
+- `CockpitUiStateAssembler`
+- reason key string mapper
 
-람다로도 구현 가능하지만 정책이 여러 규칙과 테스트를 가지면 명시적 클래스가 적합하다.
+Projection은 정형화된 title, detail, tone, action label을 만들 수 있지만 실행 허용을 새로 결정하지 않는다. runtime problem과 workflow State problem은 별개의 diagnostic surface로 유지한다.
 
----
+# 10. Repository Pattern
+
+Repository/port는 저장 위치와 serialization을 감춘다. `JsonProjectRegistryAdapter`는 UTF-8, atomic move, corruption quarantine, partial-entry recovery를 담당한다.
+
+Registry는 다음을 보장한다.
+
+- schema major 검증
+- duplicate/invalid entry 격리
+- last active ID가 실제 entry를 가리키는지 검증
+- Registry path가 Kit/workspace/repository 내부가 아님
+- DefaultKit에는 absolute `kit_root`를 저장하지 않음
+- ExternalKit에만 normalized absolute root 저장
+
+# 11. Strategy/Policy Pattern
+
+주요 policy:
+
+- `CompatibilityPolicy`
+- `BoundaryPolicy`
+- `ActionPolicy`
+- `ClosurePolicy`
+- `LockStalePolicy`
+- `WorkspaceDaySelectionPolicy`
+- `ExternalExecutionDetectionPolicy`
+
+Policy는 순수 함수 또는 순수 class이며 I/O를 수행하지 않는다. Boundary는 lexical과 real path를 모두 사용하고 불명확하면 fail-closed한다. Closure는 artifact, ops, queue, active slice, lock, Git을 함께 평가한다.
 
 # 12. Decorator Pattern
 
-프로세스 실행에는 Decorator를 제한적으로 적용한다.
+cross-cutting concern은 port 구현을 감싸는 decorator로 분리한다.
+
+예:
+
+- `SecretMaskingProcessRunner`가 process result의 check/message/snippet을 masking
+- lock heartbeat와 UI lifecycle callback
+- timeout/cancellation과 child process tree terminator
+
+실행 순서:
 
 ```text
-Raw Process → Output Encoding → Secret Masking → Metrics → UI Delivery
+lock acquire → heartbeat → masked runner → State reread
+→ heartbeat stop → lock release
 ```
 
-```kotlin
-class SecretMaskingProcessRunner(
-    private val delegate: ProcessRunner,
-    private val masker: SecretMasker,
-) : ProcessRunner {
-    override suspend fun execute(
-        request: ProcessRequest,
-        onOutput: suspend (ProcessOutput) -> Unit,
-    ): ProcessResult =
-        delegate.execute(request) { output ->
-            onOutput(output.copy(text = masker.mask(output.text)))
-        }
-}
-```
-
-장점: 원본 수정 없이 masking 추가, 독립 테스트, OCP. 단 decorator 중첩 과다는 흐름 추적을 어렵게 하므로 위 권장 순서를 유지한다.
-
-**Lock은 decorator로 만들지 않는다.** lock 획득/해제는 실행 use case(coordinator)에서 명시적으로 관리한다 — 실패 경로와 해제 시점이 명시적으로 보여야 하기 때문이다(§16).
-
----
+exception/cancel 경로에서도 `finally`로 lock을 해제한다.
 
 # 13. Optimistic Concurrency Pattern
 
-`REQUEST_INBOX.md` 저장에는 낙관적 동시성 제어가 필수다(계획서 Phase 4).
-
-```kotlin
-data class FileVersion(val modifiedAt: Instant, val size: Long, val hash: String)
-
-data class LoadedRequest(val content: String, val version: FileVersion)
-
-sealed interface RequestSaveResult {
-    data object Saved : RequestSaveResult
-    data class Conflict(val currentVersion: FileVersion) : RequestSaveResult
-    data class Failed(val reason: String) : RequestSaveResult
-}
-```
-
-로드 시 version 저장 → 저장 직전 재검증 → 불일치 시 `Conflict` 반환(덮어쓰기 금지, 재로드·수동 병합 제공). 쓰기는 temp 파일 작성 후 atomic move, UTF-8 no BOM.
-
----
-
-# 14. Result Pattern과 Projection 메타의 관계 (수정 내역 #6)
-
-## 14.1 금지 방식
-
-```kotlin
-fun readState(): WorkflowState? = try { /* ... */ } catch (_: Exception) { null }
-```
-
-파일 없음/권한 없음/malformed JSON/partial write/encoding 오류/schema mismatch를 구분할 수 없다.
-
-## 14.2 Reader 계약: sealed result
-
-```kotlin
-sealed interface StateReadResult {
-    data class Success(val state: WorkflowState, val sourceVersion: FileVersion) : StateReadResult
-    data class Missing(val path: Path) : StateReadResult
-    data class Malformed(val message: String, val lastKnownGood: WorkflowState?) : StateReadResult
-    data class UnsupportedSchema(val rawVersion: String) : StateReadResult
-    data class AccessDenied(val path: Path) : StateReadResult
-}
-```
-
-## 14.3 계층별 역할 분담
-
-live core에는 이미 `Projection<T>`(data + `ProjectionMeta(source, exists, malformed, stale, message)`)가 있고, Phase 1A 계약은 "최종 실패 시 `ProjectionMeta.malformed = true`, 마지막 정상 projection을 stale 표시로 유지"를 요구한다. 두 타입의 역할을 다음과 같이 확정한다.
-
-| 타입 | 소속 계층 | 역할 |
-|---|---|---|
-| `StateReadResult` (sealed) | port/Reader 계약 | 실패 원인의 정밀 구분, retry 정책의 입력 |
-| `Projection<T>` + `ProjectionMeta` | 화면 투영 | 마지막 정상 데이터 + stale/malformed 표시를 UI에 전달 |
-
-변환 규칙: `Success → Projection(data, meta(exists=true))`, `Malformed → Projection(lastKnownGood, meta(malformed=true, stale=true))`, `Missing → Projection(null, meta(exists=false))`. UnsupportedSchema/AccessDenied는 malformed 계열로 투영하되 원문 메시지를 보존한다. 어떤 실패 계열이든 실행 CTA는 잠긴다(fail-closed).
-
----
-
-# 15. Kotlin에서 클래스·함수·람다를 나누는 기준
-
-## 클래스(interface 포함)로 구현할 대상
-
-외부 시스템 연결, 상태·lifecycle 보유, 여러 메서드가 하나의 계약 구성, 구현체 교체 필요, mock/fake 필요, 설정·의존성 보유.
-
-예: `WorkflowStatePort`, `PowerShellHarnessAdapter`, `ProjectRegistryPort`, `AppViewModel`, `ProcessRunner`, `StateReadRetryPolicy`, `WorkspaceDaySelectionPolicy`.
-
-## 순수 함수로 구현할 대상
-
-입력만으로 결과가 결정되고 상태가 없는 것.
-
-```kotlin
-fun WorkflowStatus.toDisplayLabel(): String
-fun determineReadiness(artifacts: List<ArtifactState>): ArtifactReadiness
-fun evaluateClosure(context: ClosureContext): ClosureDecision
-```
-
-## 람다로 구현할 대상
-
-짧은 callback, 작은 행위 주입, 컬렉션 변환.
-
-```kotlin
-PrimaryButton(onClick = viewModel::runPrimaryAction)
-
-class StateReader(private val delay: suspend (Duration) -> Unit)
-
-val requiredReady = artifacts
-    .filter { it.requirement == ArtifactRequirement.Required }
-    .all { it.state == ArtifactState.Ready }
-```
-
-## 람다로 만들면 안 되는 대상
-
-orchestration 전체(State 읽기 → CTA 판단 → lock → 실행 → masking → 재읽기 → Registry → UI)를 하나의 람다에 넣지 않는다. UI 람다는 다음 수준에 머무른다.
-
-```kotlin
-onClick = { viewModel.onEvent(HrnsUiEvent.RunPrimaryAction) }
-```
-
----
-
-# 16. 실행 Use Case의 최종 형태 (수정 내역 #7)
-
-```kotlin
-class ExecuteHarnessActionUseCase(
-    private val actionPolicy: ActionPolicy,
-    private val commandMapper: HarnessCommandMapper,
-    private val lockPort: ProcessLockPort,
-    private val runnerPort: HarnessRunnerPort,
-    private val statePort: WorkflowStatePort,
-) {
-    suspend operator fun invoke(
-        context: ExecutionContext,
-        action: UiAction,
-    ): ExecutionOutcome {
-        val allowed = actionPolicy.recommend(context.toActionContext())
-        if (action !in allowed.allowed) {
-            return ExecutionOutcome.Rejected(
-                reason = allowed.blockedReason ?: "허용되지 않은 작업입니다.",
-            )
-        }
-
-        val command = commandMapper.map(action = action, context = context)
-            ?: return ExecutionOutcome.UnsupportedAction(action)
-
-        val lock = lockPort.acquire(
-            projectId = context.project.id,
-            date = context.day.date,
-            command = command,
-        )
-        if (lock !is LockAcquireResult.Acquired) {
-            return ExecutionOutcome.Locked(lock)
-        }
-
-        return try {
-            val processResult = runnerPort.execute(command)
-            // State 재읽기는 lock 보유 중 수행한다 — 다른 HRNS-NOW 인스턴스가
-            // 재읽기 전에 새 실행을 시작하는 틈을 만들지 않기 위함이다.
-            val refreshedState = statePort.read(context.day)
-            ExecutionOutcome.Completed(
-                process = processResult,
-                refreshedState = refreshedState,
-            )
-        } finally {
-            lockPort.release(lock.handle)
-        }
-    }
-}
-```
-
-실행 종료 시퀀스(계획서 Phase 4)와의 대응:
+`REQUEST_INBOX.md` 저장은 load 시점의 `FileVersion`과 save 직전 version을 비교한다.
 
 ```text
-프로세스 종료 → exit code 기록 → [lock 보유 중] State 재읽기 → stop reason 해석
-→ queue 갱신 → CTA 재계산 → lock 해제 → 잔존 lock 파일 정리 검증("lock 해제 확인")
+load content + version
+→ user edit
+→ compare current version
+→ atomic replace 또는 Conflict
 ```
 
-**확정 규칙:** State 재읽기는 lock 보유 중 수행한다. 계획서의 "lock 해제 확인" 단계는 해제 후 잔존 lock 파일이 남지 않았는지에 대한 검증으로 해석한다. stdout 성공 문구로 완료를 판단하지 않으며, 완료 여부는 재읽은 `WORKFLOW_STATE.json`이 결정한다.
+Conflict에서는 기존 파일과 사용자 draft를 모두 보존한다. UI가 자동 병합하거나 State/structured request를 함께 쓰지 않는다.
 
----
+# 14. Result Pattern과 Projection 메타
 
-# 17. 패키지 구조: 목표와 현재, 이동 규칙 (수정 내역 #1, #2)
+외부 실패는 sealed result로 분류한다.
 
-## 17.1 목표 구조
+State 예:
+
+- `Success`
+- `Missing`
+- `Malformed`
+- `EncodingError`
+- `UnsupportedSchema`
+- `AccessDenied`
+- stale last-known-good
+
+Process 예:
+
+- exited result
+- start failed
+- timed out
+- cancelled
+
+Adapter는 사실을 분류하고, policy는 허용 여부를 결정하며, projection은 사용자 설명을 만든다. exception text나 raw output을 domain reason으로 사용하지 않는다.
+
+# 15. 클래스·함수·람다 기준
+
+Class/interface:
+
+- stateful adapter
+- port와 use case
+- policy가 여러 dependency나 설정을 가질 때
+- lifecycle과 cancellation을 소유할 때
+
+순수 함수:
+
+- enum/taxonomy mapping
+- DTO→domain 변환의 작은 단계
+- label/formatting
+- immutable projection 계산
+
+Lambda:
+
+- clock, path provider, move function처럼 test seam이 작고 의미가 명확할 때
+
+복잡한 policy, filesystem adapter, process lifecycle을 lambda로 숨기지 않는다.
+
+# 16. 실행 Use Case의 최종 형태
+
+`ExecuteHarnessActionUseCase`는 policy가 허용한 action만 받는다. 호출자는 runtime source를 이미 resolved root로 변환한다.
 
 ```text
-core/src/main/kotlin/io/hrns_now/core/
-├── domain/
-│   ├── model/        HarnessProject, WorkspaceDay, WorkflowState, WorkflowStatus,
-│   │                 StopReason, UiAction, ClosureDecision, ProcessRun
-│   └── policy/       ActionPolicy, ClosurePolicy, BoundaryPolicy,
-│                     CompatibilityPolicy, WorkspaceDaySelectionPolicy
-├── usecase/          LoadCockpitUseCase, ExecuteHarnessActionUseCase,
-│                     SaveRequestUseCase, ValidateClosureUseCase
-├── port/             WorkflowStatePort, HarnessRunnerPort, ProjectRegistryPort,
-│                     RequestWriterPort, ProcessLockPort, GitStatusPort
-└── result/           StateReadResult, ProcessRunResult, Projection, ProjectionMeta
+acquire lock
+→ map action to command
+→ runner.execute
+→ workflowState.read while lock held
+→ release lock
+→ typed outcome
 ```
+
+Onboarding은 daily action과 별도 use case다.
 
 ```text
-infra/src/main/kotlin/io/hrns_now/infra/
-├── filesystem/       WorkspaceArtifactAdapter, AtomicFileWriter, WorkspaceDateFinder
-├── serialization/    HarnessWorkflowStateDto, WorkflowStateParser, WorkflowStateMapper
-├── process/          PowerShellHarnessAdapter, JvmProcessExecutor,
-│                     HarnessCommandEncoder, WindowsProcessTreeTerminator
-├── registry/         JsonProjectRegistryAdapter
-├── lock/             LocalProcessLockAdapter
-├── git/              CommandLineGitStatusAdapter
-└── security/         SecretMasker, SecretMaskingProcessRunner
+enter-project
+→ validate-ops JSON
+→ bridge 3-file probe
+→ daily 4-file probe
+→ State reread
 ```
+
+성공은 모든 evidence가 충족될 때만 반환한다.
+
+# 17. 패키지 구조
 
 ```text
-composeApp/src/jvmMain/kotlin/io/hrns_now/app/
-├── presentation/
-│   ├── model/        HrnsUiState, HrnsUiEvent, CockpitProjection (+ 기존 UI read model 이동분)
-│   ├── mapper/       CockpitProjectionAssembler
-│   ├── viewmodel/    AppViewModel
-│   ├── screen/
-│   └── component/
-└── demo/             MockProjectionProvider, MockWorkspaceConfigProvider
+core/domain/model
+core/domain/policy
+core/port
+core/result
+core/usecase
+
+infra/serialization
+infra/process
+infra/runtime
+infra/registry
+infra/lock
+infra/request
+infra/recovery
+infra/security
+infra/git
+
+composeApp/presentation/model
+composeApp/presentation/mapper
+composeApp/presentation/viewmodel
+composeApp/ui
 ```
 
-Use case가 많아지면 `:application` Gradle 모듈로 분리한다. 초기부터 모듈을 늘리는 것은 과도한 추상화다.
+파일 이동은 package 의미와 dependency 방향을 개선할 때만 수행한다. 이름만 바꾸는 대규모 재배치는 피한다.
 
-## 17.2 현재 live 구조와의 매핑
+# 18. SOLID
 
-| 현재 (live) | 목표 | 이동 시점 |
-|---|---|---|
-| `core/AppRoute.kt`, `core/Projection.kt`, `core/ProjectionMeta.kt` | `core/result/` (Projection 계열), AppRoute는 presentation 성격 재검토 | 해당 파일을 수정하는 Phase에서 |
-| `core/domain/model/WorkspaceArtifact.kt` | `core/domain/model/` | **완료 (Phase 0)** |
-| `core/config/*` | `core/domain/model/` 또는 통합 재설계 | Phase 1D (Registry 도입 시) |
-| `core/projection/ProjectionModels.kt` | `composeApp/presentation/model/` | **Phase 1C** (계획서 명시) |
-| `core/domain/model/WorkspaceDay.kt`, `core/domain/policy/WorkspaceDaySelectionPolicy.kt` | `core/domain/model/`, `core/domain/policy/` | **완료 (Phase 0)** |
-| `infra/WorkspaceArtifactProbe.kt` | `infra/filesystem/` | Phase 1A~1C 중 접촉 시 |
-| `composeApp/app/demo/*` | 유지 (이미 목표 위치) | — |
-
-## 17.3 이동 규칙
-
-1. **big-bang 재배치 금지.** 패키지 이동만을 위한 일괄 커밋을 만들지 않는다.
-2. **신규 파일은 목표 구조에 생성한다.**
-3. **기존 파일은 해당 Phase에서 내용을 수정할 때 함께 이동한다** (이동 + 수정을 같은 변경으로).
-4. 이동 시 참조 갱신은 컴파일과 전체 테스트(`./gradlew check`)로 검증한다.
-
----
-
-# 18. SOLID와 최종 패턴의 관계
-
-| SOLID | HRNS-NOW 적용 |
-|---|---|
-| SRP | Reader, Policy, Runner, Registry, ViewModel 책임 분리 |
-| OCP | adapter 교체, `Unknown(raw)` 보존, decorator 확장 |
-| LSP | fake/real port 구현이 동일한 결과 계약 준수 |
-| ISP | 작은 port interface로 소비자별 의존 분리 |
-| DIP | core가 PowerShell·Compose·JSON·파일 시스템을 모름 |
-
-- **SRP**: `PowerShellHarnessAdapter`는 프로세스 실행만 담당한다. CTA 결정, UI 문구, Registry 저장, Closure 판단, JSON parsing을 하지 않는다.
-- **OCP**: 새 stop reason이 와도 파서가 실패하지 않고 `StopReason.Unknown(raw)`로 흡수한다. 새 process decoration은 원본 runner 수정 없이 decorator로 추가한다.
-- **LSP**: `FakeWorkflowStatePort`가 malformed 상태를 무조건 성공으로 바꿔 반환하면 안 된다. real과 fake가 같은 의미 계약을 유지한다.
-- **ISP**: `readState()`부터 `closeDay()`까지 가진 거대 interface(`HarnessManager`)를 만들지 않는다.
-- **DIP**: `ActionPolicy`가 `File`, `ProcessBuilder`, Compose `Color`를 참조하면 안 된다.
-
----
+- SRP: parsing, mapping, policy, execution, projection을 분리한다.
+- OCP: unknown field/taxonomy 확장을 기존 domain 안정성 안에서 수용한다.
+- LSP: port 구현은 같은 typed result 의미를 지킨다.
+- ISP: UI가 필요 없는 mutation/query method를 하나의 거대 service에 묶지 않는다.
+- DIP: use case와 ViewModel은 port에 의존한다.
 
 # 19. 사용하지 말아야 할 패턴
 
 ## 19.1 God ViewModel
 
-파일 읽기/JSON 파싱/PowerShell 실행/Registry 저장/Lock/Git/CTA 정책/로그 마스킹을 전부 가진 ViewModel 금지. ViewModel은 use case 호출과 UI state 조립만 담당한다.
+ViewModel이 JSON parsing, path validation, command encoding, process control, Git, policy, string rendering을 직접 소유하지 않는다. 새로운 책임은 domain policy, use case, adapter, projection assembler 중 맞는 위치로 이동한다.
 
-## 19.2 Service Locator
+그 밖의 금지:
 
-```kotlin
-GlobalServices.processRunner   // 금지
-```
+- Service Locator
+- string-based state dispatch
+- mutable global singleton
+- 의미 없는 factory
+- 범용 event bus
+- UI에서 concrete adapter 생성
 
-전역 객체는 테스트와 lifecycle을 어렵게 만든다. 명시적 constructor injection을 사용한다.
+# 20. 구현 규범
 
-## 19.3 문자열 기반 상태 분기
+새 기능은 먼저 외부 계약과 domain type을 정의하고, port/use case, adapter, projection, UI 순으로 연결한다. 현재 source에 없는 추상 계층을 미래 가능성만으로 추가하지 않는다.
 
-```kotlin
-if (status == "execution_ready") { ... }   // 금지
-```
+### 20.1 Runtime source 규범
 
-raw 문자열 비교는 Anti-Corruption Layer의 mapper 한 곳으로 한정한다.
+`RuntimeSource.DefaultKit`는 개발 source checkout 상대 `.local/harness-kit` 선택이다. Registry에는 선택만 저장하고 absolute path를 저장하지 않는다. source checkout 표지를 찾지 못하는 packaged app에서는 경로를 추측하지 않고 `Missing`으로 fail-closed한다.
 
-## 19.4 과도한 Singleton
+`RuntimeSource.ExternalKit(root)`는 사용자가 명시한 absolute path다. resolver는 directory/readability와 required public surface를 확인하고 manifest compatibility를 별도로 판정한다.
 
-Process runner, ViewModel, Lock manager, Polling coordinator, Registry adapter는 lifecycle과 테스트 격리가 필요하므로 `object`로 만들지 않는다.
+두 source 모두 command mapper 이후에는 resolved Kit root 하나로 처리한다. domain action과 command는 internal/external 분기를 알지 않는다.
 
-## 19.5 무의미한 Factory
+주의할 capability gap:
 
-단순 생성자를 감추는 factory 금지. 생성 규칙이 복잡하거나 runtime별 구현 선택이 필요할 때만 사용한다.
-
-## 19.6 범용 Event Bus
-
-화면-domain 사이를 전역 event bus로 연결하지 않는다. `UiEvent → ViewModel → StateFlow`로 충분하다.
-
----
-
-# 20. Phase별 패턴 도입 시점
-
-| Phase | 도입 패턴 | 비고 |
-|---|---|---|
-| 0A | Value Object, Artifact classification, Adapter 골격 | **완료** — `WorkspaceDay`, `ArtifactRequirement`, probe 재작성 + `WorkspaceDaySelectionPolicy`(순수 정책) 선반영 |
-| 0B | Contract Test, Fixture, CI | **완료** |
-| 1A | Anti-Corruption Layer, Result/Projection 연계(§14) | |
-| 1B | Policy/Strategy, State Machine, typed `UiAction` | |
-| 1C | MVVM, Unidirectional Data Flow, Projection 이동 | `core.projection` → presentation |
-| 1D | Repository, Boundary Policy | |
-| 2 | External Contract(JSON 출력), Compatibility Strategy | harness 측 작업, Fable |
-| 3 | Command, Process Adapter, Decorator, Lock coordination | 코어는 Fable |
-| 4 | Application Use Case 완성, CQRS-lite, Optimistic Concurrency | |
-| 5 | Closure Policy, Recovery Strategy | |
-| 6 | UX 상태 모델, MVVM, 단방향 UI event·StateFlow, presentation mapper | 활성 프로젝트·단일 다음 작업·실행 feedback·modal editor를 presentation에 둔다. Composable은 file I/O/Process 실행/정책 판단을 하지 않는다. |
-| 보류 6A | Composition Root, external runtime configuration | 기존 외부 Kit MSI 과제다. MSI는 외부 Kit root를 기존 Registry/환경변수/사용자 선택 순서로 주입한다. 화면에서 Program Files·AppData 경로를 조립하지 않는다. |
-| 보류 6B | Runtime distribution adapter, typed runtime installation configuration | Harness 승인 release artifact·manifest/checksum이 생긴 뒤에만 도입한다. 개발 트리를 adapter처럼 취급하거나 UI가 checksum 신뢰를 과장하지 않는다. |
-| 7 | Runtime Source, Resolver, Registry migration, Composition Root | `.local\harness-kit` 사용자 제공 개발 SDK와 explicit external override를 typed 값으로 구분한다. 배포 Runtime staging은 하지 않는다. |
-| 보류 7E | Plugin-like optional adapter, feature isolation | 기존 실험 기능 과제다. |
-
-계획서는 이 순서를 Gate 단위로 고정하며, State Reader·CTA 정책·Cockpit·Registry 완료 후에만 Process adapter와 실제 실행을 붙인다.
-
-보류 6A/6B의 runtime source 선택은 composition root의 작은 typed configuration으로 한정한다. `KitVersionManifestPort`/`CompatibilityPolicy`의 방향은 유지한다: infra adapter가 manifest를 읽고, core policy가 호환성을 판정하며, UI는 manifest·경로·PowerShell 인자를 직접 조합하지 않는다. workspace 자동 생성은 Registry, BoundaryPolicy, Harness bootstrap을 하나의 God service에 합치지 않고 각각의 use case/port 경계를 유지한다.
-
-### 20.1 Phase 7 — 개발용 내장 SDK source 규범
-
-Phase 7의 `.local\harness-kit`은 **사용자가 제공하는 Git-ignore 개발 checkout**일 뿐, bundle·release artifact·신뢰 root가 아니다. HRNS-NOW는 이 디렉터리를 생성·복사·수정·Git stage·MSI staging하지 않는다. 배포 포함은 보류 6B의 Harness 승인 artifact Gate 뒤에만 가능하다.
-
-```kotlin
-sealed interface RuntimeSource {
-    data object DefaultKit : RuntimeSource
-    data class ExternalKit(val root: Path) : RuntimeSource
-}
-
-sealed interface RuntimeResolution {
-    data class Resolved(val source: RuntimeSource, val root: Path) : RuntimeResolution
-    data class Missing(val source: RuntimeSource) : RuntimeResolution
-    data class Invalid(val source: RuntimeSource, val reason: RuntimeIssue) : RuntimeResolution
-}
-```
-
-- Registry는 `DefaultKit`이라는 선택만 저장한다. repository-relative SDK의 절대 경로를 저장해 source checkout 이동을 깨뜨리지 않는다.
-- 기존 `kit_root` Registry entry는 migration 시 `ExternalKit`으로 해석한다. 과거 설정을 내장 SDK로 조용히 바꾸거나 environment variable이 명시적 선택을 덮어쓰면 안 된다.
-- composition root 또는 infra resolver만 repository-relative SDK root를 계산한다. Composable·ViewModel·domain policy가 path 문자열·Program Files·PowerShell 인자를 조립하지 않는다.
-- command encoder, `KitVersionManifestPort`, compatibility, boundary validation은 동일한 `Resolved.root`만 받는다. `if (internal)`, `if (external)` 분기를 각 command에 퍼뜨리지 않는다.
-- missing/invalid resolution은 compatibility와 별개의 fail-closed 진단 결과다. mock fallback·`D:\\harness-kit` 하드코딩·자동 복사로 숨기지 않는다.
-
----
+- runtime root의 공통 entrypoint가 존재해도 onboarding 전용 `enter-project.ps1` 같은 기능별 entrypoint가 없을 수 있다.
+- capability별 실행 전에 해당 public script를 fail-closed 검사한다.
+- DefaultKit은 bundled runtime이나 release artifact를 의미하지 않는다.
+- live external Kit을 MSI에 임의 복사하지 않는다.
 
 # 21. 테스트 설계
 
-## 21.1 Domain 테스트 — 외부 시스템 없이 실행
+## 21.1 Domain test
 
-```kotlin
-@Test
-fun `알 수 없는 상태에서는 실행 액션을 허용하지 않는다`() {
-    val actions = policy.recommend(
-        context = fixture(status = WorkflowStatus.Unknown("future_status")),
-    )
-    assertEquals(setOf(UiAction.OpenRecoveryCenter), actions.allowed)
-}
-```
+외부 시스템 없이 policy, mapping, boundary, closure, compatibility, action decision을 검증한다.
 
-## 21.2 Adapter Contract Test — 모든 port 구현이 같은 의미 준수
+## 21.2 Adapter contract test
 
-```text
-파일 없음     → Missing
-잘린 JSON     → Malformed
-미지원 schema → UnsupportedSchema
-unknown status → Success + WorkflowStatus.Unknown(raw)
-```
+encoding, JSON shape, filesystem atomicity, process stdout/stderr, timeout/cancel, Registry corruption, secret masking을 검증한다.
 
-## 21.3 Integration Test
+## 21.3 Integration test
 
-실제 fixture Workspace, PowerShell fixture script, stdout/stderr 동시 출력, timeout, cancel, 한글 출력, lock 충돌, State 재읽기.
+mock fixture만 사용하지 않고 live writer가 scratch에 만든 artifact를 production adapter가 읽는 production-to-production test가 필요하다. required field를 추가하면 writer와 parser를 같은 test에서 연결한다.
 
 ## 21.4 CI 단계
 
-초기 `./gradlew check`(비-Windows 가능) → Phase 3부터 Windows runner(PowerShell adapter/fixture) → Phase 6 MSI build + 설치·실행 smoke. (live에 `.github/workflows/ci.yml` 구축 완료)
+```text
+compile → module tests → full check → contract integration
+→ package build → manual native/clean-Windows Gate
+```
 
----
+`UP-TO-DATE`는 강제 재실행 증거가 아니다. native UI와 clean Windows lifecycle은 자동 test로 완료 처리하지 않는다.
 
 # 22. 최종 권장 조합
 
-## 필수
+필수:
 
-1. Hexagonal Architecture
-2. Anti-Corruption Layer
-3. MVVM + Unidirectional Data Flow
-4. State Machine + Policy Pattern
-5. Command Pattern
-6. Adapter Pattern
-7. CQRS-lite
-8. Repository Pattern
-9. Result/Projection Pattern (§14의 계층 분담)
-10. Optimistic Concurrency
+- Hexagonal Architecture
+- ACL DTO/mapper
+- typed command/action/result
+- pure policy
+- MVVM/UDF
+- projection
+- repository/atomic persistence
+- lock/cancel/secret decorators
+- production-to-production contract test
 
-## 선택적
+선택적:
 
-11. Decorator Pattern (마스킹/메트릭 한정, lock 제외)
-12. Retry Strategy
-13. Compatibility Strategy
-14. Composition Root
-15. Reducer 스타일 상태 전이
+- 기능이 실제로 요구할 때만 새로운 adapter 또는 policy 분리
+- Secondary LLM은 별도 opt-in diagnostic lane
 
-## 금지
+금지:
 
-God ViewModel, God Service, Service Locator, raw 문자열 상태 분기, PowerShell 문자열 조립, 과도한 interface/Factory/Singleton, global Event Bus, orchestration 전체를 담은 람다.
-
----
+- framework나 abstraction 자체가 목표인 설계
+- 외부 계약 오류를 nullable default로 은폐
+- 테스트 수치만으로 호환성·배포 완료 선언
 
 # 23. 최종 판단
 
-HRNS-NOW의 이상적인 모습은 "Kotlin으로 다시 만든 Harness"가 아니다.
-
-```text
-Harness Kit          = 실제 개발 작업을 수행하는 실행 엔진
-HRNS-NOW Domain      = Harness 상태를 안전한 Kotlin 타입으로 해석하는 규칙
-Use Case (core)      = 읽기·실행·저장·검증 흐름 조정
-Infrastructure       = JSON·파일·PowerShell·Git·Registry 연결
-Compose UI           = 현재 상태와 허용된 행동을 사용자에게 표현
-```
-
-가장 중요한 설계 기준 세 가지:
-
-1. **Harness와 UI를 분리한다** — Harness JSON과 PowerShell 인자를 UI가 직접 알지 않게 한다.
-2. **실행보다 정책을 먼저 만든다** — 어떤 행동이 허용되는지 domain policy가 먼저 결정하고, UI와 process adapter는 그 결정을 따른다.
-3. **객체지향과 함수형을 혼합한다** — 외부 경계는 interface+adapter class, 상태는 data class+sealed interface, 정책은 순수 함수 또는 policy class, UI callback은 lambda·함수 참조, 비동기 상태는 coroutine+StateFlow, 컬렉션 변환은 함수형 API.
-
-최종적으로 HRNS-NOW는 다음 문장을 코드 구조 자체로 보장해야 한다.
-
-> **사용자가 프로젝트를 선택하면, HRNS-NOW는 현재 Harness 상태를 정확히 읽고 지금 허용된 단 하나의 다음 행동만 안전하게 안내하고 실행한다.**
+현재 구조의 가장 중요한 속성은 fail-closed다. live Harness artifact가 문서와 다를 때 HRNS-NOW가 임의로 추측하지 않고 차단하는 것은 결함이 아니라 안전 경계다. 해결은 권위 있는 writer·diagnostic·smoke와 production parser를 같은 계약으로 정렬하는 방식이어야 한다.

@@ -191,7 +191,7 @@ class RegisterProjectUseCase(
         val reasonText = when (resolution.reason) {
             RuntimeIssue.NotDirectory -> "경로가 디렉터리가 아닙니다."
             RuntimeIssue.NotReadable -> "경로를 읽을 수 없습니다."
-            RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
+            RuntimeIssue.MissingEntrypoint -> "필요한 Harness 파일(enter-project.ps1/doctor.ps1/validate-ops.ps1/run-cycle.ps1/kit-version.json)이 없습니다."
         }
         val sourceText = when (resolution.source) {
             RuntimeSource.DefaultKit -> "기본 Harness Kit"

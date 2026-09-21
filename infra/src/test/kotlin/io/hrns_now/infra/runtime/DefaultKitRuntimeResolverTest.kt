@@ -25,6 +25,7 @@ class DefaultKitRuntimeResolverTest {
 
     private fun writeRequiredEntrypoints(root: Path) {
         Files.createDirectories(root.resolve("scripts"))
+        root.resolve("scripts/enter-project.ps1").writeText("# fixture enter-project")
         root.resolve("scripts/doctor.ps1").writeText("# fixture doctor")
         root.resolve("scripts/validate-ops.ps1").writeText("# fixture validate-ops")
         root.resolve("scripts/run-cycle.ps1").writeText("# fixture run-cycle")
@@ -64,6 +65,19 @@ class DefaultKitRuntimeResolverTest {
         val root = tempDir("hrns-sdk")
         Files.createDirectories(root.resolve("scripts"))
         root.resolve("scripts/doctor.ps1").writeText("# only doctor, missing others")
+        val resolver = DefaultKitRuntimeResolver { root }
+
+        val result = resolver.resolve(RuntimeSource.DefaultKit)
+
+        val invalid = assertIs<RuntimeResolution.Invalid>(result)
+        assertEquals(RuntimeIssue.MissingEntrypoint, invalid.reason)
+    }
+
+    @Test
+    fun `enter-project ps1만 없으면 Invalid MissingEntrypoint다`() {
+        val root = tempDir("hrns-sdk-missing-enter-project")
+        writeRequiredEntrypoints(root)
+        Files.delete(root.resolve("scripts/enter-project.ps1"))
         val resolver = DefaultKitRuntimeResolver { root }
 
         val result = resolver.resolve(RuntimeSource.DefaultKit)

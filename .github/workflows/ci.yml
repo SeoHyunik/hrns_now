@@ -7,10 +7,7 @@ on:
     branches: [master, harness-dev]
 
 jobs:
-  check:
-    # core/infra tests are pure JVM and portable; a non-Windows runner is
-    # acceptable for these. PowerShell-integration tests will need a
-    # dedicated windows-latest job.
+  portable-core-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,5 +22,27 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Run checks
-        run: ./gradlew check --no-daemon
+      - name: Run portable core checks
+        run: ./gradlew :core:check --no-daemon
+
+  windows-integration-check:
+    # HRNS-NOW is a Windows desktop application. The infra suite deliberately
+    # launches powershell.exe/cmd.exe and asserts Windows path encoding, so the
+    # full integration gate must run on Windows rather than being skipped on Linux.
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run full checks
+        shell: powershell
+        run: .\gradlew.bat check --no-daemon

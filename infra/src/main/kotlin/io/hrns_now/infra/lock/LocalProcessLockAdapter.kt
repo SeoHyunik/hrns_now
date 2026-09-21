@@ -20,6 +20,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.delay
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -93,7 +94,7 @@ class LocalProcessLockAdapter(
 
             tryCreateNew(path, projectId, date, commandKind)?.let { return it }
 
-            val existing = readPayload(path)
+            val existing = readPayloadAfterCreateCollision(path)
                 ?: return LockAcquireResult.Failed("잠금 파일을 해석할 수 없습니다.")
             val state = stalePolicy.evaluate(existing, clock(), pidAlive(existing.pid))
             if (state == LockState.Active) {
@@ -103,7 +104,7 @@ class LocalProcessLockAdapter(
             Files.deleteIfExists(path)
             tryCreateNew(path, projectId, date, commandKind)?.let { return it }
 
-            val raced = readPayload(path)
+            val raced = readPayloadAfterCreateCollision(path)
             if (raced != null) LockAcquireResult.Busy(raced) else LockAcquireResult.Failed("잠금 획득 경쟁에서 실패했습니다.")
         } catch (e: IOException) {
             LockAcquireResult.Failed(e.message ?: "lock acquire failed")
@@ -170,17 +171,21 @@ class LocalProcessLockAdapter(
         val bytes = json.encodeToString(LockPayloadDto.serializer(), payload.toDto()).toByteArray(StandardCharsets.UTF_8)
         val parent = path.parent
         Files.createDirectories(parent)
-        val candidate = Files.createTempFile(parent, "lock", ".tmp")
         return try {
-            Files.newByteChannel(candidate, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE).use { channel ->
-                channel.write(java.nio.ByteBuffer.wrap(bytes))
+            // CREATE_NEW performs the ownership decision at file creation time. Moving a temporary
+            // file onto the lock path is not a portable compare-and-set: on some Unix providers a
+            // racing move may replace the existing target, allowing more than one caller to report
+            // Acquired. Opening the authoritative path with CREATE_NEW is atomic on every supported
+            // file-system provider and therefore admits exactly one winner.
+            Files.newByteChannel(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { channel ->
+                val buffer = java.nio.ByteBuffer.wrap(bytes)
+                while (buffer.hasRemaining()) {
+                    channel.write(buffer)
+                }
             }
-            Files.move(candidate, path)
             LockAcquireResult.Acquired(LockHandle(projectId, date, pid, now))
         } catch (_: FileAlreadyExistsException) {
             null
-        } finally {
-            Files.deleteIfExists(candidate)
         }
     }
 
@@ -205,6 +210,19 @@ class LocalProcessLockAdapter(
         } finally {
             Files.deleteIfExists(temp)
         }
+    }
+
+    /**
+     * `CREATE_NEW` makes the ownership decision atomic, but the newly created path becomes visible
+     * before its JSON bytes are completely written. A racing reader must therefore distinguish that
+     * short publication window from a persistently malformed lock. Retry briefly, then fail closed.
+     */
+    private suspend fun readPayloadAfterCreateCollision(path: Path): LockPayload? {
+        repeat(20) {
+            readPayload(path)?.let { return it }
+            delay(5L)
+        }
+        return readPayload(path)
     }
 
     private fun readPayload(path: Path): LockPayload? {

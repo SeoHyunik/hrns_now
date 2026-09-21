@@ -38,21 +38,20 @@ HRNS-NOW는 다음 원칙을 우회하지 않습니다.
 
 ## 현재 개발 상태
 
-**기준일: 2026-07-27**
+**기준일: 2026-09-02**
 
-| 단계 | 상태 | 주요 결과 |
+| 영역 | 상태 | 현재 판정 |
 |---|---|---|
-| Phase 0 | 완료 | Harness 계약 재정렬, 테스트·CI 기반 정비 |
-| Phase 1 | 완료 | State Reader, fail-closed CTA, 실데이터 Cockpit, 프로젝트 Registry |
-| Phase 2 | 완료 | Harness JSON 진단·호환성 계약 연동 |
-| Phase 3 | 완료 | typed PowerShell 실행 어댑터, 프로세스 잠금, 온보딩 |
-| Phase 4 | 완료 | 요청 작성, Planning·Replan, code/doc 실행 흐름 |
-| Phase 5 | `PASS_WITH_FIXES` | Closure 정책, 복구 센터, Git 오염 확인, 진단 projection |
-| Phase 6A | **BLOCKED** | Windows MSI·번들 JRE·아이콘·debug/release 패키징은 검증됐으나 clean Windows의 release MSI 통합 스모크가 남음 |
-| Phase 6B | 미착수 | 승인된 Harness Runtime 릴리스 artifact 통합 |
-| Phase 7 | 미착수 | opt-in 실험·고급 진단 기능 |
+| Core application | 구현됨 | State Reader, typed CTA/command, Cockpit, Registry, onboarding, daily flow, Recovery, Closure |
+| 자동 검증 | 통과 | 강제 재실행 기준 `core` 141 + `infra` 180 + `composeApp` 122 = 443 tests(opt-in live 테스트 2건 skip 포함) |
+| Live Harness Kit 호환성 | `COMPATIBLE_WITH_NONBLOCKING_GAPS` | `kit_version=2026.09.02`; 재현된 BLOCKER/HIGH와 문서 기준선 drift를 수정·회귀 검증 완료. 남은 항목은 non-blocking으로 공개(console-window-flash UNVERIFIED, `Invoke-RunCycleWrapper` 미확정 exit-code) — [감사 보고서](doc/phase_reports/harness-kit-live-compatibility-audit-report.md) 참고 |
+| CI | 구성 수정·로컬 교차 검증 통과 | Ubuntu는 portable `core`를, Windows는 PowerShell 통합을 포함한 전체 `check`를 실행. 원격 Actions 확인은 다음 push에서 수행 |
+| Native UI QA | 대기 | 실제 사용자 클릭·캡처 필요(호환성 non-blocking gap과는 별개) |
+| Windows MSI lifecycle | 대기 | package는 생성되지만 clean Windows 설치→표준 cycle→제거 증거가 없음 |
+| Bundled Harness Runtime | **차단** | owner-approved immutable runtime artifact·manifest·checksum이 없음 |
+| Post-MVP | 미착수 | signing, update/rollback, license, portable data mode |
 
-### Phase 6A가 아직 완료가 아닌 이유
+### Windows MSI Gate가 아직 완료가 아닌 이유
 
 현재 소스 기준으로 다음 검증은 통과했습니다.
 
@@ -87,9 +86,9 @@ clean Windows 환경
 
 ### 1. 프로젝트 온보딩과 Registry
 
-프로젝트별로 다음 경로와 Profile을 등록하고 전환할 수 있습니다.
+프로젝트별로 runtime source, workspace, repository, Profile을 등록하고 전환할 수 있습니다. 기본 선택은 HRNS-NOW source checkout 상대 `.local\harness-kit`이며, 명시적 외부 Harness Kit은 고급 선택으로 등록합니다.
 
-- Harness Kit root
+- Harness runtime source: DefaultKit 또는 ExternalKit
 - 프로젝트 workspace root
 - Git repository root
 - Harness profile
@@ -97,11 +96,13 @@ clean Windows 환경
 
 등록 전에 경로의 상호 포함, junction·symlink를 고려한 실경계, Harness 호환성을 검사합니다.
 
-Registry 해석 순서는 다음과 같습니다.
+앱은 Registry의 마지막 활성 ID가 유효한 project entry를 가리킬 때 이를 선택하고, 그렇지 않으면 사용자가 Setup에서 프로젝트를 등록·선택하게 합니다.
 
 ```text
-사용자 Registry → 환경변수 fallback → 사용자 직접 선택
+Registry last active project → explicit user selection
 ```
+
+DefaultKit은 source checkout을 찾을 수 있는 개발 실행에서만 `.local\harness-kit`으로 해석됩니다. packaged app처럼 checkout 표지를 찾지 못하면 경로를 추측하지 않고 fail-closed합니다. ExternalKit만 사용자가 지정한 absolute root를 Registry에 저장합니다. 어느 선택도 Harness Runtime을 MSI에 포함한다는 뜻은 아닙니다.
 
 Registry 기본 위치:
 
@@ -316,7 +317,7 @@ composeApp → core ← infra
 
 - Windows 10/11
 - JDK 17
-- 접근 가능한 외부 Harness Kit
+- 사용자 제공 개발 SDK(`.local\harness-kit`) 또는 명시적 외부 Harness Kit
 - Gradle Wrapper 실행이 가능한 환경
 
 ### 애플리케이션 실행
@@ -341,7 +342,7 @@ composeApp → core ← infra
 
 ## Windows MSI 패키징
 
-현재 Phase 6A는 Windows MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
+현재 Windows 배포 Gate는 MSI만 대상으로 합니다. DMG·DEB는 빌드 또는 검증 대상이 아닙니다.
 
 ### Debug MSI
 
@@ -390,32 +391,24 @@ Program Files에는 Registry, workspace, Harness 로그, 사용자 작업 파일
 
 ## 문서
 
-- [최종 통합 발전 계획](./doc/hrns_now_claude_plan.md)
+- [문서 안내와 현재 상태](./doc/documentation_guide.md)
+- [현행 계획과 외부 계약](./doc/hrns_now_claude_plan.md)
 - [Kotlin 아키텍처와 디자인 패턴](./doc/hrns_now_design_pattern.md)
-- [패키징 계획](./doc/hrns_now_packaging_plan.md)
-- [Phase 보고서](./doc/phase_reports)
-- [다음 단계 작업 지시](./doc/claude_prompts)
+- [Native QA 체크리스트](./doc/native_qa_checklist.md)
+- [Live Harness Kit 호환성 감사](./doc/claude_prompts/harness-kit-live-compatibility-audit.md)
+- [Live Harness Kit 호환성 수정](./doc/claude_prompts/harness-kit-live-compatibility-remediation.md)
+- [패키징 초안](./doc/hrns_now_packaging_plan.md) — 사용자 작업 자료, 비정본
 
-개발 또는 검증을 시작하기 전에 현재 Phase 보고서와 다음 작업 지시를 함께 확인해야 합니다. 과거 보고서의 테스트 수나 판정보다 최신 Codex 독립 검증 절이 우선합니다.
+현재 source와 live artifact가 문서보다 우선합니다. 완료된 일회성 프롬프트와 과거 시점 보고서는 Git 이력에서 조회하며 현재 계약으로 사용하지 않습니다.
 
 ---
 
 ## 로드맵
 
-### 다음 허용 작업: Phase 6A Gate 보완
+1. **Live Kit 호환성** — 모든 command, diagnostics, State lifecycle과 fresh onboarding artifact를 production parser 기준으로 정렬
+2. **Native workflow QA** — 실제 사용자 클릭으로 registration, onboarding, today work, recovery, closure 확인
+3. **Clean Windows MSI** — 설치부터 표준 cycle과 제거까지 독립 검증
+4. **Approved bundled runtime** — owner-approved immutable artifact가 제공된 뒤에만 통합
+5. **Post-MVP** — signing, update/rollback, license, portable data mode, opt-in diagnostics
 
-- clean Windows VM 또는 독립 계정 준비
-- release MSI 설치·실행
-- 외부 Kit과 프로젝트 등록
-- Doctor·State 조회
-- 표준 daily cycle 수행
-- uninstall 후 사용자 데이터 보존 확인
-- 결과를 근거와 함께 Phase 6 보고서에 반영
-
-### 이후 단계
-
-- **Phase 6B** — Harness 저장소가 승인한 재현 가능한 Runtime artifact만 MSI에 통합
-- **Phase 7** — 메인 CTA와 분리된 opt-in 실험·고급 진단 기능
-- **Post-MVP** — 코드 서명, 업데이트·롤백, 라이선스, portable data mode
-
-`G6A`가 통과하기 전에는 Phase 6B 또는 Phase 7을 시작하지 않습니다.
+상세 완료 조건과 현재 blocker는 [현행 계획](./doc/hrns_now_claude_plan.md)을 따릅니다.
